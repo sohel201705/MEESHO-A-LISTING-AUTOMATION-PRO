@@ -8,5 +8,3 @@ const FIREBASE_CONFIG = Object.freeze({
   "messagingSenderId": "1070112616030",
   "appId": "1:1070112616030:web:12aea571a1c7b5d2170ecf"
 });
-
-const GOOGLE_OAUTH_CLIENT_ID = 'PASTE_CHROME_EXTENSION_OAUTH_CLIENT_ID.apps.googleusercontent.com';
