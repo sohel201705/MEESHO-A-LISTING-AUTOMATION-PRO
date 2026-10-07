@@ -54,25 +54,68 @@ async function login() {
 async function initializeDatabase() {
   if(!currentUser || currentUser.uid!==ADMIN_UID) throw new Error('This Google account is not the configured Admin UID.');
   const now = new Date().toISOString();
+
   await setDoc(doc(db,'admins',currentUser.uid), {
-    uid:currentUser.uid,email:currentUser.email||'',name:currentUser.displayName||'',role:'owner',updatedAt:now
+    uid:currentUser.uid,
+    email:currentUser.email||'',
+    name:currentUser.displayName||'',
+    role:'owner',
+    updatedAt:now
   }, {merge:true});
+
   const defaults = [
     ['monthly',{name:'Monthly',active:true,price:399,offerPrice:299,durationDays:30,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Full access for 30 days.',createdAt:now,updatedAt:now}],
     ['yearly',{name:'Yearly',active:true,price:2999,offerPrice:1999,durationDays:365,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Full access for 365 days.',createdAt:now,updatedAt:now}],
     ['lifetime',{name:'Lifetime',active:true,price:5999,offerPrice:4999,durationDays:0,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Lifetime access with no expiry.',createdAt:now,updatedAt:now}]
   ];
   for(const [id,data] of defaults) await setDoc(doc(db,'plans',id),data,{merge:true});
+
   await setDoc(doc(db,'settings','general'),DEFAULT_SETTINGS,{merge:true});
-  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.13.0',model:'ONE_PLAN_UNLOCKS_AUTOFILL_AND_SHIPPING',initializedAt:now,initializedBy:currentUser.uid},{merge:true});
-  toast('Database initialized successfully.','success');
+
+  const collectionSeeds = [
+    ['users','_meta',{type:'collection-meta',label:'Users',description:'Google-authenticated extension users',createdAt:now,updatedAt:now}],
+    ['memberships','_meta',{type:'collection-meta',label:'Memberships',description:'One membership unlocks Autofill + Shipping Optimizer',createdAt:now,updatedAt:now}],
+    ['activationKeys','_meta',{type:'collection-meta',label:'Activation Keys',description:'Admin-generated activation keys',createdAt:now,updatedAt:now}],
+    ['devices','_meta',{type:'collection-meta',label:'Devices',description:'Device registrations and session limits',createdAt:now,updatedAt:now}],
+    ['payments','_meta',{type:'collection-meta',label:'Payments',description:'UPI/manual payment records',createdAt:now,updatedAt:now}],
+    ['logs','_meta',{type:'collection-meta',label:'Logs',description:'Admin activity and system audit logs',createdAt:now,updatedAt:now}]
+  ];
+  for(const [name,id,data] of collectionSeeds) {
+    await setDoc(doc(db,name,id),data,{merge:true});
+  }
+
+  await setDoc(doc(db,'system','collections'),{
+    users:true,
+    plans:true,
+    memberships:true,
+    activationKeys:true,
+    devices:true,
+    payments:true,
+    settings:true,
+    logs:true,
+    admins:true,
+    initializedAt:now,
+    initializedBy:currentUser.uid
+  },{merge:true});
+
+  await setDoc(doc(db,'system','meta'),{
+    name:'MEESHO A+ LISTING AUTOMATION PRO',
+    version:'3.14.0',
+    model:'ONE_PLAN_UNLOCKS_AUTOFILL_AND_SHIPPING',
+    initializedAt:now,
+    initializedBy:currentUser.uid,
+    database:'FIRESTORE',
+    collectionsReady:true
+  },{merge:true});
+
+  toast('Firebase collections initialized and synced successfully.','success');
   await loadAll();
 }
 
 async function loadPlans() { const snap=await getDocs(collection(db,'plans')); plans=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.id).localeCompare(String(b.id))); }
-async function loadUsers() { const [u,m]=await Promise.all([getDocs(collection(db,'users')),getDocs(collection(db,'memberships'))]); users=u.docs.map(d=>({uid:d.id,...d.data()})); memberships=new Map(m.docs.map(d=>[d.id,{uid:d.id,...d.data()}])); }
-async function loadKeys() { const snap=await getDocs(collection(db,'activationKeys')); keys=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
-async function loadPayments() { const snap=await getDocs(collection(db,'payments')); payments=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
+async function loadUsers() { const [u,m]=await Promise.all([getDocs(collection(db,'users')),getDocs(collection(db,'memberships'))]); users=u.docs.filter(d=>d.id!=='_meta').map(d=>({uid:d.id,...d.data()})); memberships=new Map(m.docs.map(d=>[d.id,{uid:d.id,...d.data()}])); }
+async function loadKeys() { const snap=await getDocs(collection(db,'activationKeys')); keys=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
+async function loadPayments() { const snap=await getDocs(collection(db,'payments')); payments=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
 async function loadSettings() { const s=await getDoc(doc(db,'settings','general')); const d=s.exists()?s.data():DEFAULT_SETTINGS; $('set-brand').value=d.brandName||''; $('set-support').value=d.supportName||''; $('set-phone').value=d.phone||''; $('set-whatsapp').value=d.whatsapp||''; $('set-email').value=d.email||''; $('set-upi').value=d.upiId||''; $('set-qr').value=d.qrUrl||''; $('set-maintenance').checked=Boolean(d.maintenanceMode); }
 async function loadAll() { await Promise.all([loadPlans(),loadUsers(),loadKeys(),loadPayments(),loadSettings()]); updateStats(); renderPlans(); renderUsers(); renderKeySelectors(); renderKeys(); renderPlanSelectors(); renderPayments(); }
 
