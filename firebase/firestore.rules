@@ -3,13 +3,16 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && request.auth.uid == 'YnfQtmTpm9asdR0izeWuMwmX3Sw1';
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'owner';
     }
     function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
 
     match /admins/{uid} {
       allow read: if isAdmin() || isSelf(uid);
-      allow create, update, delete: if isAdmin();
+      allow create: if false;
+      allow update, delete: if isAdmin();
     }
 
     match /users/{uid} {
