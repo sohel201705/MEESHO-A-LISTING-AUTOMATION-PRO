@@ -20,6 +20,7 @@ let users = [];
 let memberships = new Map();
 let keys = [];
 let payments = [];
+let currentAdmin = null;
 
 function readyConfig() {
   return !Object.values(FIREBASE_CONFIG).some(v => String(v).startsWith('PASTE_')) && !String(ADMIN_UID).startsWith('PASTE_');
@@ -52,7 +53,7 @@ async function login() {
 }
 
 async function initializeDatabase() {
-  if(!currentUser || currentUser.uid!==ADMIN_UID) throw new Error('This Google account is not the configured Admin UID.');
+  if(!currentUser || !currentAdmin) throw new Error('Admin record not found. Create admins/<your Firebase UID> first.');
   const now = new Date().toISOString();
 
   await setDoc(doc(db,'admins',currentUser.uid), {
@@ -208,7 +209,15 @@ $('keys-list').addEventListener('click',async e=>{const c=e.target.closest('[dat
 onAuthStateChanged(auth,async user=>{
   currentUser=user;
   if(!user){showApp(false); $('connection-state').className='pill'; $('connection-state').textContent='Signed out'; return;}
-  if(user.uid!==ADMIN_UID){showApp(false); setLoginError(`Access denied. Signed-in UID ${user.uid} is not the configured Admin UID.`); await signOut(auth); return;}
+  const adminSnap = await getDoc(doc(db,'admins',user.uid));
+  if(!adminSnap.exists() || String(adminSnap.data()?.role||'').toLowerCase()!=='owner') {
+    currentAdmin = null;
+    showApp(false);
+    setLoginError(`Access denied. Create an admins/${user.uid} document in Firestore with role = owner, then sign in again.`);
+    await signOut(auth);
+    return;
+  }
+  currentAdmin = {uid:user.uid, ...adminSnap.data()};
   showApp(true); $('admin-user').textContent=`${user.displayName||'Admin'} · ${user.email||user.uid}`; $('connection-state').className='pill ok'; $('connection-state').textContent='Firebase connected'; setLoginError('');
   try{ await loadAll(); }catch(e){toast(e?.message||'Could not load Firestore data. Deploy rules and Initialize DB first.','error');}
 });
