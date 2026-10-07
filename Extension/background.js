@@ -3,6 +3,7 @@ importScripts('firebase-config.js');
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
 const FIRESTORE_COMMIT = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit`;
+const FIRESTORE_RESOURCE_PREFIX = `projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
 const AUTH_BASE = 'https://identitytoolkit.googleapis.com/v1';
 const SECURE_TOKEN_BASE = 'https://securetoken.googleapis.com/v1/token';
 const AUTH_SCOPE = ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'];
@@ -404,19 +405,19 @@ async function redeemActivationCode(code) {
   const writes = [
     {
       update: {
-        name: `${FIRESTORE_BASE}/memberships/${encodeURIComponent(user.uid)}`,
+        name: `${FIRESTORE_RESOURCE_PREFIX}/memberships/${encodeURIComponent(user.uid)}`,
         fields: toFirestoreFields(membership)
       }
     },
     {
       update: {
-        name: `${FIRESTORE_BASE}/activationKeys/${encodeURIComponent(normalized)}`,
+        name: `${FIRESTORE_RESOURCE_PREFIX}/activationKeys/${encodeURIComponent(normalized)}`,
         fields: toFirestoreFields(keyUpdate)
       }
     },
     {
       update: {
-        name: `${FIRESTORE_BASE}/users/${encodeURIComponent(user.uid)}`,
+        name: `${FIRESTORE_RESOURCE_PREFIX}/users/${encodeURIComponent(user.uid)}`,
         fields: toFirestoreFields({
           uid: user.uid,
           email: user.email,
