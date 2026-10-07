@@ -71,11 +71,11 @@
     "activeTab",
     "clipboardRead",
     "declarativeNetRequest",
-    "identity",
     "scripting",
-    "storage"
+    "storage",
+    "offscreen"
   ],
-  "version": "3.14.0",
+  "version": "3.15.0",
   "web_accessible_resources": [
     {
       "matches": [
@@ -92,12 +92,5 @@
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com; frame-src 'none';"
-  },
-  "oauth2": {
-    "client_id": "PASTE_CHROME_EXTENSION_OAUTH_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile"
-    ]
   }
 }
