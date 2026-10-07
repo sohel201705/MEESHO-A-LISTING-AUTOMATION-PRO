@@ -2285,3 +2285,43 @@ html.mls-optimizer-open {
 #mls-lower-shipping-box span { color:#91a7c5; }
 #mls-lower-shipping-box .mls-credits--active { color:#5ee68c!important; }
 #mls-lower-shipping-box .mls-badge { background:linear-gradient(135deg,#176fd1,#2457a8)!important; }
+
+
+/* FINAL UI FIX — keep the Shipping status inside its own card.
+   The old pseudo-element duplicated "INCLUDED" and could overlap the status. */
+#acc-shipping-card::after,
+#pricing-shipping-card::after {
+  content: none !important;
+  display: none !important;
+}
+
+.subscription-product-card__top {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+.subscription-product-card__top > span {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.subscription-product-card__top > strong {
+  flex: 0 0 auto !important;
+  max-width: 48% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 9px !important;
+}
+
+#acc-shipping-status,
+#pricing-shipping-status {
+  color: #7df2a1 !important;
+  letter-spacing: .04em !important;
+}
