@@ -1,11 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Replace this string once with your Google account Firebase Auth UID.
-    // The Admin Panel also stores admins/{uid}, but this hard-coded UID is the bootstrap root of trust.
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && request.auth.uid == 'm7pkPGN62YMWfPr7ftbSMw3jv052';
+      return signedIn() && request.auth.uid == 'YnfQtmTpm9asdR0izeWuMwmX3Sw1';
     }
     function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
 
@@ -22,8 +20,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isSelf(uid)
           && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name', 'email', 'photoURL', 'provider', 'emailVerified', 'lastLoginAt',
-                       'lastMembershipPlan', 'membershipStatus', 'membershipUpdatedAt']));
+             .hasOnly(['name','email','photoURL','provider','emailVerified','lastLoginAt','lastMembershipPlan','membershipStatus','membershipUpdatedAt']));
       allow delete: if isAdmin();
     }
 
@@ -83,8 +80,7 @@ service cloud.firestore {
     }
 
     match /logs/{logId} {
-      allow read, create: if isAdmin();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if isAdmin();
     }
 
     match /system/{docId} {
