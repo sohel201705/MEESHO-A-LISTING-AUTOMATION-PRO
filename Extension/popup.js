@@ -712,7 +712,7 @@ async function fetchFirebaseDoc(collectionName, docId) {
 }
 
 function FIREBASE_BASE_URL() {
-  return 'https://firestore.googleapis.com/v1/projects/meesho-a-plus-listing/databases/(default)/documents';
+  return 'https://firestore.googleapis.com/v1/projects/meesho-a-plus-listing-b5ea0/databases/(default)/documents';
 }
 
 async function loadPlanCatalogFromFirebase() {
