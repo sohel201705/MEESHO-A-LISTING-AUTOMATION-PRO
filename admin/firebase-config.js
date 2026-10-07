@@ -8,7 +8,7 @@ export const FIREBASE_CONFIG = Object.freeze({
   "appId": "1:1070112616030:web:12aea571a1c7b5d2170ecf"
 });
 
-export const ADMIN_UID = 'm7pkPGN62YMWfPr7ftbSMw3jv052';
+export const ADMIN_UID = 'YnfQtmTpm9asdR0izeWuMwmX3Sw1';
 
 export const DEFAULT_SETTINGS = Object.freeze({
   brandName: 'Sohel Enterprise',
