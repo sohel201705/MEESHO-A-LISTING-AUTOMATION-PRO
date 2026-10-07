@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace this string once with your Google account Firebase Auth UID.
+    // The Admin Panel also stores admins/{uid}, but this hard-coded UID is the bootstrap root of trust.
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.uid == 'm7pkPGN62YMWfPr7ftbSMw3jv052';
+    }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    match /admins/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.provider == 'google.com';
+      allow update: if isAdmin()
+        || (isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'email', 'photoURL', 'provider', 'emailVerified', 'lastLoginAt',
+                       'lastMembershipPlan', 'membershipStatus', 'membershipUpdatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /plans/{planId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.active == true);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /memberships/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create, update: if isAdmin() || (isSelf(uid) && canRedeemMembership(uid));
+      allow delete: if isAdmin();
+    }
+
+    function canRedeemMembership(uid) {
+      let code = request.resource.data.activationKey;
+      let key = getAfter(/databases/$(database)/documents/activationKeys/$(code)).data;
+      return request.resource.data.uid == uid
+        && request.resource.data.status == 'ACTIVE'
+        && key.status == 'REDEEMED'
+        && key.redeemedBy == request.auth.uid
+        && key.planId == request.resource.data.planId
+        && key.planName == request.resource.data.planName
+        && key.durationDays == request.resource.data.durationDays
+        && key.deviceLimit == request.resource.data.deviceLimit
+        && key.shippingEnabled == true
+        && request.resource.data.shippingEnabled == true
+        && key.startDate == request.resource.data.startDate
+        && key.expiryDate == request.resource.data.expiryDate
+        && (key.assignedEmail == '' || key.assignedEmail == request.auth.token.email);
+    }
+
+    match /activationKeys/{code} {
+      allow read: if isAdmin()
+        || (signedIn()
+          && resource.data.status == 'AVAILABLE'
+          && (resource.data.assignedEmail == '' || resource.data.assignedEmail == request.auth.token.email));
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.status == 'AVAILABLE'
+          && request.resource.data.status == 'REDEEMED'
+          && request.resource.data.redeemedBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.activationKey == code
+          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.planId == resource.data.planId
+          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.expiryDate == resource.data.expiryDate
+          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.shippingEnabled == true);
+    }
+
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /system/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
