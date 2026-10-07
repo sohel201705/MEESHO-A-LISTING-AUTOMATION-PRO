@@ -10,46 +10,11 @@ const AUTH_SCOPE = ['https://www.googleapis.com/auth/userinfo.email', 'https://w
 function configReady() {
   return Boolean(
     FIREBASE_CONFIG?.apiKey &&
-    !FIREBASE_CONFIG.apiKey.startsWith('PASTE_') &&
-    GOOGLE_OAUTH_CLIENT_ID &&
-    !GOOGLE_OAUTH_CLIENT_ID.startsWith('PASTE_')
+    !FIREBASE_CONFIG.apiKey.startsWith('PASTE_')
   );
 }
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-async function getGoogleAccessToken(interactive = false) {
-  if (!chrome.identity?.getAuthToken) throw new Error('Chrome Identity API is unavailable.');
-  const result = await chrome.identity.getAuthToken({ interactive, scopes: AUTH_SCOPE });
-  if (!result?.token) throw new Error('Google sign-in did not return an access token.');
-  return result.token;
-}
-
-async function removeGoogleToken(token) {
-  if (!token || !chrome.identity?.removeCachedAuthToken) return;
-  try { await chrome.identity.removeCachedAuthToken({ token }); } catch (_) {}
-}
-
-async function firebaseSignInWithGoogle(googleAccessToken) {
-  const url = `${AUTH_BASE}/accounts:signInWithIdp?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
-  const body = new URLSearchParams({
-    postBody: `access_token=${encodeURIComponent(googleAccessToken)}&providerId=google.com`,
-    requestUri: 'https://localhost',
-    returnSecureToken: 'true',
-    returnIdpCredential: 'false'
-  });
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error?.message || 'Firebase Google sign-in failed.';
-    throw new Error(msg.replaceAll('_', ' '));
-  }
-  return data;
-}
 
 async function refreshFirebaseSession(refreshToken) {
   const body = new URLSearchParams({
@@ -92,7 +57,6 @@ async function getValidFirebaseToken({ interactive = false } = {}) {
   if (session.firebase_id_token && Number(session.firebase_expires_at || 0) > Date.now() + 90_000) {
     return session.firebase_id_token;
   }
-
   if (session.firebase_refresh_token) {
     try {
       return await refreshFirebaseSession(session.firebase_refresh_token);
@@ -100,34 +64,7 @@ async function getValidFirebaseToken({ interactive = false } = {}) {
       await chrome.storage.local.remove(['firebase_id_token', 'firebase_refresh_token', 'firebase_expires_at', 'firebase_user_id']);
     }
   }
-
-  try {
-    const googleToken = await getGoogleAccessToken(interactive);
-    const auth = await firebaseSignInWithGoogle(googleToken);
-    const expiresIn = Number(auth.expiresIn || 3600);
-    const user = {
-      uid: auth.localId || '',
-      email: auth.email || '',
-      full_name: auth.displayName || auth.fullName || auth.email || 'Google User',
-      name: auth.displayName || auth.fullName || auth.email || 'Google User',
-      photoURL: auth.photoUrl || '',
-      provider: 'google.com',
-      emailVerified: auth.emailVerified !== false
-    };
-    await chrome.storage.local.set({
-      firebase_id_token: auth.idToken,
-      firebase_refresh_token: auth.refreshToken,
-      firebase_expires_at: Date.now() + Math.max(60, expiresIn - 30) * 1000,
-      firebase_user: user,
-      firebase_google_access_token: googleToken,
-      firebase_user_id: user.uid
-    });
-    await ensureUserDoc(user, auth.idToken);
-    return auth.idToken;
-  } catch (e) {
-    if (interactive) throw e;
-    return null;
-  }
+  return null;
 }
 
 function decodeJwtPayload(token) {
@@ -275,37 +212,118 @@ async function buildAccess() {
   return { allowed: active, reason: active ? 'active' : (status === 'EXPIRED' ? 'expired' : status || 'not_activated'), user: full, membership, plan };
 }
 
-async function login() {
-  if (!configReady()) throw new Error('Firebase is not configured. Open Extension/firebase-config.js and add the Firebase Web API key and Chrome Extension OAuth client ID.');
-  const googleToken = await getGoogleAccessToken(true);
+const OFFSCREEN_DOCUMENT_PATH = '/offscreen.html';
+const AUTH_BRIDGE_URL = 'https://sohel201705.github.io/MEESHO-A-LISTING-AUTOMATION-PRO/admin/auth-bridge.html';
+let creatingOffscreenDocument = null;
+
+async function hasOffscreenDocument() {
+  const matched = await clients.matchAll();
+  return matched.some(c => c.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH));
+}
+
+async function setupOffscreenDocument() {
+  if (await hasOffscreenDocument()) return;
+  if (creatingOffscreenDocument) {
+    await creatingOffscreenDocument;
+    return;
+  }
+  creatingOffscreenDocument = chrome.offscreen.createDocument({
+    url: OFFSCREEN_DOCUMENT_PATH,
+    reasons: ['IFRAME_SCRIPTING'],
+    justification: 'Firebase Google authentication'
+  });
   try {
-    const auth = await firebaseSignInWithGoogle(googleToken);
-    const expiresIn = Number(auth.expiresIn || 3600);
-    const user = {
-      uid: auth.localId || '',
-      email: auth.email || '',
-      full_name: auth.displayName || auth.fullName || auth.email || 'Google User',
-      name: auth.displayName || auth.fullName || auth.email || 'Google User',
-      photoURL: auth.photoUrl || '',
-      provider: 'google.com',
-      emailVerified: auth.emailVerified !== false
-    };
-    await chrome.storage.local.set({
-      firebase_id_token: auth.idToken,
-      firebase_refresh_token: auth.refreshToken,
-      firebase_expires_at: Date.now() + Math.max(60, expiresIn - 30) * 1000,
-      firebase_user: user,
-      firebase_google_access_token: googleToken,
-      firebase_user_id: user.uid
-    });
-    await ensureUserDoc(user, auth.idToken);
-    return buildAccess();
-  } catch (e) {
-    await removeGoogleToken(googleToken);
-    throw e;
+    await creatingOffscreenDocument;
+  } finally {
+    creatingOffscreenDocument = null;
   }
 }
 
+async function closeOffscreenDocument() {
+  if (await hasOffscreenDocument()) {
+    try { await chrome.offscreen.closeDocument(); } catch (_) {}
+  }
+}
+
+function authenticateWithOffscreen() {
+  return new Promise(async (resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Google sign-in timed out.')), 120000);
+
+    const listener = event => {
+      if (event.data?.source !== 'meesho-firebase-auth') return;
+      if (event.data?.type === 'AUTH_SUCCESS') {
+        clearTimeout(timeout);
+        chrome.runtime.onMessage.removeListener(runtimeBridge);
+        resolve(event.data.auth);
+      } else if (event.data?.type === 'AUTH_ERROR') {
+        clearTimeout(timeout);
+        chrome.runtime.onMessage.removeListener(runtimeBridge);
+        reject(new Error(event.data.error || 'Google sign-in failed.'));
+      }
+    };
+
+    const runtimeBridge = (message, sender, sendResponse) => {
+      if (message?.type !== 'OFFSCREEN_AUTH_RESULT') return;
+      windowLikePost(message.payload);
+      sendResponse({ok:true});
+      return true;
+    };
+
+    const windowLikePost = payload => {
+      try {
+        const authResult = payload || {};
+        if (authResult.type === 'AUTH_SUCCESS') {
+          clearTimeout(timeout);
+          chrome.runtime.onMessage.removeListener(runtimeBridge);
+          resolve(authResult.auth);
+        } else if (authResult.type === 'AUTH_ERROR') {
+          clearTimeout(timeout);
+          chrome.runtime.onMessage.removeListener(runtimeBridge);
+          reject(new Error(authResult.error || 'Google sign-in failed.'));
+        }
+      } catch (_) {}
+    };
+
+    chrome.runtime.onMessage.addListener(runtimeBridge);
+    await setupOffscreenDocument();
+    chrome.runtime.sendMessage({
+      type:'START_OFFSCREEN_AUTH',
+      target:'offscreen',
+      bridgeUrl:AUTH_BRIDGE_URL
+    });
+  });
+}
+
+async function login() {
+  if (!configReady()) throw new Error('Firebase is not configured. Check Extension/firebase-config.js.');
+  try {
+    const auth = await authenticateWithOffscreen();
+    const expiresIn = Number(auth?.expiresIn || 3600);
+    const user = {
+      uid: auth?.localId || '',
+      email: auth?.email || '',
+      full_name: auth?.displayName || auth?.fullName || auth?.email || 'Google User',
+      name: auth?.displayName || auth?.fullName || auth?.email || 'Google User',
+      photoURL: auth?.photoUrl || '',
+      provider: 'google.com',
+      emailVerified: auth?.emailVerified !== false
+    };
+    if (!user.uid || !auth?.idToken) throw new Error('Firebase did not return a valid user session.');
+    await chrome.storage.local.set({
+      firebase_id_token: auth.idToken,
+      firebase_refresh_token: auth.refreshToken || '',
+      firebase_expires_at: Date.now() + Math.max(60, expiresIn - 30) * 1000,
+      firebase_user: user,
+      firebase_user_id: user.uid
+    });
+    await ensureUserDoc(user, auth.idToken);
+    await closeOffscreenDocument();
+    return buildAccess();
+  } catch (e) {
+    await closeOffscreenDocument();
+    throw e;
+  }
+}
 async function logout() {
   const data = await chrome.storage.local.get(['firebase_google_access_token']);
   await removeGoogleToken(data.firebase_google_access_token);
@@ -435,6 +453,12 @@ async function openWhatsApp(url) {
 
 chrome.runtime.onInstalled.addListener(async () => {
   // Keep local auth state across extension updates; explicit logout clears it.
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== 'OFFSCREEN_AUTH_RESULT') return;
+  sendResponse({ok:true});
+  return true;
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
