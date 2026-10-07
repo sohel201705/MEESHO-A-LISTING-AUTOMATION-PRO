@@ -14,9 +14,9 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isAdmin() || isSelf(uid);
-      allow create: if isSelf(uid)
+      allow create: if isAdmin() || (isSelf(uid)
         && request.resource.data.uid == uid
-        && request.resource.data.provider == 'google.com';
+        && request.resource.data.provider == 'google.com');
       allow update: if isAdmin()
         || (isSelf(uid)
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -73,6 +73,16 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /devices/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create, update, delete: if isAdmin() || isSelf(uid);
+    }
+
+    match /devices/{uid}/sessions/{deviceId} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create, update, delete: if isAdmin() || isSelf(uid);
     }
 
     match /payments/{paymentId} {
