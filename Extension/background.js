@@ -335,75 +335,19 @@ async function redeemActivationCode(code) {
   const normalized = String(code || '').trim().toUpperCase();
   if (!normalized) return { ok: false, error: 'Enter an activation code.' };
 
-  const keyDoc = await firestoreGet(`activationKeys/${normalized}`, token);
-  const key = keyDoc?.fields;
-  if (!key) return { ok: false, error: 'Activation code not found.' };
-  if (String(key.status || '').toUpperCase() !== 'AVAILABLE') return { ok: false, error: 'This activation code is already used or unavailable.' };
-  if (key.assignedEmail && String(key.assignedEmail).toLowerCase() !== String(user.email).toLowerCase()) return { ok: false, error: 'This activation code is assigned to another Google account.' };
-
-  const planDoc = await firestoreGet(`plans/${key.planId}`, token);
-  const plan = planDoc?.fields;
-  if (!plan || plan.active === false) return { ok: false, error: 'The plan attached to this activation code is not available.' };
-
-  const membership = {
-    uid: user.uid,
-    email: user.email,
-    planId: key.planId,
-    planName: key.planName || plan.name || key.planId,
-    status: 'ACTIVE',
-    durationDays: Number(key.durationDays || plan.durationDays || 0),
-    shippingEnabled: true,
-    activationKey: normalized,
-    startDate: key.startDate || new Date().toISOString(),
-    expiryDate: key.expiryDate || null,
-    activatedAt: new Date().toISOString()
-  };
-  const keyUpdate = {
-    ...key,
-    status: 'REDEEMED',
-    redeemedBy: user.uid,
-    redeemedEmail: user.email,
-    redeemedAt: new Date().toISOString()
-  };
-
-  const writes = [
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/memberships/${encodeURIComponent(user.uid)}`,
-        fields: toFirestoreFields(membership)
-      }
-    },
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/activationKeys/${encodeURIComponent(normalized)}`,
-        fields: toFirestoreFields(keyUpdate)
-      }
-    },
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/users/${encodeURIComponent(user.uid)}`,
-        fields: toFirestoreFields({
-          uid: user.uid,
-          email: user.email,
-          name: user.full_name || user.name || user.email,
-          photoURL: user.photoURL || '',
-          lastMembershipPlan: membership.planId,
-          membershipStatus: 'ACTIVE',
-          membershipUpdatedAt: new Date().toISOString()
-        })
-      }
-    }
-  ];
-
-  const res = await fetch(FIRESTORE_COMMIT, {
+  // A callable transaction consumes the key once and writes all included product entitlements atomically.
+  const endpoint = 'https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net/redeemActivationKey';
+  const res = await fetch(endpoint, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ writes })
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { code: normalized, product: 'meesho' } })
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: out?.error?.message || 'Activation could not be completed.' };
+  const result = out?.result || out?.data || {};
+  if (result.ok !== true) return { ok: false, error: result.error || 'Activation could not be completed.' };
   const access = await buildAccess();
-  return { ok: true, access };
+  return { ok: true, access, includedProducts: result.includedProducts || ['meesho'] };
 }
 
 async function openWhatsApp(url) {
