@@ -513,12 +513,6 @@ function showAuthStatus(message, type = 'info') {
   if (type === 'error') showStatus(message, 'error');
 }
 
-function showDeviceLocked(email = '') {
-  const emailEl = document.getElementById('device-lock-email');
-  if (emailEl) emailEl.textContent = email || 'Google account detected';
-  showView('deviceLocked');
-}
-
 function buildUserState(user, membership = null, plan = null, reason = '') {
   const status = String(membership?.status || '').toUpperCase();
   const durationDays = Number(membership?.durationDays || plan?.durationDays || 0);
@@ -606,11 +600,6 @@ async function checkAuth() {
       return;
     }
 
-    if (access?.reason === 'device_locked') {
-      showDeviceLocked(access?.user?.email || 'Google account');
-      return;
-    }
-
     if (access?.user) {
       updateAccountUI();
       setPricingLogoutVisible(true);
@@ -650,8 +639,7 @@ async function signInWithGoogle() {
       updateAccountUI();
     }
     loadPlans();
-    if (result?.reason === 'device_locked') showDeviceLocked(currentUser?.email || 'Google account');
-    else showView('pricing');
+    showView('pricing');
     showAuthStatus(result?.error || 'Membership is not active.', result?.reason === 'error' ? 'error' : 'info');
   } catch (err) {
     showAuthStatus(err.message || 'Google login failed.', 'error');
