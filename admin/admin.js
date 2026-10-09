@@ -116,7 +116,7 @@ async function initializeDatabase() {
   await loadAll();
 }
 
-async function loadPlans() { const snap=await getDocs(collection(db,'plans')); plans=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.id).localeCompare(String(b.id))); }
+async function loadPlans() { const snap=await getDocs(collection(db,'plans')); plans=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.id).localeCompare(String(b.id))); }
 async function loadUsers() { const [u,m,pm]=await Promise.all([getDocs(collection(db,'users')),getDocs(collection(db,'memberships')),getDocs(collection(db,'productMemberships'))]); users=u.docs.filter(d=>d.id!=='_meta').map(d=>({uid:d.id,...d.data()})); memberships=new Map(m.docs.filter(d=>d.id!=='_meta').map(d=>[d.id,{uid:d.id,...d.data()}])); for(const d of pm.docs.filter(d=>d.id!=='_meta')){const old=memberships.get(d.id)||{uid:d.id}; memberships.set(d.id,{...old,uid:d.id,productMemberships:d.data()?.products||{},productMembershipRecord:d.data()});} }
 async function loadKeys() { const snap=await getDocs(collection(db,'activationKeys')); keys=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
 async function loadPayments() { const snap=await getDocs(collection(db,'payments')); payments=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
@@ -147,7 +147,7 @@ function closePlanEditor(){ $('plan-editor').classList.add('hidden'); }
 async function syncCombinedPlanPrices() {
   const snap = await getDocs(collection(db,'plans'));
   const all = snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()}));
-  const effective = p => Number(p.offerPrice || p.price || 0);
+  const effective = p => Number(p.offerPrice ?? p.price ?? 0);
   const combos = all.filter(p=>p.productScope==='combined');
   for (const combo of combos) {
     const me = all.find(p=>p.productScope==='meesho' && Number(p.durationDays||0)===Number(combo.durationDays||0));
@@ -227,11 +227,15 @@ async function saveMembership(e){
 
   const productRef=doc(db,'productMemberships',uid);
   const productSnap=await getDoc(productRef);
-  const products={...(productSnap.exists()?(productSnap.data()?.products||{}):{}),...(previous.productMemberships||{})};
+  const products={...(previous.productMemberships||{}),...(productSnap.exists()?(productSnap.data()?.products||{}):{})};
   for(const product of includedProducts) {
-    products[product]={uid,email:u.email||'',product,planId:pid,planName:p.name||pid,productScope:p.productScope||product,includedProducts,status,durationDays:days,shippingEnabled:true,autofillEnabled:true,startDate:data.startDate,expiryDate:expiry,source:'ADMIN_PANEL',updatedAt:now,activatedAt:data.activatedAt,activationKey:data.activationKey};
+    const entitlementScope=includedProducts.length>1?'bundle':product;
+    products[product]={uid,email:u.email||'',product,planId:pid,planName:p.name||pid,productScope:entitlementScope,includedProducts, status,durationDays:days,shippingEnabled:true,autofillEnabled:true,startDate:data.startDate,expiryDate:expiry,source:'ADMIN_PANEL',updatedAt:now,activatedAt:data.activatedAt,activationKey:data.activationKey};
   }
-  await setDoc(productRef,{uid,email:u.email||'',products,activationKey:data.activationKey,lastUpdatedBy:currentUser.uid,updatedAt:now},{merge:true});
+  // Keep a flat entitlement at the document root for the Flipkart extension while preserving both per-product records.
+  const topProduct=products.flipkart?'flipkart':'meesho';
+  const topEntitlement=products[topProduct]||{};
+  await setDoc(productRef,{...topEntitlement,uid,email:u.email||'',products,product:topProduct,productScope:topEntitlement.productScope||topProduct,includedProducts:topEntitlement.includedProducts||[topProduct],activationKey:topEntitlement.activationKey||data.activationKey,lastActivationKey:data.activationKey,lastUpdatedBy:currentUser.uid,updatedAt:now},{merge:true});
 
   // Keep the legacy Meesho membership document in sync only when this plan includes Meesho.
   // Buying a Flipkart-only plan must never erase or replace an existing Meesho membership.
