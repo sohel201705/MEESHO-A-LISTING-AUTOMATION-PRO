@@ -41,3 +41,7 @@ The local backup is a JSON snapshot of Firestore documents, not an export of Fir
 - Saved Profiles, field values and Scan snapshots stay in Chrome's local extension storage. Import/export is local JSON; it does not synchronize to `codes-market.xyz`, Supabase, or another profile server.
 - When a user intentionally scans/saves a product or uploads images, product-operation requests still go to Meesho's own platform APIs because those actions must interact with the seller portal. That is not an upload of the saved profile to our own Admin backend.
 - Extension login still refreshes Firebase authentication tokens, reads the current membership and relevant plan data, and reads Admin-configured tutorial/download links when the user opens those links.
+
+
+## Membership plan categories
+The Admin Panel groups the existing `plans` records into Meesho, Flipkart, and Combo views. The Meesho extension's pricing screen defaults to Meesho and includes a switcher for Flipkart-only and Combo offers. No plan documents or prices are renamed by the UI change.
