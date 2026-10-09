@@ -365,20 +365,6 @@ async function downloadLocalBackup() {
   toast(`Backup downloaded: ${records.length} Firestore documents.`, 'success');
 }
 
-async function applyDocumentsInBatches(records, mode) {
-  const ordered = [...records].sort((a,b) => {
-    const depth = a.path.split('/').length - b.path.split('/').length;
-    return depth || a.path.localeCompare(b.path);
-  });
-  for (let i=0; i<ordered.length; i+=400) {
-    const batch = writeBatch(db);
-    for (const record of ordered.slice(i, i+400)) {
-      batch.delete(doc(db, ...record.path.split('/')));
-    }
-    await batch.commit();
-  }
-}
-
 async function clearKnownAppDataPreservingAdmin() {
   const records = await collectAppDocuments();
   const removable = records
@@ -403,12 +389,18 @@ async function restoreLocalBackupFile(file) {
   if (backup.projectId !== FIREBASE_CONFIG.projectId) {
     throw new Error('This backup belongs to a different Firebase project. Nothing was changed.');
   }
-  const records = backup.documents.filter(item =>
+  const nonAdminRecords = backup.documents.filter(item => !String(item?.path || '').startsWith('admins/'));
+  const records = nonAdminRecords.filter(item =>
     item && typeof item.path === 'string' && isKnownBackupPath(item.path) &&
+    item.data && typeof item.data === 'object' && !Array.isArray(item.data) &&
     !item.path.startsWith('admins/')
   );
-  if (records.length !== backup.documents.filter(item => !String(item?.path || '').startsWith('admins/')).length) {
-    throw new Error('Backup contains unsupported document paths. Nothing was changed.');
+  if (records.length !== nonAdminRecords.length) {
+    throw new Error('Backup contains unsupported or invalid document data. Nothing was changed.');
+  }
+  const uniquePaths = new Set(records.map(item => item.path));
+  if (uniquePaths.size !== records.length) {
+    throw new Error('Backup contains duplicate document paths. Nothing was changed.');
   }
   if (!confirm(`Restore ${records.length} Firestore documents from this backup? Current known app data will be replaced. The current Admin record will be preserved. Download a backup of the current state first.`)) return;
   await clearKnownAppDataPreservingAdmin();
