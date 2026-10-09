@@ -195,21 +195,11 @@ async function buildAccess() {
     durationDays: Number(membership?.durationDays || plan?.durationDays || 0),
     expiryDate: membership?.expiryDate || null,
     shippingEnabled: active,
-    deviceLimit: Number(membership?.deviceLimit || plan?.deviceLimit || 3),
     products: {
       fill: { active, status: active ? 'active' : (status === 'EXPIRED' ? 'expired' : 'not_found'), planType: membership?.planId || '', planLabel: membership?.planName || plan?.name || '', expiresAt: membership?.expiryDate || null },
       ship: { active, status: active ? 'active' : (status === 'EXPIRED' ? 'expired' : 'not_found'), planType: membership?.planId || '', planLabel: membership?.planName || plan?.name || '', expiresAt: membership?.expiryDate || null }
     }
   };
-  if (active) {
-    const deviceResult = await registerCurrentDevice(user.uid, full.deviceLimit || 3, token);
-    if (!deviceResult.allowed) {
-      full.subscription_reason = 'device_locked';
-      return { allowed:false, reason:'device_locked', user:full, membership, plan, device:deviceResult };
-    }
-    full.deviceId = deviceResult.deviceId;
-    full.deviceCount = deviceResult.count;
-  }
   return { allowed: active, reason: active ? 'active' : (status === 'EXPIRED' ? 'expired' : status || 'not_activated'), user: full, membership, plan };
 }
 
@@ -336,31 +326,6 @@ async function logout() {
   ]);
 }
 
-async function registerCurrentDevice(uid, limit, token) {
-  if (!uid || !token) return { allowed:false, reason:'unauthenticated' };
-  const stored = await chrome.storage.local.get(['firebase_device_id']);
-  let deviceId = stored.firebase_device_id;
-  if (!deviceId) {
-    deviceId = (crypto.randomUUID ? crypto.randomUUID() : ('device_' + Date.now() + '_' + Math.random().toString(36).slice(2,10)));
-    await chrome.storage.local.set({ firebase_device_id: deviceId });
-  }
-  const listUrl = FIRESTORE_BASE + '/devices/' + encodeURIComponent(uid) + '/sessions?pageSize=50';
-  const res = await fetch(listUrl, { headers:{ Authorization:'Bearer ' + token } });
-  if (!res.ok) return { allowed:false, reason:'device_check_failed', deviceId };
-  const data = await res.json().catch(()=>({}));
-  const docs = Array.isArray(data.documents) ? data.documents : [];
-  const suffix = '/sessions/' + deviceId;
-  const existing = docs.find(d => String(d.name || '').endsWith(suffix));
-  const maxDevices = Math.max(1, Number(limit || 3));
-  if (!existing && docs.length >= maxDevices) return { allowed:false, reason:'device_locked', deviceId, count:docs.length, limit:maxDevices };
-  const oldFields = fromFirestoreFields(existing?.fields || {});
-  const now = new Date().toISOString();
-  await firestorePatch('devices/' + uid + '/sessions/' + deviceId, {
-    deviceId, uid, lastSeenAt:now, firstSeenAt:oldFields.firstSeenAt || now,
-    userAgent: navigator.userAgent, platform: navigator.platform || '', label:'Chrome Extension'
-  }, token, ['deviceId','uid','lastSeenAt','firstSeenAt','userAgent','platform','label']);
-  return { allowed:true, deviceId, count:existing ? docs.length : docs.length + 1, limit:maxDevices };
-}
 async function redeemActivationCode(code) {
   const token = await getValidFirebaseToken({ interactive: false });
   const stored = await getStoredSession();
