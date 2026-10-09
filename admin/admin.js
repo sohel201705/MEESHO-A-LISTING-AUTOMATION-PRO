@@ -5,11 +5,14 @@ import {
 import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
 import { FIREBASE_CONFIG, ADMIN_UID, DEFAULT_SETTINGS } from './firebase-config.js';
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app, 'asia-south1');
+const factoryResetCallable = httpsCallable(functions, 'factoryResetNonAdminData');
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -53,63 +56,69 @@ async function login() {
 }
 
 async function initializeDatabase() {
-  if(!currentUser || !currentAdmin) throw new Error('Admin record not found. Create admins/<your Firebase UID> first.');
+  if(!currentUser || currentUser.uid !== ADMIN_UID || !currentAdmin) {
+    throw new Error('Only the configured Firebase Admin UID can initialize the database.');
+  }
   const now = new Date().toISOString();
 
-  await setDoc(doc(db,'admins',currentUser.uid), {
-    uid:currentUser.uid,
+  await setDoc(doc(db,'admins',ADMIN_UID), {
+    uid:ADMIN_UID,
     email:currentUser.email||'',
     name:currentUser.displayName||'',
     role:'owner',
     updatedAt:now
   }, {merge:true});
 
+  // Create default plans only when absent. Existing plan prices and settings are never overwritten.
   const defaults = [
-    ['monthly',{name:'Monthly',active:true,price:399,offerPrice:299,durationDays:30,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Full access for 30 days.',createdAt:now,updatedAt:now}],
-    ['yearly',{name:'Yearly',active:true,price:2999,offerPrice:1999,durationDays:365,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Full access for 365 days.',createdAt:now,updatedAt:now}],
-    ['lifetime',{name:'Lifetime',active:true,price:5999,offerPrice:4999,durationDays:0,deviceLimit:3,shippingEnabled:true,autofillEnabled:true,description:'Lifetime access with no expiry.',createdAt:now,updatedAt:now}]
+    ['monthly',{name:'Monthly',active:true,price:399,offerPrice:299,durationDays:30,shippingEnabled:true,autofillEnabled:true,description:'Full access for 30 days.',createdAt:now,updatedAt:now}],
+    ['yearly',{name:'Yearly',active:true,price:2999,offerPrice:1999,durationDays:365,shippingEnabled:true,autofillEnabled:true,description:'Full access for 365 days.',createdAt:now,updatedAt:now}],
+    ['lifetime',{name:'Lifetime',active:true,price:5999,offerPrice:4999,durationDays:0,shippingEnabled:true,autofillEnabled:true,description:'Lifetime access with no expiry.',createdAt:now,updatedAt:now}]
   ];
-  for(const [id,data] of defaults) await setDoc(doc(db,'plans',id),data,{merge:true});
+  for(const [id,data] of defaults) {
+    const ref = doc(db,'plans',id);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) await setDoc(ref,data,{merge:false});
+  }
 
-  await setDoc(doc(db,'settings','general'),DEFAULT_SETTINGS,{merge:true});
+  const settingsRef = doc(db,'settings','general');
+  const settingsSnap = await getDoc(settingsRef);
+  if(!settingsSnap.exists()) await setDoc(settingsRef,{...DEFAULT_SETTINGS,createdAt:now,updatedAt:now},{merge:false});
 
   const collectionSeeds = [
     ['users','_meta',{type:'collection-meta',label:'Users',description:'Google-authenticated extension users',createdAt:now,updatedAt:now}],
-    ['memberships','_meta',{type:'collection-meta',label:'Memberships',description:'One membership unlocks Autofill + Shipping Optimizer',createdAt:now,updatedAt:now}],
-    ['activationKeys','_meta',{type:'collection-meta',label:'Activation Keys',description:'Admin-generated activation keys',createdAt:now,updatedAt:now}],
-    ['devices','_meta',{type:'collection-meta',label:'Devices',description:'Device registrations and session limits',createdAt:now,updatedAt:now}],
+    ['memberships','_meta',{type:'collection-meta',label:'Memberships',description:'User memberships and expiry dates',createdAt:now,updatedAt:now}],
+    ['productMemberships','_meta',{type:'collection-meta',label:'Product Memberships',description:'Separate Meesho and Flipkart entitlements',createdAt:now,updatedAt:now}],
+    ['plans','_meta',{type:'collection-meta',label:'Plans',description:'Individual and combined plans',createdAt:now,updatedAt:now}],
+    ['activationKeys','_meta',{type:'collection-meta',label:'Activation Keys',description:'Admin-generated one-time activation keys',createdAt:now,updatedAt:now}],
+    ['devices','_meta',{type:'collection-meta',label:'Devices',description:'Legacy metadata only; device limits are not enforced',createdAt:now,updatedAt:now}],
     ['payments','_meta',{type:'collection-meta',label:'Payments',description:'UPI/manual payment records',createdAt:now,updatedAt:now}],
-    ['logs','_meta',{type:'collection-meta',label:'Logs',description:'Admin activity and system audit logs',createdAt:now,updatedAt:now}]
+    ['logs','_meta',{type:'collection-meta',label:'Logs',description:'Admin activity and system audit logs',createdAt:now,updatedAt:now}],
+    ['settings','_meta',{type:'collection-meta',label:'Settings',description:'Support, tutorial and master download links',createdAt:now,updatedAt:now}],
+    ['combinedPlans','_meta',{type:'collection-meta',label:'Combined Plans',description:'Plan bundles including Meesho and Flipkart',createdAt:now,updatedAt:now}]
   ];
   for(const [name,id,data] of collectionSeeds) {
-    await setDoc(doc(db,name,id),data,{merge:true});
+    const ref = doc(db,name,id);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) await setDoc(ref,data,{merge:false});
   }
 
   await setDoc(doc(db,'system','collections'),{
-    users:true,
-    plans:true,
-    memberships:true,
-    activationKeys:true,
-    devices:true,
-    payments:true,
-    settings:true,
-    logs:true,
-    admins:true,
-    initializedAt:now,
-    initializedBy:currentUser.uid
+    users:true, plans:true, memberships:true, productMemberships:true,
+    activationKeys:true, devices:true, payments:true, settings:true,
+    combinedPlans:true, logs:true, admins:true,
+    initializedAt:now, initializedBy:currentUser.uid
   },{merge:true});
 
   await setDoc(doc(db,'system','meta'),{
     name:'MEESHO A+ LISTING AUTOMATION PRO',
-    version:'3.14.0',
-    model:'ONE_PLAN_UNLOCKS_AUTOFILL_AND_SHIPPING',
-    initializedAt:now,
-    initializedBy:currentUser.uid,
-    database:'FIRESTORE',
-    collectionsReady:true
+    version:'3.16.0',
+    model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',
+    initializedAt:now, initializedBy:currentUser.uid,
+    database:'FIRESTORE', collectionsReady:true
   },{merge:true});
 
-  toast('Firebase collections initialized and synced successfully.','success');
+  toast('Firebase integration completed. Missing collections and defaults were created; existing prices and settings were preserved.','success');
   await loadAll();
 }
 
@@ -195,6 +204,30 @@ async function saveSettings(e){ e.preventDefault(); await setDoc(doc(db,'setting
 $('google-login').addEventListener('click',login);
 $('logout').addEventListener('click',()=>signOut(auth));
 $('initialize-db').addEventListener('click',()=>initializeDatabase().catch(e=>toast(e?.message||'Initialization failed.','error')));
+$('factory-reset-confirm').addEventListener('input',e=>{
+  $('factory-reset-button').disabled = e.target.value.trim() !== 'RESET ALL NON-ADMIN DATA';
+});
+$('factory-reset-button').addEventListener('click',async()=>{
+  if(!currentUser || currentUser.uid !== ADMIN_UID || !currentAdmin) return toast('Admin access required.','error');
+  const confirmation = $('factory-reset-confirm').value.trim();
+  if(confirmation !== 'RESET ALL NON-ADMIN DATA') return toast('Type the exact confirmation phrase first.','error');
+  const ok = confirm('Factory reset will back up Firestore data and Auth user metadata, then delete all Firestore documents and Firebase Auth users except the configured Admin UID. Continue?');
+  if(!ok) return;
+  const button = $('factory-reset-button');
+  button.disabled = true;
+  try {
+    toast('Factory reset started. Creating backup first…');
+    const result = await factoryResetCallable({confirmText:confirmation});
+    const backupPath = result?.data?.backupPath || 'Cloud Storage backup created';
+    $('factory-reset-confirm').value = '';
+    toast('Reset complete. Admin UID preserved. Next click Initialize DB to rebuild collections. Backup: '+backupPath,'success');
+    await loadAll().catch(()=>{});
+  } catch(e) {
+    toast(e?.message || 'Factory reset failed. No reset success was reported.','error');
+  } finally {
+    button.disabled = $('factory-reset-confirm').value.trim() !== 'RESET ALL NON-ADMIN DATA';
+  }
+});
 document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.section)));
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.goto)));
 $('new-plan').addEventListener('click',()=>openPlanEditor()); $('cancel-plan').addEventListener('click',closePlanEditor); $('plan-form').addEventListener('submit',e=>savePlan(e).catch(err=>toast(err?.message||'Could not save plan.','error')));
@@ -208,18 +241,41 @@ $('keys-list').addEventListener('click',async e=>{const c=e.target.closest('[dat
 
 onAuthStateChanged(auth,async user=>{
   currentUser=user;
-  if(!user){showApp(false); $('connection-state').className='pill'; $('connection-state').textContent='Signed out'; return;}
-  const adminSnap = await getDoc(doc(db,'admins',user.uid));
-  if(!adminSnap.exists() || String(adminSnap.data()?.role||'').toLowerCase()!=='owner') {
+  if(!user){currentAdmin=null;showApp(false); $('connection-state').className='pill'; $('connection-state').textContent='Signed out'; return;}
+  if(user.uid !== ADMIN_UID) {
     currentAdmin = null;
     showApp(false);
-    setLoginError(`Access denied. Create an admins/${user.uid} document in Firestore with role = owner, then sign in again.`);
+    setLoginError('Access denied. This Google account is not the configured Admin UID.');
     await signOut(auth);
     return;
   }
-  currentAdmin = {uid:user.uid, ...adminSnap.data()};
-  showApp(true); $('admin-user').textContent=`${user.displayName||'Admin'} · ${user.email||user.uid}`; $('connection-state').className='pill ok'; $('connection-state').textContent='Firebase connected'; setLoginError('');
-  try{ await loadAll(); }catch(e){toast(e?.message||'Could not load Firestore data. Deploy rules and Initialize DB first.','error');}
+
+  try {
+    let adminSnap = await getDoc(doc(db,'admins',ADMIN_UID));
+    if(!adminSnap.exists()) {
+      await setDoc(doc(db,'admins',ADMIN_UID), {
+        uid:ADMIN_UID, email:user.email||'', name:user.displayName||'',
+        role:'owner', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+      }, {merge:false});
+      adminSnap = await getDoc(doc(db,'admins',ADMIN_UID));
+    }
+    if(!adminSnap.exists() || String(adminSnap.data()?.role||'').toLowerCase()!=='owner') {
+      throw new Error('Admin record is missing or does not have role = owner.');
+    }
+    currentAdmin = {uid:ADMIN_UID, ...adminSnap.data()};
+    showApp(true);
+    $('admin-user').textContent=`${user.displayName||'Admin'} · ${user.email||user.uid}`;
+    $('connection-state').className='pill ok';
+    $('connection-state').textContent='Firebase connected';
+    setLoginError('');
+    try { await loadAll(); }
+    catch(e) { toast(e?.message||'Could not load Firestore data. Deploy the approved rules and use Initialize DB.','error'); }
+  } catch(e) {
+    currentAdmin=null;
+    showApp(false);
+    setLoginError(e?.message || 'Could not initialize Admin access. Check Firestore Rules.');
+    await signOut(auth);
+  }
 });
 
 if(!readyConfig()) setLoginError('Setup required: fill admin/firebase-config.js before using the panel.');
