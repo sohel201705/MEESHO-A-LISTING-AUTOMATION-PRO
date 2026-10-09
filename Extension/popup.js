@@ -681,20 +681,58 @@ let SUPPORT_EMAIL = 'sohelenterpriseofficial@gmail.com';
 let PLAN_CATALOG = [];
 let CURRENT_PRICING_SCOPE = 'meesho';
 
+function decodeFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return value ?? null;
+  if (Object.prototype.hasOwnProperty.call(value, 'nullValue')) return null;
+  if (Object.prototype.hasOwnProperty.call(value, 'stringValue')) return value.stringValue;
+  if (Object.prototype.hasOwnProperty.call(value, 'integerValue')) return Number(value.integerValue);
+  if (Object.prototype.hasOwnProperty.call(value, 'doubleValue')) return Number(value.doubleValue);
+  if (Object.prototype.hasOwnProperty.call(value, 'booleanValue')) return Boolean(value.booleanValue);
+  if (Object.prototype.hasOwnProperty.call(value, 'timestampValue')) return value.timestampValue;
+  if (Object.prototype.hasOwnProperty.call(value, 'arrayValue')) return (value.arrayValue?.values || []).map(decodeFirestoreValue);
+  if (Object.prototype.hasOwnProperty.call(value, 'mapValue')) {
+    return Object.fromEntries(Object.entries(value.mapValue?.fields || {}).map(([key, item]) => [key, decodeFirestoreValue(item)]));
+  }
+  return null;
+}
+
+function decodeFirestoreDocument(document) {
+  const name = String(document?.name || '');
+  const id = name.split('/').pop();
+  const fields = Object.fromEntries(Object.entries(document?.fields || {}).map(([key, value]) => [key, decodeFirestoreValue(value)]));
+  return { id, ...fields };
+}
+
 async function fetchFirebaseDoc(collectionName, docId) {
   const token = await getFirebaseToken();
   if (!token) return null;
   try {
     const res = await fetch(`${FIREBASE_BASE_URL()}/${collectionName}/${encodeURIComponent(docId)}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return null;
-    const d = await res.json();
-    const out = {};
-    for (const [k, v] of Object.entries(d.fields || {})) {
-      out[k] = v.nullValue !== undefined ? null : v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? '';
-    }
-    return out;
+    return decodeFirestoreDocument(await res.json());
   } catch (_) {
     return null;
+  }
+}
+
+async function fetchFirebaseCollection(collectionName) {
+  const token = await getFirebaseToken();
+  if (!token) return [];
+  const rows = [];
+  let pageToken = '';
+  try {
+    do {
+      const query = new URLSearchParams({ pageSize: '100' });
+      if (pageToken) query.set('pageToken', pageToken);
+      const res = await fetch(`${FIREBASE_BASE_URL()}/${collectionName}?${query.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return [];
+      const data = await res.json();
+      rows.push(...(data.documents || []).map(decodeFirestoreDocument));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+    return rows.filter(row => row.id !== '_meta');
+  } catch (_) {
+    return [];
   }
 }
 
@@ -703,17 +741,13 @@ function FIREBASE_BASE_URL() {
 }
 
 async function loadPlanCatalogFromFirebase() {
-  const ids = [
-    'monthly', 'yearly', 'lifetime',
-    'fk-monthly', 'fk-yearly', 'fk-lifetime',
-    'combo-monthly', 'combo-yearly', 'combo-lifetime'
-  ];
+  const allPlans = await fetchFirebaseCollection('plans');
   const rows = [];
 
-  for (const id of ids) {
-    const p = await fetchFirebaseDoc('plans', id);
-    if (!p || p.active === false) continue;
-    // Legacy plan IDs remain supported; explicit Firestore productScope takes precedence.
+  for (const plan of allPlans) {
+    const { id, ...p } = plan;
+    if (p.active === false) continue;
+    // Custom plans created in the Admin Panel appear automatically; legacy IDs keep their original meaning.
     const scope = p.productScope || (id.startsWith('fk-') ? 'flipkart' : id.startsWith('combo-') ? 'combined' : 'meesho');
     if (!['meesho', 'flipkart', 'combined'].includes(scope)) continue;
     const price = Math.max(0, Number(p.offerPrice || 0) || 0);
