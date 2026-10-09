@@ -679,6 +679,7 @@ let SUPPORT_WHATSAPP = '919064827025';
 let SUPPORT_PHONE = '9064827025';
 let SUPPORT_EMAIL = 'sohelenterpriseofficial@gmail.com';
 let PLAN_CATALOG = [];
+let CURRENT_PRICING_SCOPE = 'meesho';
 
 async function fetchFirebaseDoc(collectionName, docId) {
   const token = await getFirebaseToken();
@@ -702,14 +703,19 @@ function FIREBASE_BASE_URL() {
 }
 
 async function loadPlanCatalogFromFirebase() {
-  const ids = ['monthly', 'yearly', 'lifetime', 'combo-monthly', 'combo-yearly', 'combo-lifetime'];
+  const ids = [
+    'monthly', 'yearly', 'lifetime',
+    'fk-monthly', 'fk-yearly', 'fk-lifetime',
+    'combo-monthly', 'combo-yearly', 'combo-lifetime'
+  ];
   const rows = [];
 
   for (const id of ids) {
     const p = await fetchFirebaseDoc('plans', id);
     if (!p || p.active === false) continue;
-    const scope = p.productScope || 'meesho'; // Treat pre-existing legacy plans as Meesho plans.
-    if (!['meesho', 'combined'].includes(scope)) continue;
+    // Legacy plan IDs remain supported; explicit Firestore productScope takes precedence.
+    const scope = p.productScope || (id.startsWith('fk-') ? 'flipkart' : id.startsWith('combo-') ? 'combined' : 'meesho');
+    if (!['meesho', 'flipkart', 'combined'].includes(scope)) continue;
     const price = Math.max(0, Number(p.offerPrice || 0) || 0);
     const basePrice = Math.max(0, Number(p.price ?? 0) || 0);
     const displayPrice = price > 0 ? price : basePrice;
@@ -718,22 +724,28 @@ async function loadPlanCatalogFromFirebase() {
     const durationDays = Math.max(0, Number(p.durationDays ?? 0) || 0);
     const included = Array.isArray(p.includedProducts) && p.includedProducts.length
       ? p.includedProducts
-      : (scope === 'combined' ? ['meesho','flipkart'] : ['meesho']);
+      : (scope === 'combined' ? ['meesho','flipkart'] : [scope]);
+    const product = scope === 'combined' ? 'MEESHO + FLIPKART' : scope === 'flipkart' ? 'FLIPKART A+' : 'MEESHO A+';
+    const term = durationDays === 0 ? 'with no expiry' : `for ${durationDays} days`;
+    const desc = scope === 'combined'
+      ? `Both extensions included ${term}.`
+      : scope === 'flipkart'
+        ? `Flipkart listing access ${term}.`
+        : `Meesho listing access ${term}.`;
     rows.push({
       id,
-      product: included.length > 1 ? 'MEESHO + FLIPKART' : 'MEESHO A+',
+      product,
+      productScope: scope,
       title: p.name || id,
-      desc: included.length > 1
-        ? (durationDays === 0 ? 'Both extensions included with no expiry.' : `Meesho + Flipkart access for ${durationDays} days.`)
-        : (durationDays === 0 ? 'Lifetime access with no expiry.' : `Meesho listing access for ${durationDays} days.`),
+      desc,
       includedProducts: included,
       price: displayPrice,
       basePrice,
       offerPrice: price || basePrice,
       durationDays,
       period: durationDays === 0 ? 'lifetime' : durationDays === 365 ? 'year' : 'month',
-      accent: scope === 'combined' ? '#a855f7' : id === 'lifetime' ? '#f59e0b' : id === 'yearly' ? '#22c55e' : '#48a3ff',
-      best: scope === 'combined' || id === 'yearly',
+      accent: scope === 'combined' ? '#a855f7' : scope === 'flipkart' ? '#ec4899' : durationDays === 0 ? '#f59e0b' : durationDays === 365 ? '#22c55e' : '#48a3ff',
+      best: scope === 'combined' || durationDays === 365,
       shippingEnabled: true,
     });
   }
@@ -773,11 +785,12 @@ async function loadSupportSettings() {
 
 function planWhatsAppMessage(plan) {
   const gmail = currentUser?.email || '';
+  const appName = plan.productScope === 'combined' ? 'MEESHO + FLIPKART COMBO' : plan.productScope === 'flipkart' ? 'FLIPKART A+ LISTING AUTOMATION PRO' : APP_NAME;
   const duration = plan.durationDays === 0 ? 'Lifetime / Unlimited' : `${plan.durationDays} days`;
   return [
     `Hi ${SUPPORT_NAME},`,
     '',
-    `I want to purchase ${plan.title} for ${APP_NAME}.`,
+    `I want to purchase ${plan.title} for ${appName}.`,
     `Gmail: ${gmail}`,
     `Plan: ${plan.title}`,
     `Price: ₹${plan.price}`,
@@ -827,6 +840,20 @@ function renderPlanCards(container, plans) {
   }).join('');
 }
 
+function setPricingScope(scope) {
+  if (!['meesho','flipkart','combined'].includes(scope)) return;
+  CURRENT_PRICING_SCOPE = scope;
+  document.querySelectorAll('[data-pricing-scope]').forEach(button => {
+    const active = button.dataset.pricingScope === scope;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const labels = {meesho:'Meesho plans',flipkart:'Flipkart plans',combined:'Meesho + Flipkart Combo plans'};
+  const title = document.getElementById('pricing-scope-title');
+  if (title) title.textContent = labels[scope];
+  renderPlanCards(document.getElementById('plans-container'), PLAN_CATALOG.filter(plan => plan.productScope === scope));
+}
+
 function renderExpiredUpgradePlans() {
   const card = document.getElementById('expired-upgrade-card');
   if (card) card.style.display = 'none';
@@ -836,7 +863,7 @@ async function loadPlans() {
   const container = document.getElementById('plans-container');
   if (!container) return;
   const plans = await loadPlanCatalogFromFirebase();
-  renderPlanCards(container, plans);
+  setPricingScope(CURRENT_PRICING_SCOPE);
   renderExpiredUpgradePlans();
   await loadSupportSettings();
 }
@@ -1663,6 +1690,10 @@ window.addEventListener('message', (e) => {
 });
 
 document.getElementById('googleSignInBtn')?.addEventListener('click', signInWithGoogle);
+document.getElementById('pricing-scope-switch')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-pricing-scope]');
+  if (button) setPricingScope(button.dataset.pricingScope);
+});
 document.getElementById('activate-membership-btn')?.addEventListener('click', activateWithCode);
 document.getElementById('activation-code')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); activateWithCode(); } });
 
