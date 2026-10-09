@@ -55,6 +55,6 @@ jobs:
           assert.match(functions, /factoryResetNonAdminData/);
           assert.match(functions, /request\.auth\.uid !== ADMIN_UID/);
           assert.match(functions, /RESET ALL NON-ADMIN DATA/);
-          assert.match(admin, /plans\.filter\(d=>d\.id!=='_meta'\)/);
+          assert.ok(admin.includes("snap.docs.filter(d=>d.id!=='_meta')"));
           console.log('Product-scope, Admin UID, metadata filtering and reset safeguards verified.');
           NODE
