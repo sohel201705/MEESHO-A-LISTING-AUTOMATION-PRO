@@ -22,8 +22,9 @@ function cleanForJson(value) {
 
 async function exportDocumentRecursively(ref, output) {
   const snapshot = await ref.get();
-  if (!snapshot.exists) return;
-  output.push({ path: ref.path, data: cleanForJson(snapshot.data()) });
+  // Firestore can contain subcollections even when the parent document is missing.
+  // Export children regardless of whether this particular document exists.
+  if (snapshot.exists) output.push({ path: ref.path, data: cleanForJson(snapshot.data()) });
   const children = await ref.listCollections();
   for (const childCollection of children) {
     const childRefs = await childCollection.listDocuments();
@@ -213,7 +214,7 @@ exports.factoryResetNonAdminData = onCall({
   }
   const authUsers = await listAllAuthUsers(auth);
   const backup = {
-    format: 'telastro-factory-reset-backup-v1',
+    format: 'meesho-a-plus-listing-automation-pro-factory-reset-backup-v1',
     projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
     createdAt: timestamp,
     preservedAdminUid: ADMIN_UID,
