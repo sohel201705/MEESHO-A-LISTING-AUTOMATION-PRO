@@ -50,11 +50,9 @@
   },
   "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Firebase login, product-scoped membership, and combined Meesho + Flipkart plan support.",
   "host_permissions": [
-    "https://codes-market.xyz/*",
     "https://supplier.meesho.com/*",
     "https://upload.meeshosupplyassets.com/*",
     "https://www.meesho.com/*",
-    "https://xjdyeyehrqsaougwehbg.supabase.co/*",
     "https://identitytoolkit.googleapis.com/*",
     "https://securetoken.googleapis.com/*",
     "https://firestore.googleapis.com/*",
