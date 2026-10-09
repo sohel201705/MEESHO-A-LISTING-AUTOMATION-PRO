@@ -11,7 +11,12 @@ service cloud.firestore {
 
     match /admins/{uid} {
       allow read: if isAdmin() || isSelf(uid);
-      allow create: if false;
+      // Only the single configured admin UID can bootstrap its own owner record after a reset.
+      allow create: if signedIn()
+        && request.auth.uid == 'YnfQtmTpm9asdR0izeWuMwmX3Sw1'
+        && uid == request.auth.uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'owner';
       allow update, delete: if isAdmin();
     }
 
@@ -48,7 +53,6 @@ service cloud.firestore {
         && key.planId == request.resource.data.planId
         && key.planName == request.resource.data.planName
         && key.durationDays == request.resource.data.durationDays
-        && key.deviceLimit == request.resource.data.deviceLimit
         && key.shippingEnabled == true
         && request.resource.data.shippingEnabled == true
         && key.startDate == request.resource.data.startDate
@@ -86,6 +90,16 @@ service cloud.firestore {
     match /devices/{uid}/sessions/{deviceId} {
       allow read: if isAdmin() || isSelf(uid);
       allow create, update, delete: if isAdmin() || isSelf(uid);
+    }
+
+    match /productMemberships/{uid} {
+      allow read: if isAdmin() || (isSelf(uid) && uid != '_meta');
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /combinedPlans/{planId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.active == true);
+      allow create, update, delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
