@@ -37,6 +37,9 @@ jobs:
           node --check Extension/background.js
           node --check Extension/popup.js
           node --check Extension/content.js
+          node --check Extension/interceptor.js
+          node --check Extension/js/meeshoApi.js
+          node --check Extension/js/shippingOptimizer.js
           node --input-type=module --check < admin/admin.js
 
       - name: Setup Java for Firebase Emulator
@@ -60,7 +63,19 @@ jobs:
           const admin = fs.readFileSync('admin/admin.js', 'utf8');
           const html = fs.readFileSync('admin/index.html', 'utf8');
           const background = fs.readFileSync('Extension/background.js', 'utf8');
+          const popup = fs.readFileSync('Extension/popup.js', 'utf8');
+          const content = fs.readFileSync('Extension/content.js', 'utf8');
+          const shipping = fs.readFileSync('Extension/js/shippingOptimizer.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
+          assert.equal(manifest.version, '3.16.4');
+          assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
+          assert.ok(!popup.includes('codes-market.xyz'));
+          assert.ok(!popup.includes('syncProfilesFromBackend'));
+          assert.ok(!popup.includes('pushProfileToBackend'));
+          assert.ok(!popup.includes('deleteProfileOnBackend'));
+          assert.ok(!content.includes('codes-market.xyz'));
+          assert.ok(!shipping.includes('codes-market.xyz'));
+          assert.ok(popup.includes("chrome.storage.local.set({ meesho_profiles: merged }"));
           assert.ok(!JSON.stringify(firebaseConfig).includes('functions'));
           assert.ok(!background.includes('cloudfunctions.net'));
           assert.ok(!background.includes('httpsCallable'));
