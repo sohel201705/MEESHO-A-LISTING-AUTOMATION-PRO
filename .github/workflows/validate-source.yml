@@ -27,7 +27,7 @@ jobs:
       - name: Validate JSON files
         shell: bash
         run: |
-          node -e "for (const f of ['Extension/manifest.json','Extension/firebase-config.js','firebase/firebase.json','firebase/functions/package.json']) { if (f.endsWith('.json')) { JSON.parse(require('node:fs').readFileSync(f, 'utf8')); console.log('JSON OK:', f); } }"
+          node -e "for (const f of ['Extension/manifest.json','firebase/firebase.json','firebase/functions/package.json']) { if (f.endsWith('.json')) { JSON.parse(require('node:fs').readFileSync(f, 'utf8')); console.log('JSON OK:', f); } }"
 
       - name: Check JavaScript syntax
         shell: bash
