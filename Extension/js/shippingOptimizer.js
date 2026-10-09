@@ -7,8 +7,6 @@
   const RESULTS_ID = 'mls-optimizer-results';
   const PLAN_ID = 'mls-plan-status';
   const TARGET_SELECTOR = '[data-testid="bankSettlementContainer"]';
-  const API_BASE = 'https://codes-market.xyz';
-  const SHIPPING_API_BASE = `${API_BASE}/api-fill`;
   const SHIPPING_USER_KEY = 'shipping_user_info';
   const PRODUCT_NAME = 'MEESHO A+ LISTING AUTOMATION PRO';
   const SOURCE_MODE_CURRENT = 'current';
