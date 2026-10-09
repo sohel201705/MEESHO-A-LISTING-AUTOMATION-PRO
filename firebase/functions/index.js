@@ -148,15 +148,21 @@ exports.redeemActivationKey = onCall({
       };
     }
 
-    // Keep a flat Flipkart entitlement at the top level for the current FK extension,
-    // while storing both products under products{} for Admin Panel and future versions.
-    const topEntitlement = products.flipkart || products.meesho || {};
+    // Keep a flat entitlement at the root for the Flipkart extension while retaining per-product records.
+    // The root scope must describe the chosen root entitlement, not whichever product the latest key activated.
+    // Otherwise a Meesho-only renewal could make an existing Flipkart entitlement appear to be Meesho-only.
+    const topProduct = products.flipkart ? 'flipkart' : 'meesho';
+    const topEntitlement = products[topProduct] || {};
     tx.set(productMembershipRef, {
       ...topEntitlement,
-      uid, email, products, activationKey: code,
-      product: products.flipkart ? 'flipkart' : 'meesho',
-      productScope: includedProducts.length > 1 ? 'bundle' : includedProducts[0],
+      uid, email, products,
+      product: topProduct,
+      productScope: topEntitlement.productScope || topProduct,
+      includedProducts: topEntitlement.includedProducts || [topProduct],
+      activationKey: topEntitlement.activationKey || code,
+      lastActivationKey: code,
       lastIncludedProducts: includedProducts,
+      lastActivatedAt: nowIso,
       updatedAt: nowIso
     }, { merge: true });
 
