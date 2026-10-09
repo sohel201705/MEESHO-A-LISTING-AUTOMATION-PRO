@@ -715,30 +715,38 @@ function FIREBASE_BASE_URL() {
 }
 
 async function loadPlanCatalogFromFirebase() {
-  const ids = ['monthly', 'yearly', 'lifetime'];
+  const ids = ['monthly', 'yearly', 'lifetime', 'combo-monthly', 'combo-yearly', 'combo-lifetime'];
   const rows = [];
 
   for (const id of ids) {
     const p = await fetchFirebaseDoc('plans', id);
     if (!p || p.active === false) continue;
-    const price = Math.max(0, Number(p.offerPrice ?? 0) || 0);
+    const scope = p.productScope || 'meesho'; // Treat pre-existing legacy plans as Meesho plans.
+    if (!['meesho', 'combined'].includes(scope)) continue;
+    const price = Math.max(0, Number(p.offerPrice || 0) || 0);
     const basePrice = Math.max(0, Number(p.price ?? 0) || 0);
     const displayPrice = price > 0 ? price : basePrice;
     if (displayPrice <= 0) continue;
 
     const durationDays = Math.max(0, Number(p.durationDays ?? 0) || 0);
+    const included = Array.isArray(p.includedProducts) && p.includedProducts.length
+      ? p.includedProducts
+      : (scope === 'combined' ? ['meesho','flipkart'] : ['meesho']);
     rows.push({
       id,
-      product: 'MEESHO A+',
+      product: included.length > 1 ? 'MEESHO + FLIPKART' : 'MEESHO A+',
       title: p.name || id,
-      desc: durationDays === 0 ? 'Lifetime access with no expiry.' : `Full access for ${durationDays} days.`,
+      desc: included.length > 1
+        ? (durationDays === 0 ? 'Both extensions included with no expiry.' : `Meesho + Flipkart access for ${durationDays} days.`)
+        : (durationDays === 0 ? 'Lifetime access with no expiry.' : `Meesho listing access for ${durationDays} days.`),
+      includedProducts: included,
       price: displayPrice,
       basePrice,
       offerPrice: price || basePrice,
       durationDays,
-      period: id === 'monthly' ? 'month' : id === 'yearly' ? 'year' : 'lifetime',
-      accent: id === 'lifetime' ? '#f59e0b' : id === 'yearly' ? '#22c55e' : '#48a3ff',
-      best: id === 'yearly',
+      period: durationDays === 0 ? 'lifetime' : durationDays === 365 ? 'year' : 'month',
+      accent: scope === 'combined' ? '#a855f7' : id === 'lifetime' ? '#f59e0b' : id === 'yearly' ? '#22c55e' : '#48a3ff',
+      best: scope === 'combined' || id === 'yearly',
       shippingEnabled: true,
     });
   }
@@ -787,6 +795,7 @@ function planWhatsAppMessage(plan) {
     `Plan: ${plan.title}`,
     `Price: ₹${plan.price}`,
     `Duration: ${duration}`,
+    `Included Products: ${Array.isArray(plan.includedProducts) ? plan.includedProducts.join(' + ') : 'meesho'}`,
     `Shipping Optimizer: Included with this plan`,
     '',
     'Please send me the payment details.'
