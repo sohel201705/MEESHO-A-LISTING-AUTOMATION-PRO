@@ -387,6 +387,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'FIREBASE_LOGIN':
           sendResponse(await login());
           return;
+        case 'GET_TUTORIAL_URL': {
+          const token = await getValidFirebaseToken({ interactive: false });
+          if (!token) { sendResponse({ ok: false, url: '', downloadUrl: '' }); return; }
+          const settingsDoc = await firestoreGet('settings/general', token);
+          const settings = settingsDoc?.fields || {};
+          sendResponse({
+            ok: true,
+            url: String(settings.meeshoTutorialUrl || ''),
+            downloadUrl: String(settings.meeshoMasterDownloadUrl || '')
+          });
+          return;
+        }
         case 'FIREBASE_LOGOUT':
           await logout();
           sendResponse({ ok: true });
