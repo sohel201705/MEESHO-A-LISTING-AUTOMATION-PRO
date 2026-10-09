@@ -67,7 +67,7 @@
             <div class="panel-head"><div><h3>System model</h3><p>One membership unlocks both products.</p></div></div>
             <div class="feature-row"><b>⚡ Autofill</b><span>Included</span></div>
             <div class="feature-row"><b>🚚 Shipping Optimizer</b><span>Included</span></div>
-            <div class="feature-row"><b>📱 Device limit</b><span>3 by default</span></div>
+            <div class="feature-row"><b>📱 Device limit</b><span>No limit</span></div>
             <div class="feature-row"><b>🔐 Access</b><span>Firebase rules enforced</span></div>
           </div>
           <div class="panel glass">
@@ -84,7 +84,7 @@
 
       <section id="section-plans" class="section">
         <div class="panel glass">
-          <div class="panel-head"><div><h3>Membership plans</h3><p>Price, duration and device limit are controlled here. Shipping stays included.</p></div><button id="new-plan" class="primary">+ New Plan</button></div>
+          <div class="panel-head"><div><h3>Membership plans</h3><p>Price, duration and product access are controlled here. Shipping stays included.</p></div><button id="new-plan" class="primary">+ New Plan</button></div>
           <div id="plans-list" class="cards-grid"></div>
         </div>
         <div id="plan-editor" class="panel glass hidden">
@@ -92,10 +92,10 @@
           <form id="plan-form" class="form-grid">
             <label>Plan ID<input id="plan-id" required placeholder="monthly"></label>
             <label>Plan Name<input id="plan-name" required placeholder="Monthly"></label>
+            <label>Product Scope<select id="plan-scope" required><option value="meesho">Meesho Only</option><option value="flipkart">Flipkart Only</option><option value="combined">Meesho + Flipkart (Combined)</option></select></label>
             <label>Base Price<input id="plan-price" type="number" min="0" step="1" required></label>
             <label>Offer Price<input id="plan-offer" type="number" min="0" step="1" required></label>
             <label>Duration (days)<input id="plan-days" type="number" min="0" step="1" required></label>
-            <label>Device Limit<input id="plan-devices" type="number" min="1" step="1" value="3" required></label>
             <label class="wide">Description<input id="plan-description" placeholder="Full access for 30 days."></label>
             <label class="switch-row"><input id="plan-active" type="checkbox" checked><span>Plan active</span></label>
             <div class="locked-feature wide">✓ Autofill + Shipping Optimizer included in every plan</div>
@@ -117,7 +117,6 @@
             <label>Status<select id="membership-status"><option>ACTIVE</option><option>SUSPENDED</option><option>REVOKED</option><option>EXPIRED</option></select></label>
             <label>Start Date<input id="membership-start" type="datetime-local"></label>
             <label>Expiry Date<input id="membership-expiry" type="datetime-local"></label>
-            <label>Device Limit<input id="membership-devices" type="number" min="1" value="3"></label>
             <label class="switch-row"><input id="membership-shipping" type="checkbox" checked disabled><span>Shipping Optimizer included</span></label>
             <div class="form-actions wide"><button type="submit" class="primary">Save Membership</button></div>
           </form>
@@ -171,9 +170,34 @@
             <label>Email<input id="set-email" type="email"></label>
             <label>UPI ID<input id="set-upi"></label>
             <label class="wide">QR Image URL<input id="set-qr"></label>
+            <label class="wide">Meesho Tutorial Video URL<input id="set-meesho-tutorial" type="url" placeholder="https://youtu.be/..."></label>
+            <label class="wide">Flipkart Tutorial Video URL<input id="set-flipkart-tutorial" type="url" placeholder="https://youtu.be/..."></label>
+            <label class="wide">Meesho Master File Download URL<input id="set-meesho-download" type="url" placeholder="Google Drive link"></label>
+            <label class="wide">Flipkart Master File Download URL<input id="set-flipkart-download" type="url" placeholder="Google Drive link"></label>
             <label class="switch-row"><input id="set-maintenance" type="checkbox"><span>Maintenance mode</span></label>
             <div class="form-actions wide"><button type="submit" class="primary">Save Settings</button></div>
           </form>
+        </div>
+
+        <div class="panel glass">
+          <div class="panel-head"><div><h3>Firebase integration & factory reset</h3><p>Integration creates missing collections and defaults without overwriting custom prices or settings.</p></div></div>
+          <div class="form-grid">
+            <div class="wide">
+              <b>Initialize / Integrate</b>
+              <p>Use the Initialize DB button above after a reset to recreate the required Firestore collection markers, plans and settings.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel glass">
+          <div class="panel-head"><div><h3>Factory reset — non-admin data only</h3><p>This deletes Firebase Authentication users and Firestore data except the configured Admin UID and its admin record.</p></div></div>
+          <div class="form-grid">
+            <div class="wide">
+              <p><b>Safety:</b> the Cloud Function must be deployed first. It creates a backup in Firebase Storage before deleting data. Storage files themselves are not deleted.</p>
+            </div>
+            <label class="wide">Type <code>RESET ALL NON-ADMIN DATA</code> to confirm<input id="factory-reset-confirm" autocomplete="off" spellcheck="false" placeholder="RESET ALL NON-ADMIN DATA"></label>
+            <div class="form-actions wide"><button id="factory-reset-button" type="button" class="ghost" disabled>Factory Reset Non-Admin Data</button></div>
+          </div>
         </div>
       </section>
 
