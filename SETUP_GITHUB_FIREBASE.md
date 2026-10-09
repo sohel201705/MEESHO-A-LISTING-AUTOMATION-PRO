@@ -33,7 +33,7 @@ Create/configure the Chrome Extension OAuth client and replace the placeholder i
 - `Extension/firebase-config.js`
 
 ## 5) Membership
-One active plan enables both Autofill and Shipping Optimizer. Default device limit is 3.
+One active plan enables both Autofill and Shipping Optimizer. Device-limit enforcement is disabled for Monthly, Yearly and Lifetime plans.
 
 ## 6) Security
 The Web App Firebase config is client-side configuration. Do not upload any service-account private key, private API credential, or secret certificate. Firestore Rules are the database authorization boundary.
