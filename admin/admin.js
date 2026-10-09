@@ -3,16 +3,13 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
-import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
 import { FIREBASE_CONFIG, ADMIN_UID, DEFAULT_SETTINGS } from './firebase-config.js';
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, 'asia-south1');
-const factoryResetCallable = httpsCallable(functions, 'factoryResetNonAdminData');
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -24,6 +21,13 @@ let memberships = new Map();
 let keys = [];
 let payments = [];
 let currentAdmin = null;
+let backupReadyForReset = false;
+
+const BACKUP_FORMAT = 'sohelenterprise-firestore-backup-v1';
+const BACKUP_COLLECTIONS = [
+  'admins','users','memberships','productMemberships','plans','activationKeys',
+  'devices','payments','logs','settings','combinedPlans','system'
+];
 
 function readyConfig() {
   return !Object.values(FIREBASE_CONFIG).some(v => String(v).startsWith('PASTE_')) && !String(ADMIN_UID).startsWith('PASTE_');
@@ -110,7 +114,7 @@ async function initializeDatabase() {
   for(const member of membershipSnap.docs) if(member.id!=='_meta' && member.data()?.deviceLimit!==undefined) await updateDoc(member.ref,{deviceLimit:deleteField()});
 
   await setDoc(doc(db,'system','collections'),{users:true,plans:true,memberships:true,productMemberships:true,activationKeys:true,devices:true,payments:true,settings:true,combinedPlans:true,logs:true,admins:true,initializedAt:now,initializedBy:currentUser.uid},{merge:true});
-  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.16.2',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
+  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.16.3',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
   await syncCombinedPlanPrices();
   toast('Firebase integration completed. Missing collections were created; existing prices and settings were preserved.','success');
   await loadAll();
@@ -266,33 +270,191 @@ async function savePayment(e){
 }
 async function saveSettings(e){ e.preventDefault(); await setDoc(doc(db,'settings','general'),{brandName:$('set-brand').value.trim(),supportName:$('set-support').value.trim(),phone:$('set-phone').value.trim(),whatsapp:$('set-whatsapp').value.trim(),email:$('set-email').value.trim(),upiId:$('set-upi').value.trim(),qrUrl:$('set-qr').value.trim(),meeshoTutorialUrl:$('set-meesho-tutorial').value.trim(),flipkartTutorialUrl:$('set-flipkart-tutorial').value.trim(),meeshoMasterDownloadUrl:$('set-meesho-download').value.trim(),flipkartMasterDownloadUrl:$('set-flipkart-download').value.trim(),maintenanceMode:$('set-maintenance').checked,updatedAt:new Date().toISOString()},{merge:true}); toast('Settings saved.','success'); }
 
+function requireAdminForDataTools() {
+  if (!currentUser || currentUser.uid !== ADMIN_UID || !currentAdmin) {
+    throw new Error('Only the configured Admin UID can use backup, restore, or reset.');
+  }
+}
+
+function encodeBackupValue(value) {
+  if (value && typeof value.toDate === 'function') {
+    return { __sohelFirestoreType: 'timestamp', value: value.toDate().toISOString() };
+  }
+  if (Array.isArray(value)) return value.map(encodeBackupValue);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) out[key] = encodeBackupValue(item);
+    return out;
+  }
+  return value;
+}
+
+function decodeBackupValue(value) {
+  if (Array.isArray(value)) return value.map(decodeBackupValue);
+  if (value && typeof value === 'object') {
+    if (value.__sohelFirestoreType === 'timestamp' && typeof value.value === 'string') {
+      const date = new Date(value.value);
+      if (Number.isNaN(date.getTime())) throw new Error('Backup contains an invalid timestamp.');
+      return date;
+    }
+    const out = {};
+    for (const [key, item] of Object.entries(value)) out[key] = decodeBackupValue(item);
+    return out;
+  }
+  return value;
+}
+
+function isKnownBackupPath(path) {
+  const parts = String(path || '').split('/');
+  if (parts.length < 2 || parts.length % 2 !== 0 || !BACKUP_COLLECTIONS.includes(parts[0])) return false;
+  if (parts[0] === 'admins') return parts.length === 2;
+  if (parts.length === 2) return true;
+  if (parts[0] === 'users' && parts.length === 4 && parts[2] === 'flipkartProfiles') return true;
+  if (parts[0] === 'devices' && parts.length === 4 && parts[2] === 'sessions') return true;
+  return false;
+}
+
+async function collectAppDocuments() {
+  const records = [];
+  for (const name of BACKUP_COLLECTIONS) {
+    const snap = await getDocs(collection(db, name));
+    for (const item of snap.docs) {
+      records.push({ path: item.ref.path, data: encodeBackupValue(item.data()) });
+      if (name === 'users') {
+        const nested = await getDocs(collection(db, 'users', item.id, 'flipkartProfiles'));
+        for (const child of nested.docs) records.push({ path: child.ref.path, data: encodeBackupValue(child.data()) });
+      }
+      if (name === 'devices') {
+        const nested = await getDocs(collection(db, 'devices', item.id, 'sessions'));
+        for (const child of nested.docs) records.push({ path: child.ref.path, data: encodeBackupValue(child.data()) });
+      }
+    }
+  }
+  records.sort((a,b) => a.path.localeCompare(b.path));
+  return records;
+}
+
+function downloadJsonFile(filename, value) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadLocalBackup() {
+  requireAdminForDataTools();
+  const records = await collectAppDocuments();
+  const snapshot = {
+    format: BACKUP_FORMAT,
+    version: 1,
+    projectId: FIREBASE_CONFIG.projectId,
+    exportedAt: new Date().toISOString(),
+    note: 'Local JSON backup of known app Firestore documents. Firebase Authentication account identities are not exportable from the browser Admin SDK-free panel.',
+    collections: BACKUP_COLLECTIONS,
+    documents: records
+  };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  downloadJsonFile(`sohel-enterprise-firebase-backup-${stamp}.json`, snapshot);
+  backupReadyForReset = true;
+  $('factory-reset-button').disabled = $('factory-reset-confirm').value.trim() !== 'RESET ALL NON-ADMIN DATA';
+  toast(`Backup downloaded: ${records.length} Firestore documents.`, 'success');
+}
+
+async function clearKnownAppDataPreservingAdmin() {
+  const records = await collectAppDocuments();
+  const removable = records
+    .filter(record => record.path !== `admins/${ADMIN_UID}`)
+    .sort((a,b) => b.path.split('/').length - a.path.split('/').length || a.path.localeCompare(b.path));
+  for (let i=0; i<removable.length; i+=400) {
+    const batch = writeBatch(db);
+    for (const record of removable.slice(i, i+400)) batch.delete(doc(db, ...record.path.split('/')));
+    await batch.commit();
+  }
+  return removable.length;
+}
+
+async function restoreLocalBackupFile(file) {
+  requireAdminForDataTools();
+  if (!file) return;
+  const text = await file.text();
+  const backup = JSON.parse(text);
+  if (backup?.format !== BACKUP_FORMAT || backup?.version !== 1 || !Array.isArray(backup.documents)) {
+    throw new Error('This is not a supported Sohel Enterprise JSON backup.');
+  }
+  if (backup.projectId !== FIREBASE_CONFIG.projectId) {
+    throw new Error('This backup belongs to a different Firebase project. Nothing was changed.');
+  }
+  const nonAdminRecords = backup.documents.filter(item => !String(item?.path || '').startsWith('admins/'));
+  const records = nonAdminRecords.filter(item =>
+    item && typeof item.path === 'string' && isKnownBackupPath(item.path) &&
+    item.data && typeof item.data === 'object' && !Array.isArray(item.data) &&
+    !item.path.startsWith('admins/')
+  );
+  if (records.length !== nonAdminRecords.length) {
+    throw new Error('Backup contains unsupported or invalid document data. Nothing was changed.');
+  }
+  const uniquePaths = new Set(records.map(item => item.path));
+  if (uniquePaths.size !== records.length) {
+    throw new Error('Backup contains duplicate document paths. Nothing was changed.');
+  }
+  if (!confirm(`Restore ${records.length} Firestore documents from this backup? Current known app data will be replaced. The current Admin record will be preserved. Download a backup of the current state first.`)) return;
+  await clearKnownAppDataPreservingAdmin();
+  const ordered = [...records].sort((a,b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path));
+  for (let i=0; i<ordered.length; i+=400) {
+    const batch = writeBatch(db);
+    for (const item of ordered.slice(i, i+400)) {
+      batch.set(doc(db, ...item.path.split('/')), decodeBackupValue(item.data), { merge: false });
+    }
+    await batch.commit();
+  }
+  $('factory-reset-confirm').value = '';
+  backupReadyForReset = false;
+  $('factory-reset-button').disabled = true;
+  toast('Backup restored. Admin record preserved. Reloading data…', 'success');
+  await loadAll();
+}
+
+async function resetKnownAppData() {
+  requireAdminForDataTools();
+  if (!backupReadyForReset) throw new Error('Download a fresh backup first. Reset remains locked until backup export succeeds.');
+  if ($('factory-reset-confirm').value.trim() !== 'RESET ALL NON-ADMIN DATA') {
+    throw new Error('Type the exact confirmation phrase first.');
+  }
+  if (!confirm('This will clear known application Firestore data, plans, memberships, activation keys, settings, and user profile documents. The configured Admin record is preserved. Firebase Authentication sign-in accounts are NOT deleted because this free panel has no privileged server. Continue only if your downloaded backup is saved.')) return;
+  $('factory-reset-button').disabled = true;
+  toast('Factory reset started…');
+  const count = await clearKnownAppDataPreservingAdmin();
+  $('factory-reset-confirm').value = '';
+  backupReadyForReset = false;
+  await setDoc(doc(db, 'admins', ADMIN_UID), {
+    uid: ADMIN_UID, email: currentUser.email || '', name: currentUser.displayName || '',
+    role: 'owner', updatedAt: new Date().toISOString()
+  }, { merge: true });
+  toast(`Reset complete: ${count} known Firestore documents cleared. Authentication accounts remain. Click Initialize DB next.`, 'success');
+  await loadAll();
+  $('factory-reset-button').disabled = true;
+}
+
+
 $('google-login').addEventListener('click',login);
 $('logout').addEventListener('click',()=>signOut(auth));
 $('initialize-db').addEventListener('click',()=>initializeDatabase().catch(e=>toast(e?.message||'Initialization failed.','error')));
+$('download-backup').addEventListener('click',()=>downloadLocalBackup().catch(e=>toast(e?.message||'Backup failed.','error')));
+$('restore-backup-trigger').addEventListener('click',()=>$('backup-file-input').click());
+$('backup-file-input').addEventListener('change',async e=>{
+  try { await restoreLocalBackupFile(e.target.files?.[0]); }
+  catch(err) { toast(err?.message||'Restore failed.','error'); }
+  finally { e.target.value=''; }
+});
 $('factory-reset-confirm').addEventListener('input',e=>{
-  $('factory-reset-button').disabled = e.target.value.trim() !== 'RESET ALL NON-ADMIN DATA';
+  $('factory-reset-button').disabled = !backupReadyForReset || e.target.value.trim() !== 'RESET ALL NON-ADMIN DATA';
 });
-$('factory-reset-button').addEventListener('click',async()=>{
-  if(!currentUser || currentUser.uid !== ADMIN_UID || !currentAdmin) return toast('Admin access required.','error');
-  const confirmation = $('factory-reset-confirm').value.trim();
-  if(confirmation !== 'RESET ALL NON-ADMIN DATA') return toast('Type the exact confirmation phrase first.','error');
-  const ok = confirm('Factory reset will back up Firestore data and Auth user metadata, then delete all Firestore documents and Firebase Auth users except the configured Admin UID. Continue?');
-  if(!ok) return;
-  const button = $('factory-reset-button');
-  button.disabled = true;
-  try {
-    toast('Factory reset started. Creating backup first…');
-    const result = await factoryResetCallable({confirmText:confirmation});
-    const backupPath = result?.data?.backupPath || 'Cloud Storage backup created';
-    $('factory-reset-confirm').value = '';
-    toast('Reset complete. Admin UID preserved. Next click Initialize DB to rebuild collections. Backup: '+backupPath,'success');
-    await loadAll().catch(()=>{});
-  } catch(e) {
-    toast(e?.message || 'Factory reset failed. No reset success was reported.','error');
-  } finally {
-    button.disabled = $('factory-reset-confirm').value.trim() !== 'RESET ALL NON-ADMIN DATA';
-  }
-});
+$('factory-reset-button').addEventListener('click',()=>resetKnownAppData().catch(e=>toast(e?.message||'Factory reset failed.','error')));
 document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.section)));
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.goto)));
 $('new-plan').addEventListener('click',()=>openPlanEditor()); $('cancel-plan').addEventListener('click',closePlanEditor); $('plan-form').addEventListener('submit',e=>savePlan(e).catch(err=>toast(err?.message||'Could not save plan.','error')));

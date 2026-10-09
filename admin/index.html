@@ -190,13 +190,20 @@
         </div>
 
         <div class="panel glass">
-          <div class="panel-head"><div><h3>Factory reset — non-admin data only</h3><p>This deletes Firebase Authentication users and Firestore data except the configured Admin UID and its admin record.</p></div></div>
+          <div class="panel-head"><div><h3>Local Backup, Restore & Factory Reset</h3><p>Free mode: backup files are downloaded to your own computer. No Cloud Functions or Firebase Storage backup is used.</p></div></div>
           <div class="form-grid">
             <div class="wide">
-              <p><b>Safety:</b> the Cloud Function must be deployed first. It creates a backup in Firebase Storage before deleting data. Storage files themselves are not deleted.</p>
+              <p><b>Step 1:</b> Download a JSON backup before resetting. Keep the file somewhere safe on your computer.</p>
+              <p><b>Step 2:</b> Use Restore Backup to select a previously downloaded JSON file. Restoring replaces known app data, while preserving the current Admin record.</p>
+              <p><b>Step 3:</b> For a factory reset, download the backup, type the exact phrase below, then confirm. This free panel clears known app Firestore data only; Firebase Authentication sign-in accounts remain and can sign in again without membership data.</p>
+            </div>
+            <div class="form-actions wide" style="display:flex;gap:10px;flex-wrap:wrap">
+              <button id="download-backup" type="button" class="secondary">Download Backup (JSON)</button>
+              <button id="restore-backup-trigger" type="button" class="secondary">Restore Backup File</button>
+              <input id="backup-file-input" type="file" accept="application/json,.json" hidden>
             </div>
             <label class="wide">Type <code>RESET ALL NON-ADMIN DATA</code> to confirm<input id="factory-reset-confirm" autocomplete="off" spellcheck="false" placeholder="RESET ALL NON-ADMIN DATA"></label>
-            <div class="form-actions wide"><button id="factory-reset-button" type="button" class="ghost" disabled>Factory Reset Non-Admin Data</button></div>
+            <div class="form-actions wide"><button id="factory-reset-button" type="button" class="ghost" disabled>Reset Known Firestore Data (Keep Admin)</button></div>
           </div>
         </div>
       </section>

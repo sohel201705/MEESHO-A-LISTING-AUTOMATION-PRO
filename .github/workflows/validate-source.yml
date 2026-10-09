@@ -1,4 +1,4 @@
-name: Validate Firebase and Extension Source
+name: Validate Free Admin and Extension Source
 
 on:
   pull_request:
@@ -8,6 +8,8 @@ on:
       - 'admin/**'
       - 'firebase/**'
       - '.github/workflows/validate-source.yml'
+      - 'README.md'
+      - 'SETUP_GITHUB_FIREBASE.md'
 
 permissions:
   contents: read
@@ -27,7 +29,7 @@ jobs:
       - name: Validate JSON files
         shell: bash
         run: |
-          node -e "for (const f of ['Extension/manifest.json','firebase/firebase.json','firebase/functions/package.json']) { if (f.endsWith('.json')) { JSON.parse(require('node:fs').readFileSync(f, 'utf8')); console.log('JSON OK:', f); } }"
+          node -e "for (const f of ['Extension/manifest.json','firebase/firebase.json']) { JSON.parse(require('node:fs').readFileSync(f, 'utf8')); console.log('JSON OK:', f); }"
 
       - name: Check JavaScript syntax
         shell: bash
@@ -35,26 +37,43 @@ jobs:
           node --check Extension/background.js
           node --check Extension/popup.js
           node --check Extension/content.js
-          node --check firebase/functions/index.js
           node --input-type=module --check < admin/admin.js
 
-      - name: Verify product scopes and reset safeguards
+      - name: Setup Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Compile Firestore Rules with the local emulator
+        run: npx --yes firebase-tools emulators:exec --only firestore --config firebase/firebase.json --project demo-free-mode "echo Firestore Rules compiled in emulator."
+
+      - name: Verify free-mode backup and membership safeguards
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
           const assert = require('node:assert/strict');
           const manifest = JSON.parse(fs.readFileSync('Extension/manifest.json', 'utf8'));
+          const firebaseConfig = JSON.parse(fs.readFileSync('firebase/firebase.json', 'utf8'));
           const rules = fs.readFileSync('firebase/firestore.rules', 'utf8');
-          const functions = fs.readFileSync('firebase/functions/index.js', 'utf8');
           const admin = fs.readFileSync('admin/admin.js', 'utf8');
+          const html = fs.readFileSync('admin/index.html', 'utf8');
+          const background = fs.readFileSync('Extension/background.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.match(manifest.content_security_policy.extension_pages, /cloudfunctions\.net/);
+          assert.ok(!JSON.stringify(firebaseConfig).includes('functions'));
+          assert.ok(!background.includes('cloudfunctions.net'));
+          assert.ok(!background.includes('httpsCallable'));
+          assert.ok(!manifest.host_permissions.some(x => x.includes('cloudfunctions.net')));
           assert.match(rules, /YnfQtmTpm9asdR0izeWuMwmX3Sw1/);
+          assert.match(rules, /canRedeemProductMembership/);
           assert.match(rules, /flipkartProfiles/);
-          assert.match(functions, /factoryResetNonAdminData/);
-          assert.match(functions, /request\.auth\.uid !== ADMIN_UID/);
-          assert.match(functions, /RESET ALL NON-ADMIN DATA/);
+          assert.ok(admin.includes('downloadLocalBackup'));
+          assert.ok(admin.includes('restoreLocalBackupFile'));
+          assert.ok(admin.includes('resetKnownAppData'));
+          assert.ok(!admin.includes('factoryResetCallable'));
+          assert.ok(html.includes('backup-file-input'));
+          assert.ok(html.includes('Download Backup (JSON)'));
           assert.ok(admin.includes("snap.docs.filter(d=>d.id!=='_meta')"));
-          console.log('Product-scope, Admin UID, metadata filtering and reset safeguards verified.');
+          console.log('Free-mode configuration, backup/restore UI, key redemption and Admin-preservation checks passed.');
           NODE

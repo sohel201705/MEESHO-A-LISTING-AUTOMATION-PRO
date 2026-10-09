@@ -87,6 +87,8 @@ function fsValue(value) {
     return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
   }
   if (value instanceof Date) return { timestampValue: value.toISOString() };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(fsValue) } };
+  if (value && typeof value === 'object') return { mapValue: { fields: toFirestoreFields(value) } };
   return { stringValue: String(value ?? '') };
 }
 
@@ -123,7 +125,7 @@ async function firestoreGet(path, token) {
   if (res.status === 404) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error?.message || `Firestore read failed (${res.status}).`);
-  return { name: data.name, fields: fromFirestoreFields(data.fields || {}) };
+  return { name: data.name, updateTime: data.updateTime || null, fields: fromFirestoreFields(data.fields || {}) };
 }
 
 async function firestorePatch(path, data, token, fieldPaths = Object.keys(data)) {
@@ -326,28 +328,167 @@ async function logout() {
   ]);
 }
 
+async function firestoreCommit(writes, token) {
+  const res = await fetch(FIRESTORE_COMMIT, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes })
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out?.error?.message || 'Firestore activation transaction failed.');
+  return out;
+}
+
+function makeFirestoreUpdate(path, data, fieldPaths = Object.keys(data), currentUpdateTime = null) {
+  const write = {
+    update: {
+      name: `${FIRESTORE_RESOURCE_PREFIX}/${path.split('/').map(encodeURIComponent).join('/')}`,
+      fields: toFirestoreFields(data)
+    },
+    updateMask: { fieldPaths }
+  };
+  if (currentUpdateTime) write.currentDocument = { updateTime: currentUpdateTime };
+  return write;
+}
+
+function isEntitlementActive(entitlement, now) {
+  if (String(entitlement?.status || '').toUpperCase() !== 'ACTIVE') return false;
+  if (Number(entitlement?.durationDays || 0) === 0) return true;
+  const expiry = entitlement?.expiryDate ? new Date(entitlement.expiryDate).getTime() : 0;
+  return Number.isFinite(expiry) && expiry > now.getTime();
+}
+
 async function redeemActivationCode(code) {
   const token = await getValidFirebaseToken({ interactive: false });
   const stored = await getStoredSession();
   const user = stored.firebase_user;
   if (!token || !user?.uid || !user?.email) return { ok: false, error: 'Please sign in with Google first.' };
-
   const normalized = String(code || '').trim().toUpperCase();
   if (!normalized) return { ok: false, error: 'Enter an activation code.' };
 
-  // A callable transaction consumes the key once and writes all included product entitlements atomically.
-  const endpoint = 'https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net/redeemActivationKey';
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: { code: normalized, product: 'meesho' } })
-  });
-  const out = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: out?.error?.message || 'Activation could not be completed.' };
-  const result = out?.result || out?.data || {};
-  if (result.ok !== true) return { ok: false, error: result.error || 'Activation could not be completed.' };
-  const access = await buildAccess();
-  return { ok: true, access, includedProducts: result.includedProducts || ['meesho'] };
+  try {
+    const keyDoc = await firestoreGet(`activationKeys/${normalized}`, token);
+    if (!keyDoc) return { ok: false, error: 'Activation key was not found.' };
+    const key = keyDoc.fields || {};
+    if (String(key.status || '').toUpperCase() !== 'AVAILABLE') {
+      return { ok: false, error: 'This activation key has already been used or is unavailable.' };
+    }
+    if (key.assignedEmail && String(key.assignedEmail).toLowerCase() !== String(user.email).toLowerCase()) {
+      return { ok: false, error: 'This activation key is assigned to another Gmail account.' };
+    }
+    const planDoc = await firestoreGet(`plans/${encodeURIComponent(String(key.planId || ''))}`, token);
+    if (!planDoc || planDoc.fields?.active === false) {
+      return { ok: false, error: 'The plan attached to this key is not active.' };
+    }
+    const plan = planDoc.fields || {};
+    const includedProducts = [...new Set((Array.isArray(key.includedProducts) && key.includedProducts.length
+      ? key.includedProducts
+      : (Array.isArray(plan.includedProducts) && plan.includedProducts.length
+        ? plan.includedProducts
+        : [String(key.productScope || plan.productScope || 'meesho') === 'combined' ? 'meesho' : String(key.productScope || plan.productScope || 'meesho')])
+    ).map(p => String(p).toLowerCase()))];
+    if (!includedProducts.length || includedProducts.some(p => !['meesho','flipkart'].includes(p))) {
+      return { ok: false, error: 'This key contains an unsupported product scope.' };
+    }
+    if (!includedProducts.includes('meesho')) {
+      return { ok: false, error: 'This is a Flipkart-only key. Redeem it in FLIPKART A+ LISTING AUTOMATION PRO.' };
+    }
+
+    const [productDoc, legacyDoc, userDoc] = await Promise.all([
+      firestoreGet(`productMemberships/${user.uid}`, token),
+      firestoreGet(`memberships/${user.uid}`, token),
+      firestoreGet(`users/${user.uid}`, token)
+    ]);
+    const existingProducts = { ...(productDoc?.fields?.products || {}) };
+    const legacy = legacyDoc?.fields || null;
+    const now = new Date();
+    const nowMs = now.getTime();
+    const durationDays = Number(key.durationDays ?? plan.durationDays ?? 0);
+    const startDate = key.startDate || now.toISOString();
+    const expiryDate = key.expiryDate ?? (durationDays === 0 ? null : new Date(new Date(startDate).getTime() + durationDays * 86400000).toISOString());
+    if (durationDays !== 0 && (!expiryDate || new Date(expiryDate).getTime() <= nowMs)) {
+      return { ok: false, error: 'This activation key has expired. Please ask Admin for a fresh key.' };
+    }
+    const newExpiryMs = expiryDate ? new Date(expiryDate).getTime() : 0;
+    for (const product of includedProducts) {
+      let oldEntitlement = existingProducts[product] || null;
+      if (product === 'meesho' && !oldEntitlement && legacy) oldEntitlement = legacy;
+      if (isEntitlementActive(oldEntitlement, now) && Number(oldEntitlement.durationDays || 0) === 0 && durationDays !== 0) {
+        return { ok: false, error: `Your ${product} Lifetime membership is already active. Contact Admin before redeeming a shorter plan.` };
+      }
+      if (isEntitlementActive(oldEntitlement, now) && Number(oldEntitlement.durationDays || 0) > 0 && durationDays !== 0) {
+        const oldExpiry = new Date(oldEntitlement.expiryDate || 0).getTime();
+        if (Number.isFinite(oldExpiry) && oldExpiry > newExpiryMs) {
+          return { ok: false, error: 'Your current membership expires after this key. Please ask Admin to create a renewal key with a later expiry so you do not lose remaining days.' };
+        }
+      }
+    }
+
+    const email = String(user.email || '').toLowerCase();
+    const planName = String(key.planName || plan.name || key.planId || 'Membership');
+    const planId = String(key.planId || '');
+    const nowIso = now.toISOString();
+    for (const product of includedProducts) {
+      existingProducts[product] = {
+        uid: user.uid, email, product, planId, planName,
+        productScope: includedProducts.length > 1 ? 'bundle' : product,
+        includedProducts, status: 'ACTIVE', durationDays,
+        shippingEnabled: true, autofillEnabled: true,
+        startDate, expiryDate, activationKey: normalized,
+        source: 'ACTIVATION_KEY', activatedAt: nowIso, updatedAt: nowIso
+      };
+    }
+    const topProduct = existingProducts.flipkart ? 'flipkart' : 'meesho';
+    const topEntitlement = existingProducts[topProduct] || {};
+    const productRecord = {
+      ...topEntitlement,
+      uid: user.uid, email, products: existingProducts,
+      product: topProduct,
+      productScope: topEntitlement.productScope || topProduct,
+      includedProducts: topEntitlement.includedProducts || [topProduct],
+      activationKey: topEntitlement.activationKey || normalized,
+      lastActivationKey: normalized,
+      lastRedeemedPlanId: planId,
+      lastIncludedProducts: includedProducts,
+      lastActivationAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    const writes = [
+      makeFirestoreUpdate(`productMemberships/${user.uid}`, productRecord),
+    ];
+    if (includedProducts.includes('meesho')) {
+      const ent = existingProducts.meesho;
+      const membershipRecord = {
+        ...(legacy || {}),
+        uid: user.uid, email, planId, planName,
+        productScope: ent.productScope, includedProducts,
+        status: 'ACTIVE', durationDays, shippingEnabled: true, autofillEnabled: true,
+        startDate: ent.startDate, expiryDate: ent.expiryDate,
+        activationKey: normalized, activatedAt: nowIso, updatedAt: nowIso
+      };
+      writes.push(makeFirestoreUpdate(`memberships/${user.uid}`, membershipRecord));
+    }
+    const userFields = {
+      ...(userDoc?.fields || {
+        uid: user.uid, email, name: user.full_name || email,
+        provider: 'google.com', emailVerified: true
+      }),
+      lastLoginAt: nowIso, lastMembershipPlan: planId,
+      membershipUpdatedAt: nowIso, membershipProducts: includedProducts
+    };
+    writes.push(makeFirestoreUpdate(`users/${user.uid}`, userFields));
+    writes.push(makeFirestoreUpdate(`activationKeys/${normalized}`, {
+      status: 'REDEEMED', redeemedBy: user.uid, redeemedEmail: email,
+      redeemedAt: nowIso, redeemedProducts: includedProducts
+    }, ['status','redeemedBy','redeemedEmail','redeemedAt','redeemedProducts'], keyDoc.updateTime));
+
+    await firestoreCommit(writes, token);
+    const access = await buildAccess();
+    return { ok: true, access, includedProducts };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Activation could not be completed.' };
+  }
 }
 
 async function openWhatsApp(url) {
