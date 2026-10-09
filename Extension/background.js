@@ -352,7 +352,6 @@ async function redeemActivationCode(code) {
     planName: key.planName || plan.name || key.planId,
     status: 'ACTIVE',
     durationDays: Number(key.durationDays || plan.durationDays || 0),
-    deviceLimit: Number(key.deviceLimit || plan.deviceLimit || 3),
     shippingEnabled: true,
     activationKey: normalized,
     startDate: key.startDate || new Date().toISOString(),
