@@ -30,6 +30,11 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['name','email','photoURL','provider','emailVerified','lastLoginAt','lastMembershipPlan','membershipStatus','membershipUpdatedAt']));
       allow delete: if isAdmin();
+
+      // Flipkart extension stores each user's saved profiles under this user document.
+      match /flipkartProfiles/{profileId} {
+        allow read, create, update, delete: if isAdmin() || isSelf(uid);
+      }
     }
 
     match /plans/{planId} {
