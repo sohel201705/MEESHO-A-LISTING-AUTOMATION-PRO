@@ -31,9 +31,9 @@ service cloud.firestore {
              .hasOnly(['name','email','photoURL','provider','emailVerified','lastLoginAt','lastMembershipPlan','membershipStatus','membershipUpdatedAt','membershipProducts']));
       allow delete: if isAdmin();
 
-      // Flipkart extension stores each user's saved profiles under this user document.
+      // Historical cloud profiles are admin-only for backup/cleanup. Extensions keep profiles locally.
       match /flipkartProfiles/{profileId} {
-        allow read, create, update, delete: if isAdmin() || isSelf(uid);
+        allow read, create, update, delete: if isAdmin();
       }
     }
 
