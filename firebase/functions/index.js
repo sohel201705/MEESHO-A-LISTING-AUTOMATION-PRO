@@ -138,7 +138,7 @@ exports.redeemActivationKey = onCall({
       const expiry = durationDays === 0 ? null : new Date(start.getTime() + durationDays * 86400000).toISOString();
       products[product] = {
         uid, email, product, planId: commonPlanId, planName: commonName,
-        productScope: includedProducts.length > 1 ? 'combined' : product,
+        productScope: includedProducts.length > 1 ? 'bundle' : product,
         includedProducts, status: 'ACTIVE', durationDays,
         shippingEnabled: true, autofillEnabled: true,
         startDate: start.toISOString(), expiryDate: expiry,
@@ -147,8 +147,14 @@ exports.redeemActivationKey = onCall({
       };
     }
 
+    // Keep a flat Flipkart entitlement at the top level for the current FK extension,
+    // while storing both products under products{} for Admin Panel and future versions.
+    const topEntitlement = products.flipkart || products.meesho || {};
     tx.set(productMembershipRef, {
+      ...topEntitlement,
       uid, email, products, activationKey: code,
+      product: products.flipkart ? 'flipkart' : 'meesho',
+      productScope: includedProducts.length > 1 ? 'bundle' : includedProducts[0],
       lastIncludedProducts: includedProducts,
       updatedAt: nowIso
     }, { merge: true });
