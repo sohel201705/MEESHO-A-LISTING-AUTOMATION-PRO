@@ -1,7 +1,7 @@
 {
-  "name": "telastro-firebase-admin-functions",
+  "name": "meesho-a-plus-listing-automation-pro-firebase-functions",
   "private": true,
-  "description": "Admin-only Firebase maintenance and factory reset functions for Telastro.",
+  "description": "Admin-only Firebase maintenance and factory reset functions for MEESHO A+ LISTING AUTOMATION PRO.",
   "main": "index.js",
   "engines": {
     "node": "22"
