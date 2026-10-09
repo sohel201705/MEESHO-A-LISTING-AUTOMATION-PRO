@@ -740,7 +740,6 @@ async function loadPlanCatalogFromFirebase() {
       accent: id === 'lifetime' ? '#f59e0b' : id === 'yearly' ? '#22c55e' : '#48a3ff',
       best: id === 'yearly',
       shippingEnabled: true,
-      deviceLimit: Number(p.deviceLimit || 3)
     });
   }
 
