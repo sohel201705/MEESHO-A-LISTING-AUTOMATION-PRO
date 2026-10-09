@@ -82,7 +82,7 @@ jobs:
           assert.ok(!manifest.host_permissions.some(x => x.includes('cloudfunctions.net')));
           assert.match(rules, /YnfQtmTpm9asdR0izeWuMwmX3Sw1/);
           assert.match(rules, /canRedeemProductMembership/);
-          assert.match(rules, /flipkartProfiles/);
+          assert.match(rules, /match \/flipkartProfiles\/\\{profileId\\} \\{\\s*allow read, create, update, delete: if isAdmin\\(\\);/);
           assert.ok(admin.includes('downloadLocalBackup'));
           assert.ok(admin.includes('restoreLocalBackupFile'));
           assert.ok(admin.includes('resetKnownAppData'));
