@@ -2,7 +2,7 @@
   "update_url": "https://clients2.google.com/service/update2/crx",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Meesho Listing App Telastro",
+    "default_title": "MEESHO A+ LISTING AUTOMATION PRO",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -48,7 +48,7 @@
       }
     ]
   },
-  "description": "Meesho Listing Automation by Telastro with Firebase Google login, product-scoped memberships, and combined plan support.",
+  "description": "MEESHO A+ LISTING AUTOMATION PRO by Telastro. Firebase login, product-scoped membership, and combined Meesho + Flipkart plan support.",
   "host_permissions": [
     "https://codes-market.xyz/*",
     "https://supplier.meesho.com/*",
@@ -68,7 +68,7 @@
     "128": "icons/icon128.png"
   },
   "manifest_version": 3,
-  "name": "Meesho Listing App Telastro",
+  "name": "MEESHO A+ LISTING AUTOMATION PRO",
   "permissions": [
     "activeTab",
     "clipboardRead",
