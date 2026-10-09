@@ -60,7 +60,6 @@
     "https://firestore.googleapis.com/*",
     "https://www.googleapis.com/*",
     "https://sohel201705.github.io/*",
-    "https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
