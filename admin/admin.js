@@ -195,7 +195,7 @@ async function savePlan(e){
   const now=new Date().toISOString();
   const data={name:$('plan-name').value.trim()||id,productScope,includedProducts,price:Number($('plan-price').value||0),offerPrice:Number($('plan-offer').value||0),durationDays:Number($('plan-days').value||0),description:$('plan-description').value.trim(),active:$('plan-active').checked,autofillEnabled:true,shippingEnabled:true,updatedAt:now};
   await setDoc(doc(db,'plans',id),data,{merge:true});
-  activePlanScope = productScope;
+  setActivePlanScope(productScope);
   await syncCombinedPlanPrices();
   toast(productScope==='combined'?'Combined plan saved; price auto-calculated from both product plans.':'Plan saved.','success');
   closePlanEditor(); await loadAll(); setSection('plans');
