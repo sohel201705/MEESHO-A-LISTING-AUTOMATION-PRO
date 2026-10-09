@@ -74,7 +74,7 @@
     "storage",
     "offscreen"
   ],
-  "version": "3.16.4",
+  "version": "3.16.5",
   "web_accessible_resources": [
     {
       "matches": [
