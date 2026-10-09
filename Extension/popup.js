@@ -1,5 +1,4 @@
 
-const API_BASE = 'https://codes-market.xyz';
 let currentUser = null;
 let selectedPlanId = null;
 
@@ -1282,7 +1281,6 @@ document.getElementById('save-btn')?.addEventListener('click', () => {
         meesho_last_selected_profile: currentProfileName
       }, () => {
 
-        pushProfileToBackend(currentProfileName, newProfile);
         if (errors.length === 0) {
           const savedName = currentProfileName;
           enterLandingView();
@@ -1320,96 +1318,7 @@ document.getElementById('autofill-btn')?.addEventListener('click', async () => {
   });
 });
 
-const AUTOFILL_PLATFORM = 'meesho';
-
-let _profilesSyncedOnce = false;
-
-async function authHeaders() { const token = await getFirebaseToken(); return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type':'application/json' } : null; }
-
-async function syncProfilesFromBackend(force = false) {
-  if (!force && _profilesSyncedOnce) return;
-  const headers = await authHeaders();
-  if (!headers) return;
-  try {
-    const listResp = await fetch(
-      `${API_BASE}/api/autofill/profiles?platform=${AUTOFILL_PLATFORM}`,
-      { headers }
-    );
-    if (!listResp.ok) return;
-    const { profiles: serverList = [] } = await listResp.json();
-
-    const local = (await chrome.storage.local.get(['meesho_profiles']))
-      .meesho_profiles || {};
-
-    const serverNames = new Set(serverList.map(p => p.name));
-    const localOnly = {};
-    for (const [name, p] of Object.entries(local)) {
-      if (!serverNames.has(name) && p && p.values) {
-        localOnly[name] = { values: p.values || {} };
-      }
-    }
-    let finalList = serverList;
-    if (Object.keys(localOnly).length) {
-      const syncResp = await fetch(
-        `${API_BASE}/api/autofill/profiles/sync?platform=${AUTOFILL_PLATFORM}`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ profiles: localOnly }),
-        }
-      );
-      if (syncResp.ok) {
-        const data = await syncResp.json();
-        if (Array.isArray(data.profiles)) finalList = data.profiles;
-      }
-    }
-
-    const merged = {};
-    for (const p of finalList) {
-      const localProfile = local[p.name] || {};
-      merged[p.name] = {
-        values: p.values || localProfile.values || {},
-        scan_result: localProfile.scan_result || localProfile.last_scan_result || p.scan_result || null,
-      };
-    }
-    await chrome.storage.local.set({ meesho_profiles: merged });
-    _profilesSyncedOnce = true;
-    populateProfileDropdown();
-  } catch (_) {
-
-  }
-}
-
-async function pushProfileToBackend(name, profile) {
-  const headers = await authHeaders();
-  if (!headers) return;
-  try {
-    await fetch(
-      `${API_BASE}/api/autofill/profiles/${encodeURIComponent(name)}?platform=${AUTOFILL_PLATFORM}`,
-      {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          values: profile.values || {},
-        }),
-      }
-    );
-  } catch (_) {}
-}
-
-async function deleteProfileOnBackend(name) {
-  const headers = await authHeaders();
-  if (!headers) return;
-  try {
-    await fetch(
-      `${API_BASE}/api/autofill/profiles/${encodeURIComponent(name)}?platform=${AUTOFILL_PLATFORM}`,
-      {
-        method: 'DELETE',
-        headers,
-      }
-    );
-  } catch (_) {}
-}
+// Saved profiles stay in chrome.storage.local. No profile values, scans or user actions are sent to a third-party server.
 
 function enterLandingView() {
   if (!currentUser || !hasAutofillAccess(currentUser)) {
@@ -1427,7 +1336,6 @@ function enterLandingView() {
   showView('profilesLanding');
   updateAccountUI();
 
-  syncProfilesFromBackend();
 }
 
 function setProfileSelection(name) {
@@ -1643,7 +1551,6 @@ document.getElementById('btn-delete-profile')?.addEventListener('click', () => {
     const patch = { meesho_profiles: profiles };
     if (result.meesho_last_selected_profile === name) patch.meesho_last_selected_profile = null;
     chrome.storage.local.set(patch, () => {
-      deleteProfileOnBackend(name);
       showStatus(`Profile "${name}" deleted`);
       populateProfileDropdown();
     });
@@ -1697,22 +1604,8 @@ document.getElementById('landing-import-file-input')?.addEventListener('change',
       if (typeof imported !== 'object') throw new Error('Invalid format');
       chrome.storage.local.get('meesho_profiles', result => {
         const merged = { ...(result.meesho_profiles || {}), ...imported };
-        chrome.storage.local.set({ meesho_profiles: merged }, async () => {
-          showStatus(`Imported ${Object.keys(imported).length} profiles!`);
-
-          const headers = await authHeaders();
-          if (headers) {
-            try {
-              await fetch(
-                `${API_BASE}/api/autofill/profiles/sync?platform=${AUTOFILL_PLATFORM}`,
-                {
-                  method: 'POST',
-                  headers,
-                  body: JSON.stringify({ profiles: imported }),
-                }
-              );
-            } catch (_) {}
-          }
+        chrome.storage.local.set({ meesho_profiles: merged }, () => {
+          showStatus(`Imported ${Object.keys(imported).length} profiles locally!`);
           populateProfileDropdown();
           e.target.value = '';
         });
