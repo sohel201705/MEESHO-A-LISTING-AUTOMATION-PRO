@@ -1068,6 +1068,32 @@ function waitForTabReady(tabId, cb) {
   setTimeout(finish, 4500);
 }
 
+function loadMeeshoResourceLinks() {
+  chrome.runtime.sendMessage({ type: 'GET_TUTORIAL_URL' }, response => {
+    if (chrome.runtime.lastError || !response?.ok) return;
+    const links = [
+      ['meesho-tutorial-link', response.url],
+      ['meesho-master-download-link', response.downloadUrl]
+    ];
+    for (const [id, value] of links) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      let url = '';
+      try {
+        const parsed = new URL(String(value || ''));
+        if (parsed.protocol === 'https:') url = parsed.href;
+      } catch (_) {}
+      if (url) {
+        el.href = url;
+        el.style.display = 'flex';
+      } else {
+        el.removeAttribute('href');
+        el.style.display = 'none';
+      }
+    }
+  });
+}
+
 function openMeeshoPanelFromPopup() {
   const btn = document.getElementById('btn-open-meesho-panel');
   const originalText = btn?.querySelector('span:last-child')?.textContent || 'Open Meesho Panel';
@@ -1152,6 +1178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (changed) chrome.storage.local.set({ meesho_profiles: profiles });
   });
 
+  loadMeeshoResourceLinks();
   checkAuth();
 
   chrome.storage.local.get(['last_scan_result', 'meesho_autofill_values'], (res) => {
