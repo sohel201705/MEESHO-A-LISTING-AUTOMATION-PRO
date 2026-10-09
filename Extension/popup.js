@@ -545,7 +545,6 @@ function buildUserState(user, membership = null, plan = null, reason = '') {
     durationDays,
     expiryDate: expiry,
     shippingEnabled: nowActive,
-    deviceLimit: Number(membership?.deviceLimit || plan?.deviceLimit || 3),
     products: {
       fill: { ...common },
       ship: { ...common }
@@ -790,7 +789,6 @@ function planWhatsAppMessage(plan) {
     `Price: ₹${plan.price}`,
     `Duration: ${duration}`,
     `Shipping Optimizer: Included with this plan`,
-    `Device Limit: ${plan.deviceLimit}`,
     '',
     'Please send me the payment details.'
   ].join('\n');
