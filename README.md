@@ -1,14 +1,12 @@
 # MEESHO A+ LISTING AUTOMATION PRO — GITHUB PUBLISH PACKAGE
 
-This package is ready to publish to the GitHub repository:
-`sohel201705/MEESHO-A-LISTING-AUTOMATION-PRO`
+Repository: `sohel201705/MEESHO-A-LISTING-AUTOMATION-PRO`
 
-## Root structure
-- `admin/` — GitHub Pages Firebase Admin Panel
-- `firebase/` — Firestore security rules and Firebase CLI config
+## Components
+- `admin/` — GitHub Pages Admin Panel
+- `firebase/` — Firestore security rules and Firebase CLI configuration
 - `Extension/` — Chrome extension source
-- `index.html` — root landing page
-- `SETUP_GITHUB_FIREBASE.md` — publishing/setup guide
+- `SETUP_GITHUB_FIREBASE.md` — setup and recovery guide
 
 ## Firebase project
 `meesho-a-plus-listing-b5ea0`
@@ -16,20 +14,21 @@ This package is ready to publish to the GitHub repository:
 ## Admin UID
 `YnfQtmTpm9asdR0izeWuMwmX3Sw1`
 
-## Unified membership
-**ONE ACTIVE PLAN = AUTOFILL + SHIPPING OPTIMIZER**
+## Free-first deployment model
+- The Admin Panel is a static GitHub Pages site.
+- Google sign-in and Firestore run on Firebase's no-cost Spark plan, subject to the published free quotas.
+- The repository does not deploy Cloud Functions or use Cloud Storage for backup.
+- Activation-key redemption is performed through an atomic Firestore commit, with Firestore Rules validating the one-time key and resulting membership documents.
+- Firestore Rules can be deployed by GitHub Actions from the repository secret `FIREBASE_SERVICE_ACCOUNT_JSON`. This deploy workflow publishes Rules only; it does not deploy Functions.
 
-Shipping Optimizer is not a separate membership.
+## Local JSON backup and restore
+- In Admin Panel → Settings → Local Backup, Restore & Factory Reset, choose **Download Backup (JSON)**. The browser downloads the known app Firestore documents to the administrator's computer.
+- Use **Restore Backup File** to select a backup from the same Firebase project. Restore replaces the known app data while preserving the live `admins/{ADMIN_UID}` record.
+- For reset, first download a current backup, then type `RESET ALL NON-ADMIN DATA` and confirm.
+- The browser Admin Panel can only clear the known application collections and known subcollections. It does not have permission to enumerate arbitrary unknown Firestore collections.
+- Firebase Authentication sign-in accounts are not deleted by local reset; without a trusted Admin SDK server, a browser-only panel cannot securely delete other users' Authentication identities. After reset their Firestore membership records are cleared, so they must be activated again.
 
 ## Important
-Replace the Chrome Extension OAuth client ID placeholder in `Extension/manifest.json` and `Extension/firebase-config.js` before testing Google Login in the extension. Never put a Firebase service-account private key in this repository.
+Replace any OAuth client placeholders before testing extension Google login. Never put service-account private keys in repository code or client-side files.
 
-## Firebase factory reset and automatic integration
-
-- The Admin Panel UI is kept in the existing `admin/` directory; this change adds controls using the same existing panel styles.
-- The `Initialize DB` action creates missing collection marker documents, missing default plans, and missing settings. It does not overwrite existing plan prices or saved settings.
-- A factory reset is an explicit Admin-only action. It first writes a compressed backup to Firebase Storage, then removes Firestore documents and Firebase Authentication users except the configured Admin UID and its `admins/{ADMIN_UID}` document.
-- Reset is **not** triggered by publishing or opening the Admin Panel. It requires typing `RESET ALL NON-ADMIN DATA` and confirming in the panel.
-- Storage files themselves are left untouched. Backups are stored under `factory-reset-backups/` in the default Firebase Storage bucket.
-- The factory reset callable and Firestore Rules are deployed by `.github/workflows/deploy-firebase.yml` only when the GitHub repository secret `FIREBASE_SERVICE_ACCOUNT_JSON` is configured. Without it, the workflow emits a warning and skips backend deployment.
-- Current Admin UID: `YnfQtmTpm9asdR0izeWuMwmX3Sw1`. Keep it consistent in `admin/firebase-config.js`, `firebase/firestore.rules`, and `firebase/functions/index.js`.
+The local backup is a JSON snapshot of Firestore documents, not an export of Firebase Authentication user credentials. Keep downloaded backups somewhere private.
