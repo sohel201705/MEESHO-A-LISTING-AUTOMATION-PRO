@@ -147,7 +147,7 @@ function closePlanEditor(){ $('plan-editor').classList.add('hidden'); }
 async function syncCombinedPlanPrices() {
   const snap = await getDocs(collection(db,'plans'));
   const all = snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()}));
-  const effective = p => Number(p.offerPrice ?? p.price ?? 0);
+  const effective = p => Number(p.offerPrice || p.price || 0);
   const combos = all.filter(p=>p.productScope==='combined');
   for (const combo of combos) {
     const me = all.find(p=>p.productScope==='meesho' && Number(p.durationDays||0)===Number(combo.durationDays||0));
