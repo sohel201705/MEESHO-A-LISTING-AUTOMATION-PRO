@@ -4,67 +4,53 @@ on:
   push:
     branches:
       - MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-3.16.4
-      - publish-flipkart-1-6-8-20261009
+      - MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-3.16.5
 
 permissions:
   contents: write
 
 jobs:
   publish:
+    if: startsWith(github.ref_name, 'MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v4
 
-      - name: Build and validate Meesho extension ZIP
-        if: github.ref_name == 'MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-3.16.4'
+      - name: Build and validate standalone Meesho extension ZIP
         shell: bash
         run: |
-          python - <<'PY'
-          import json
+          VERSION="${GITHUB_REF_NAME#MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-}"
+          python - "$VERSION" <<'PY'
+          import json, sys
+          expected = sys.argv[1]
           with open('manifest.json', encoding='utf-8') as f:
               m = json.load(f)
           assert m.get('name') == 'MEESHO A+ LISTING AUTOMATION PRO', m.get('name')
-          assert m.get('version') == '3.16.4', m.get('version')
+          assert m.get('version') == expected, (m.get('version'), expected)
           PY
-          zip -rq MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_3.16.4.zip . -x '.git/*' '.github/*' 'MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_3.16.4.zip'
-          unzip -t MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_3.16.4.zip
-          python - <<'PY'
-          import zipfile
-          z = zipfile.ZipFile('MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_3.16.4.zip')
+          ASSET="MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_${VERSION}.zip"
+          zip -rq "$ASSET" . -x '.git/*' '.github/*' "$ASSET"
+          unzip -t "$ASSET"
+          python - "$ASSET" "$VERSION" <<'PY'
+          import json, sys, zipfile
+          asset, expected = sys.argv[1], sys.argv[2]
+          z = zipfile.ZipFile(asset)
           assert z.testzip() is None
-          assert 'manifest.json' in z.namelist()
+          m = json.loads(z.read('manifest.json'))
+          assert m.get('name') == 'MEESHO A+ LISTING AUTOMATION PRO'
+          assert m.get('version') == expected
+          print('ZIP verified:', asset, 'version', expected, 'files', len(z.namelist()))
           PY
-
-      - name: Validate supplied Flipkart extension ZIP
-        if: github.ref_name == 'publish-flipkart-1-6-8-20261009'
-        shell: bash
-        run: |
-          asset='release-assets/FLIPKART_A_PLUS_LISTING_AUTOMATION_PRO_1.6.8_LOCAL_ONLY_PROFILES.zip'
-          test -f "$asset"
-          unzip -p "$asset" manifest.json > /tmp/flipkart-manifest.json
-          python - <<'PY'
-          import json
-          with open('/tmp/flipkart-manifest.json', encoding='utf-8') as f:
-              m = json.load(f)
-          assert m.get('name') == 'FLIPKART A+ LISTING AUTOMATION PRO', m.get('name')
-          assert m.get('version') == '1.6.8', m.get('version')
-          PY
-          unzip -t "$asset"
 
       - name: Set release metadata
         id: meta
         shell: bash
         run: |
-          if [[ "$GITHUB_REF_NAME" == "MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-3.16.4" ]]; then
-            echo "tag_name=meesho-v3.16.4" >> "$GITHUB_OUTPUT"
-            echo "release_name=MEESHO A+ LISTING AUTOMATION PRO v3.16.4" >> "$GITHUB_OUTPUT"
-            echo "asset=MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_3.16.4.zip" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag_name=flipkart-v1.6.8" >> "$GITHUB_OUTPUT"
-            echo "release_name=FLIPKART A+ LISTING AUTOMATION PRO v1.6.8" >> "$GITHUB_OUTPUT"
-            echo "asset=release-assets/FLIPKART_A_PLUS_LISTING_AUTOMATION_PRO_1.6.8_LOCAL_ONLY_PROFILES.zip" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION="${GITHUB_REF_NAME#MEESHO-A-PLUS-LISTING-AUTOMATION-PRO-}"
+          echo "tag_name=meesho-v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_name=MEESHO A+ LISTING AUTOMATION PRO v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "asset=MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_${VERSION}.zip" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release with ZIP asset
         uses: softprops/action-gh-release@v2
