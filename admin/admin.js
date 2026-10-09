@@ -117,7 +117,7 @@ async function initializeDatabase() {
 }
 
 async function loadPlans() { const snap=await getDocs(collection(db,'plans')); plans=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.id).localeCompare(String(b.id))); }
-async function loadUsers() { const [u,m]=await Promise.all([getDocs(collection(db,'users')),getDocs(collection(db,'memberships'))]); users=u.docs.filter(d=>d.id!=='_meta').map(d=>({uid:d.id,...d.data()})); memberships=new Map(m.docs.filter(d=>d.id!=='_meta').map(d=>[d.id,{uid:d.id,...d.data()}])); }
+async function loadUsers() { const [u,m,pm]=await Promise.all([getDocs(collection(db,'users')),getDocs(collection(db,'memberships')),getDocs(collection(db,'productMemberships'))]); users=u.docs.filter(d=>d.id!=='_meta').map(d=>({uid:d.id,...d.data()})); memberships=new Map(m.docs.filter(d=>d.id!=='_meta').map(d=>[d.id,{uid:d.id,...d.data()}])); for(const d of pm.docs.filter(d=>d.id!=='_meta')){const old=memberships.get(d.id)||{uid:d.id}; memberships.set(d.id,{...old,uid:d.id,productMemberships:d.data()?.products||{},productMembershipRecord:d.data()});} }
 async function loadKeys() { const snap=await getDocs(collection(db,'activationKeys')); keys=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
 async function loadPayments() { const snap=await getDocs(collection(db,'payments')); payments=snap.docs.filter(d=>d.id!=='_meta').map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))); }
 async function loadSettings() { const s=await getDoc(doc(db,'settings','general')); const d=s.exists()?s.data():DEFAULT_SETTINGS; $('set-brand').value=d.brandName||''; $('set-support').value=d.supportName||''; $('set-phone').value=d.phone||''; $('set-whatsapp').value=d.whatsapp||''; $('set-email').value=d.email||''; $('set-upi').value=d.upiId||''; $('set-qr').value=d.qrUrl||''; $('set-meesho-tutorial').value=d.meeshoTutorialUrl||''; $('set-flipkart-tutorial').value=d.flipkartTutorialUrl||''; $('set-meesho-download').value=d.meeshoMasterDownloadUrl||''; $('set-flipkart-download').value=d.flipkartMasterDownloadUrl||''; $('set-maintenance').checked=Boolean(d.maintenanceMode); }
@@ -179,7 +179,23 @@ async function savePlan(e){
 function renderUsers(){
   const q=String($('user-search').value||'').toLowerCase().trim();
   const rows=users.filter(u=>`${u.name||''} ${u.email||''} ${u.uid||''}`.toLowerCase().includes(q)).sort((a,b)=>String(a.email||'').localeCompare(String(b.email||'')));
-  $('users-table').innerHTML=rows.map(u=>{const m=memberships.get(u.uid)||{}; const status=String(m.status||'NOT_ACTIVATED').toLowerCase(); const active=status==='active'&&(!m.expiryDate||new Date(m.expiryDate).getTime()>Date.now()||Number(m.durationDays||0)===0); return `<tr><td><b>${esc(u.name||'Google User')}</b><br><span style="color:#6f86a4">${esc(u.email||u.uid)}</span></td><td>${esc(m.planName||m.planId||'—')}</td><td><span class="status ${active?'active':status}">${active?'ACTIVE':esc(status.toUpperCase())}</span></td><td>${Number(m.durationDays||0)===0&&m.planId?'Lifetime':formatDate(m.expiryDate)}</td><td><div class="row-actions"><button class="secondary" data-edit-member="${esc(u.uid)}">Manage</button></div></td></tr>`}).join('') || '<tr><td colspan="5">No users found.</td></tr>';
+  $('users-table').innerHTML=rows.map(u=>{
+    const m=memberships.get(u.uid)||{};
+    const now=Date.now();
+    const activeEntitlements=Object.entries(m.productMemberships||{}).filter(([,ent])=>{
+      const st=String(ent?.status||'').toUpperCase();
+      return st==='ACTIVE' && (!ent.expiryDate || new Date(ent.expiryDate).getTime()>now || Number(ent.durationDays||0)===0);
+    });
+    const legacyActive=String(m.status||'').toUpperCase()==='ACTIVE' && (!m.expiryDate || new Date(m.expiryDate).getTime()>now || Number(m.durationDays||0)===0);
+    const active=legacyActive||activeEntitlements.length>0;
+    const labels=activeEntitlements.map(([product,ent])=>`${product==='flipkart'?'Flipkart':'Meesho'}: ${ent.planName||ent.planId||'Active'}`);
+    if(legacyActive && !labels.some(x=>x.startsWith('Meesho:'))) labels.unshift(`Meesho: ${m.planName||m.planId||'Active'}`);
+    const planLabel=labels.join(' · ')||m.planName||m.planId||'—';
+    const status=active?'active':String(m.status||'NOT_ACTIVATED').toLowerCase();
+    const dates=[...(activeEntitlements.map(([,ent])=>ent)),...(legacyActive?[m]:[])];
+    const expiry=dates.some(ent=>Number(ent.durationDays||0)===0)?'Lifetime':formatDate(dates.map(ent=>ent.expiryDate).filter(Boolean).sort().at(-1)||m.expiryDate);
+    return `<tr><td><b>${esc(u.name||'Google User')}</b><br><span style="color:#6f86a4">${esc(u.email||u.uid)}</span></td><td>${esc(planLabel)}</td><td><span class="status ${active?'active':status}">${active?'ACTIVE':esc(status.toUpperCase())}</span></td><td>${esc(expiry)}</td><td><div class="row-actions"><button class="secondary" data-edit-member="${esc(u.uid)}">Manage</button></div></td></tr>`;
+  }).join('') || '<tr><td colspan="5">No users found.</td></tr>';
 }
 
 function renderPlanSelectors(){
@@ -195,12 +211,38 @@ function openMembershipEditor(uid){
 function closeMembershipEditor(){ $('membership-editor').classList.add('hidden'); }
 
 async function saveMembership(e){
-  e.preventDefault(); const uid=$('membership-uid').value; const u=users.find(x=>x.uid===uid); const pid=$('membership-plan').value; const p=plans.find(x=>x.id===pid); if(!uid||!u||!p) return toast('Select a valid user and plan.','error');
-  const now=new Date().toISOString(); const days=Number(p.durationDays||0); const expiry=days===0?null:($('membership-expiry').value?fromLocalInput($('membership-expiry').value):new Date(Date.now()+days*86400000).toISOString());
-  const status=$('membership-status').value; const data={uid,email:u.email||'',planId:pid,planName:p.name||pid,productScope:p.productScope||'meesho',includedProducts:p.includedProducts||['meesho'],status,durationDays:days,shippingEnabled:true,autofillEnabled:true,startDate:fromLocalInput($('membership-start').value)||now,expiryDate:expiry,source:'ADMIN_PANEL',updatedAt:now,activatedAt:status==='ACTIVE'?now:(memberships.get(uid)?.activatedAt||null),activationKey:memberships.get(uid)?.activationKey||'ADMIN_PANEL'};
-  await setDoc(doc(db,'memberships',uid),data,{merge:true});
-  await setDoc(doc(db,'users',uid),{lastMembershipPlan:pid,membershipStatus:status,membershipUpdatedAt:now},{merge:true});
-  toast('Membership saved.','success'); closeMembershipEditor(); await loadAll(); setSection('users');
+  e.preventDefault();
+  const uid=$('membership-uid').value;
+  const u=users.find(x=>x.uid===uid);
+  const pid=$('membership-plan').value;
+  const p=plans.find(x=>x.id===pid);
+  if(!uid||!u||!p) return toast('Select a valid user and plan.','error');
+  const now=new Date().toISOString();
+  const days=Number(p.durationDays||0);
+  const expiry=days===0?null:($('membership-expiry').value?fromLocalInput($('membership-expiry').value):new Date(Date.now()+days*86400000).toISOString());
+  const status=$('membership-status').value;
+  const includedProducts=p.includedProducts||(p.productScope==='combined'?['meesho','flipkart']:[p.productScope||'meesho']);
+  const previous=memberships.get(uid)||{};
+  const data={uid,email:u.email||'',planId:pid,planName:p.name||pid,productScope:p.productScope||'meesho',includedProducts,status,durationDays:days,shippingEnabled:true,autofillEnabled:true,startDate:fromLocalInput($('membership-start').value)||now,expiryDate:expiry,source:'ADMIN_PANEL',updatedAt:now,activatedAt:status==='ACTIVE'?now:(previous.activatedAt||null),activationKey:previous.activationKey||'ADMIN_PANEL'};
+
+  const productRef=doc(db,'productMemberships',uid);
+  const productSnap=await getDoc(productRef);
+  const products={...(productSnap.exists()?(productSnap.data()?.products||{}):{}),...(previous.productMemberships||{})};
+  for(const product of includedProducts) {
+    products[product]={uid,email:u.email||'',product,planId:pid,planName:p.name||pid,productScope:p.productScope||product,includedProducts,status,durationDays:days,shippingEnabled:true,autofillEnabled:true,startDate:data.startDate,expiryDate:expiry,source:'ADMIN_PANEL',updatedAt:now,activatedAt:data.activatedAt,activationKey:data.activationKey};
+  }
+  await setDoc(productRef,{uid,email:u.email||'',products,activationKey:data.activationKey,lastUpdatedBy:currentUser.uid,updatedAt:now},{merge:true});
+
+  // Keep the legacy Meesho membership document in sync only when this plan includes Meesho.
+  // Buying a Flipkart-only plan must never erase or replace an existing Meesho membership.
+  if(includedProducts.includes('meesho')) {
+    await setDoc(doc(db,'memberships',uid),data,{merge:true});
+    await setDoc(doc(db,'users',uid),{lastMembershipPlan:pid,membershipStatus:status,membershipUpdatedAt:now},{merge:true});
+  } else {
+    await setDoc(doc(db,'users',uid),{uid,email:u.email||'',name:u.name||u.email||'',membershipUpdatedAt:now},{merge:true});
+  }
+  toast(includedProducts.length>1?'Combined membership saved for both extensions.':`${includedProducts[0]} membership saved without changing the other product.`,'success');
+  closeMembershipEditor(); await loadAll(); setSection('users');
 }
 
 function renderKeys(){
