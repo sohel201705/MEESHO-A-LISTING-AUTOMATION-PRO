@@ -16,6 +16,7 @@ provider.setCustomParameters({ prompt: 'select_account' });
 const $ = id => document.getElementById(id);
 let currentUser = null;
 let plans = [];
+let activePlanScope = 'meesho';
 let users = [];
 let memberships = new Map();
 let keys = [];
@@ -114,7 +115,7 @@ async function initializeDatabase() {
   for(const member of membershipSnap.docs) if(member.id!=='_meta' && member.data()?.deviceLimit!==undefined) await updateDoc(member.ref,{deviceLimit:deleteField()});
 
   await setDoc(doc(db,'system','collections'),{users:true,plans:true,memberships:true,productMemberships:true,activationKeys:true,devices:true,payments:true,settings:true,combinedPlans:true,logs:true,admins:true,initializedAt:now,initializedBy:currentUser.uid},{merge:true});
-  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.16.4',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
+  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.16.5',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
   await syncCombinedPlanPrices();
   toast('Firebase integration completed. Missing collections were created; existing prices and settings were preserved.','success');
   await loadAll();
@@ -134,16 +135,35 @@ function updateStats() {
   $('stat-users').textContent=users.length; $('stat-active').textContent=active; $('stat-plans').textContent=plans.length; $('stat-keys').textContent=avail; $('stat-payments').textContent=payments.length; $('stat-expired').textContent=expired;
 }
 
+function setActivePlanScope(scope) {
+  if (!['meesho','flipkart','combined'].includes(scope)) return;
+  activePlanScope = scope;
+  document.querySelectorAll('[data-plan-scope]').forEach(button => {
+    const active = button.dataset.planScope === scope;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  const labels = {
+    meesho: 'Meesho-only memberships',
+    flipkart: 'Flipkart-only memberships',
+    combined: 'Combo memberships that unlock both extensions'
+  };
+  const description = $('plans-scope-description');
+  if (description) description.textContent = labels[scope];
+  renderPlans();
+}
+
 function renderPlans() {
   const box=$('plans-list');
   const scopeLabel = p => ({meesho:'MEESHO ONLY',flipkart:'FLIPKART ONLY',combined:'MEESHO + FLIPKART'}[p.productScope] || 'MEESHO LEGACY');
-  box.innerHTML=plans.length?plans.map(p=>`<article class="plan-box"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="eyebrow">${esc(scopeLabel(p))} · ${esc(p.id)}</div><div class="plan-title">${esc(p.name||p.id)}</div><div class="plan-meta">${Number(p.durationDays||0)===0?'Lifetime':`${Number(p.durationDays||0)} days`} · Unlimited devices</div></div><span class="pill ${p.active?'ok':''}">${p.active?'ACTIVE':'INACTIVE'}</span></div><div class="plan-price">₹${Number(p.offerPrice??p.price??0).toLocaleString('en-IN')}</div><div class="plan-meta">Base ₹${Number(p.price||0).toLocaleString('en-IN')} · ${esc((p.includedProducts||[]).join(' + ')||scopeLabel(p))}</div><div class="plan-actions"><button class="secondary" data-edit-plan="${esc(p.id)}">Edit</button><button class="ghost" data-delete-plan="${esc(p.id)}">Delete</button></div></article>`).join(''):'<div class="plan-empty">No plans yet. Click Initialize DB or create a plan.</div>';
+  const scopedPlans = plans.filter(p => (p.productScope || 'meesho') === activePlanScope);
+  box.innerHTML=scopedPlans.length?scopedPlans.map(p=>`<article class="plan-box"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="eyebrow">${esc(scopeLabel(p))} · ${esc(p.id)}</div><div class="plan-title">${esc(p.name||p.id)}</div><div class="plan-meta">${Number(p.durationDays||0)===0?'Lifetime':`${Number(p.durationDays||0)} days`} · Unlimited devices</div></div><span class="pill ${p.active?'ok':''}">${p.active?'ACTIVE':'INACTIVE'}</span></div><div class="plan-price">₹${Number(p.offerPrice??p.price??0).toLocaleString('en-IN')}</div><div class="plan-meta">Base ₹${Number(p.price||0).toLocaleString('en-IN')} · ${esc((p.includedProducts||[]).join(' + ')||scopeLabel(p))}</div><div class="plan-actions"><button class="secondary" data-edit-plan="${esc(p.id)}">Edit</button><button class="ghost" data-delete-plan="${esc(p.id)}">Delete</button></div></article>`).join(''):`<div class="plan-empty">No ${activePlanScope==='combined'?'Combo':activePlanScope==='flipkart'?'Flipkart':'Meesho'} plans yet. Click + New Plan or Initialize DB to add the default plans.</div>`;
 }
 
 function openPlanEditor(plan=null) {
   $('plan-editor').classList.remove('hidden');
   $('plan-editor-title').textContent=plan?'Edit Plan':'New Plan';
-  $('plan-id').value=plan?.id||''; $('plan-id').disabled=Boolean(plan); $('plan-name').value=plan?.name||''; $('plan-scope').value=plan?.productScope||'meesho'; $('plan-price').value=plan?.price??''; $('plan-offer').value=plan?.offerPrice??''; $('plan-days').value=plan?.durationDays??30; $('plan-description').value=plan?.description||''; $('plan-active').checked=plan?.active!==false;
+  $('plan-id').value=plan?.id||''; $('plan-id').disabled=Boolean(plan); $('plan-id').placeholder=activePlanScope==='combined'?'combo-custom':activePlanScope==='flipkart'?'fk-custom':'meesho-custom'; $('plan-name').value=plan?.name||''; $('plan-scope').value=plan?.productScope||activePlanScope; $('plan-price').value=plan?.price??''; $('plan-offer').value=plan?.offerPrice??''; $('plan-days').value=plan?.durationDays??30; $('plan-description').value=plan?.description||''; $('plan-active').checked=plan?.active!==false;
   $('plan-form').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function closePlanEditor(){ $('plan-editor').classList.add('hidden'); }
@@ -175,6 +195,7 @@ async function savePlan(e){
   const now=new Date().toISOString();
   const data={name:$('plan-name').value.trim()||id,productScope,includedProducts,price:Number($('plan-price').value||0),offerPrice:Number($('plan-offer').value||0),durationDays:Number($('plan-days').value||0),description:$('plan-description').value.trim(),active:$('plan-active').checked,autofillEnabled:true,shippingEnabled:true,updatedAt:now};
   await setDoc(doc(db,'plans',id),data,{merge:true});
+  activePlanScope = productScope;
   await syncCombinedPlanPrices();
   toast(productScope==='combined'?'Combined plan saved; price auto-calculated from both product plans.':'Plan saved.','success');
   closePlanEditor(); await loadAll(); setSection('plans');
@@ -202,11 +223,22 @@ function renderUsers(){
   }).join('') || '<tr><td colspan="5">No users found.</td></tr>';
 }
 
+function groupedPlanOptions(list) {
+  const groups = [
+    {scope:'meesho',label:'Meesho Plans'},
+    {scope:'flipkart',label:'Flipkart Plans'},
+    {scope:'combined',label:'Combo Plans'}
+  ];
+  return groups.map(group => {
+    const items = list.filter(p => (p.productScope || 'meesho') === group.scope);
+    return items.length ? `<optgroup label="${group.label}">${items.map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.id)} — ₹${Number(p.offerPrice??p.price??0).toLocaleString('en-IN')}</option>`).join('')}</optgroup>` : '';
+  }).join('');
+}
 function renderPlanSelectors(){
-  const options=plans.map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.id)}</option>`).join('');
+  const options=groupedPlanOptions(plans);
   ['membership-plan','payment-plan'].forEach(id=>{const s=$(id); if(s)s.innerHTML=options||'<option value="">No plans</option>';});
 }
-function renderKeySelectors(){ const s=$('key-plan'); if(s) s.innerHTML=plans.filter(p=>p.active!==false).map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.id)}</option>`).join('')||'<option value="">No active plans</option>'; }
+function renderKeySelectors(){ const s=$('key-plan'); if(s) s.innerHTML=groupedPlanOptions(plans.filter(p=>p.active!==false))||'<option value="">No active plans</option>'; }
 
 function openMembershipEditor(uid){
   const u=users.find(x=>x.uid===uid); if(!u) return;
@@ -457,7 +489,7 @@ $('factory-reset-confirm').addEventListener('input',e=>{
 $('factory-reset-button').addEventListener('click',()=>resetKnownAppData().catch(e=>toast(e?.message||'Factory reset failed.','error')));
 document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.section)));
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>setSection(b.dataset.goto)));
-$('new-plan').addEventListener('click',()=>openPlanEditor()); $('cancel-plan').addEventListener('click',closePlanEditor); $('plan-form').addEventListener('submit',e=>savePlan(e).catch(err=>toast(err?.message||'Could not save plan.','error')));
+$('new-plan').addEventListener('click',()=>openPlanEditor()); document.querySelectorAll('[data-plan-scope]').forEach(button=>button.addEventListener('click',()=>setActivePlanScope(button.dataset.planScope))); $('cancel-plan').addEventListener('click',closePlanEditor); $('plan-form').addEventListener('submit',e=>savePlan(e).catch(err=>toast(err?.message||'Could not save plan.','error')));
 $('cancel-membership').addEventListener('click',closeMembershipEditor); $('membership-form').addEventListener('submit',e=>saveMembership(e).catch(err=>toast(err?.message||'Could not save membership.','error')));
 $('key-form').addEventListener('submit',e=>generateKeys(e).catch(err=>toast(err?.message||'Could not generate key.','error'))); $('refresh-keys').addEventListener('click',()=>loadAll().catch(err=>toast(err?.message||'Refresh failed.','error')));
 $('payment-form').addEventListener('submit',e=>savePayment(e).catch(err=>toast(err?.message||'Could not save payment.','error'))); $('refresh-payments').addEventListener('click',()=>loadAll().catch(err=>toast(err?.message||'Refresh failed.','error'))); $('settings-form').addEventListener('submit',e=>saveSettings(e).catch(err=>toast(err?.message||'Could not save settings.','error')));
