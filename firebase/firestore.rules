@@ -28,7 +28,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isSelf(uid)
           && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name','email','photoURL','provider','emailVerified','lastLoginAt','lastMembershipPlan','membershipStatus','membershipUpdatedAt']));
+             .hasOnly(['name','email','photoURL','provider','emailVerified','lastLoginAt','lastMembershipPlan','membershipStatus','membershipUpdatedAt','membershipProducts']));
       allow delete: if isAdmin();
 
       // Flipkart extension stores each user's saved profiles under this user document.
@@ -54,6 +54,7 @@ service cloud.firestore {
       return request.resource.data.uid == uid
         && request.resource.data.status == 'ACTIVE'
         && key.status == 'REDEEMED'
+        && key.includedProducts.hasAny(['meesho'])
         && key.redeemedBy == request.auth.uid
         && key.planId == request.resource.data.planId
         && key.planName == request.resource.data.planName
@@ -76,10 +77,22 @@ service cloud.firestore {
           && resource.data.status == 'AVAILABLE'
           && request.resource.data.status == 'REDEEMED'
           && request.resource.data.redeemedBy == request.auth.uid
-          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.activationKey == code
-          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.planId == resource.data.planId
-          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.expiryDate == resource.data.expiryDate
-          && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.shippingEnabled == true);
+          && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status','redeemedBy','redeemedEmail','redeemedAt','redeemedProducts'])
+          && (resource.data.assignedEmail == '' || resource.data.assignedEmail == request.auth.token.email)
+          && (
+            (resource.data.includedProducts.hasAny(['meesho'])
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.activationKey == code
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.planId == resource.data.planId
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.planName == resource.data.planName
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.durationDays == resource.data.durationDays
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.expiryDate == resource.data.expiryDate
+              && getAfter(/databases/$(database)/documents/memberships/$(request.auth.uid)).data.shippingEnabled == true)
+            ||
+            (!resource.data.includedProducts.hasAny(['meesho'])
+              && getAfter(/databases/$(database)/documents/productMemberships/$(request.auth.uid)).data.lastActivationKey == code
+              && getAfter(/databases/$(database)/documents/productMemberships/$(request.auth.uid)).data.lastRedeemedPlanId == resource.data.planId)
+          ));
     }
 
     match /settings/{docId} {
@@ -97,9 +110,41 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() || isSelf(uid);
     }
 
+    function canRedeemProductMembership(uid) {
+      let code = request.resource.data.lastActivationKey;
+      let key = getAfter(/databases/$(database)/documents/activationKeys/$(code)).data;
+      let included = key.includedProducts;
+      let products = request.resource.data.products;
+      return request.resource.data.uid == uid
+        && key.status == 'REDEEMED'
+        && key.redeemedBy == request.auth.uid
+        && key.planId == request.resource.data.lastRedeemedPlanId
+        && key.includedProducts == request.resource.data.lastIncludedProducts
+        && (key.assignedEmail == '' || key.assignedEmail == request.auth.token.email)
+        && (!included.hasAny(['meesho']) ||
+          (products.meesho.uid == uid
+            && products.meesho.activationKey == code
+            && products.meesho.planId == key.planId
+            && products.meesho.planName == key.planName
+            && products.meesho.durationDays == key.durationDays
+            && products.meesho.shippingEnabled == true
+            && products.meesho.startDate == key.startDate
+            && products.meesho.expiryDate == key.expiryDate))
+        && (!included.hasAny(['flipkart']) ||
+          (products.flipkart.uid == uid
+            && products.flipkart.activationKey == code
+            && products.flipkart.planId == key.planId
+            && products.flipkart.planName == key.planName
+            && products.flipkart.durationDays == key.durationDays
+            && products.flipkart.shippingEnabled == true
+            && products.flipkart.startDate == key.startDate
+            && products.flipkart.expiryDate == key.expiryDate));
+    }
+
     match /productMemberships/{uid} {
       allow read: if isAdmin() || (isSelf(uid) && uid != '_meta');
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isAdmin() || (isSelf(uid) && canRedeemProductMembership(uid));
+      allow delete: if isAdmin();
     }
 
     match /combinedPlans/{planId} {
