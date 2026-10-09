@@ -52,6 +52,7 @@ Rules changes in this release:
 - Allow only the fixed Admin UID to create its own `admins/{uid}` owner record for first-time bootstrap.
 - Remove device-limit field equality from activation-key validation.
 - Add admin-controlled read/write access for `productMemberships` and `combinedPlans`.
+- Permit each signed-in user to read/write their own `users/{uid}/flipkartProfiles/*` subcollection; other users remain blocked.
 - Factory reset is implemented in a callable function with Admin UID verification; Rules do not grant users database-wide delete permission.
 
 Do not run Factory Reset until the backup target is available in Firebase Storage. The function fails before deleting anything if it cannot create the backup.
