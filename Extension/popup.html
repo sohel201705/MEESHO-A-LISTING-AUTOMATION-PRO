@@ -1748,11 +1748,11 @@
     .header { background:linear-gradient(135deg,#0a1220,#101d33)!important; border-bottom:1px solid var(--pro-border2)!important; color:#fff!important; }
     .view, .tab-content, .tab-pane, .section, .panel, .card { color:var(--pro-text); }
     .view { background:var(--pro-bg)!important; }
-    #view-profilesLanding, #view-fill, #view-login, #view-pricing, #view-deviceLocked, #view-signup, #view-lowerShippingPricing {
+    #view-profilesLanding, #view-fill, #view-login, #view-pricing, #view-signup, #view-lowerShippingPricing {
       background:radial-gradient(circle at 20% 0%,rgba(77,163,255,.13),transparent 30%),linear-gradient(180deg,#070b14 0%,#0a101b 100%)!important;
       color:var(--pro-text)!important;
     }
-    #view-profilesLanding > div, #view-fill > div, #view-pricing > div, #view-login > div, #view-deviceLocked > div {
+    #view-profilesLanding > div, #view-fill > div, #view-pricing > div, #view-login > div {
       background:linear-gradient(180deg,rgba(17,27,45,.98),rgba(10,18,32,.98))!important;
       color:var(--pro-text)!important; border-color:var(--pro-border)!important; box-shadow:0 18px 50px rgba(0,0,0,.38)!important;
     }
@@ -1857,33 +1857,6 @@
         <div style="width:46px; height:46px; border-radius:50%; border:4px solid #203654; border-top-color:#22c55e; margin:12px auto; animation:spin 0.9s linear infinite;"></div>
         <div class="premium-label">CHECKING SUBSCRIPTION</div>
         <div style="font-size:12px; color:#94a3b8; margin-top:8px;">Please wait...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- DEVICE LIMIT VIEW -->
-  <div class="view" id="view-deviceLocked">
-    <div class="premium-screen">
-      <div class="premium-card" style="padding:22px 18px;">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
-          <div style="width:42px; height:42px; border-radius:12px; background:#172846; display:flex; align-items:center; justify-content:center; color:#48a3ff; font-weight:900; font-size:20px;">!</div>
-          <div>
-            <div class="premium-label">Access blocked</div>
-            <div style="font-size:20px; line-height:1.1; font-weight:900; color:#f8fafc;">3-device limit reached</div>
-          </div>
-        </div>
-        <div style="font-size:13px; color:#94a3b8; line-height:1.45; margin-bottom:14px;">
-          This membership already uses all allowed device slots. Ask the admin to reset a device slot before using another computer.
-        </div>
-        <div style="background:#0d1629; border:1px solid #2b4264; border-radius:10px; padding:12px; margin-bottom:14px;">
-          <div class="premium-label" style="margin-bottom:4px;">Signed in as</div>
-          <div id="device-lock-email" style="font-size:13px; color:#e2e8f0; font-weight:800; word-break:break-all;">...</div>
-        </div>
-        <a href="https://wa.me/919064827025?text=Hi%2C%20please%20reset%20my%20MEESHO%20A%2B%20LISTING%20AUTOMATION%20PRO%20PC%20limit." target="_blank" rel="noopener"
-          style="display:flex; align-items:center; justify-content:center; height:44px; width:100%; border-radius:10px; background:#22c55e; color:#fff; text-decoration:none; font-weight:900; margin-bottom:10px;">
-          Contact Admin
-        </a>
-        <button class="btn" id="device-lock-logout-btn" style="background:#12203a; border:1px solid #2b4264; color:#f8fafc;">Logout</button>
       </div>
     </div>
   </div>
@@ -2159,6 +2132,13 @@
         </span>
         <span>Open Meesho Panel</span>
       </button>
+
+      <div id="admin-resource-links" style="display:flex; gap:10px; margin-top:10px;">
+        <a id="meesho-tutorial-link" href="#" target="_blank" rel="noopener"
+          style="display:none; flex:1; align-items:center; justify-content:center; padding:10px 8px; border-radius:10px; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; text-decoration:none; font-size:12px; font-weight:800;">▶ Watch Tutorial</a>
+        <a id="meesho-master-download-link" href="#" target="_blank" rel="noopener"
+          style="display:none; flex:1; align-items:center; justify-content:center; padding:10px 8px; border-radius:10px; color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; text-decoration:none; font-size:12px; font-weight:800;">⬇ Download Master Files</a>
+      </div>
 
       <div style="font-size:10px; font-weight:700; color:#637381; letter-spacing:0.6px; margin:18px 0 6px;">
         SAVED PROFILES

@@ -1,0 +1,60 @@
+name: Validate Firebase and Extension Source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Extension/**'
+      - 'admin/**'
+      - 'firebase/**'
+      - '.github/workflows/validate-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate JSON files
+        shell: bash
+        run: |
+          node -e "for (const f of ['Extension/manifest.json','firebase/firebase.json','firebase/functions/package.json']) { if (f.endsWith('.json')) { JSON.parse(require('node:fs').readFileSync(f, 'utf8')); console.log('JSON OK:', f); } }"
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          node --check Extension/background.js
+          node --check Extension/popup.js
+          node --check Extension/content.js
+          node --check firebase/functions/index.js
+          node --input-type=module --check < admin/admin.js
+
+      - name: Verify product scopes and reset safeguards
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const manifest = JSON.parse(fs.readFileSync('Extension/manifest.json', 'utf8'));
+          const rules = fs.readFileSync('firebase/firestore.rules', 'utf8');
+          const functions = fs.readFileSync('firebase/functions/index.js', 'utf8');
+          const admin = fs.readFileSync('admin/admin.js', 'utf8');
+          assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
+          assert.match(manifest.content_security_policy.extension_pages, /cloudfunctions\.net/);
+          assert.match(rules, /YnfQtmTpm9asdR0izeWuMwmX3Sw1/);
+          assert.match(rules, /flipkartProfiles/);
+          assert.match(functions, /factoryResetNonAdminData/);
+          assert.match(functions, /request\.auth\.uid !== ADMIN_UID/);
+          assert.match(functions, /RESET ALL NON-ADMIN DATA/);
+          assert.ok(admin.includes("snap.docs.filter(d=>d.id!=='_meta')"));
+          console.log('Product-scope, Admin UID, metadata filtering and reset safeguards verified.');
+          NODE

@@ -1,0 +1,13 @@
+{
+  "name": "meesho-a-plus-listing-automation-pro-firebase-functions",
+  "private": true,
+  "description": "Admin-only Firebase maintenance and factory reset functions for MEESHO A+ LISTING AUTOMATION PRO.",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  }
+}

@@ -1,0 +1,57 @@
+name: Deploy Firebase Rules and Admin Functions
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'firebase/firestore.rules'
+      - 'firebase/firebase.json'
+      - 'firebase/functions/**'
+      - '.github/workflows/deploy-firebase.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Firebase deploy credential
+        id: credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Firebase backend was not deployed because FIREBASE_SERVICE_ACCOUNT_JSON is not configured. Admin UI/source will still publish with the repository update."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure Google credentials
+        if: steps.credentials.outputs.configured == 'true'
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Install Functions dependencies
+        if: steps.credentials.outputs.configured == 'true'
+        run: npm install --prefix firebase/functions --omit=dev
+
+      - name: Deploy Firestore rules and callable functions
+        if: steps.credentials.outputs.configured == 'true'
+        run: npx --yes firebase-tools deploy --config firebase/firebase.json --project meesho-a-plus-listing-b5ea0 --only firestore:rules,functions --non-interactive
+
+      - name: Remove temporary credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"

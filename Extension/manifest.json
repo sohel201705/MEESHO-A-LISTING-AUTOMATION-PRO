@@ -48,7 +48,7 @@
       }
     ]
   },
-  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Unified Autofill + Shipping Optimizer with Firebase Google login and GitHub Admin membership control.",
+  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Firebase login, product-scoped membership, and combined Meesho + Flipkart plan support.",
   "host_permissions": [
     "https://codes-market.xyz/*",
     "https://supplier.meesho.com/*",
@@ -59,7 +59,8 @@
     "https://securetoken.googleapis.com/*",
     "https://firestore.googleapis.com/*",
     "https://www.googleapis.com/*",
-    "https://sohel201705.github.io/*"
+    "https://sohel201705.github.io/*",
+    "https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -76,7 +77,7 @@
     "storage",
     "offscreen"
   ],
-  "version": "3.15.2",
+  "version": "3.16.2",
   "web_accessible_resources": [
     {
       "matches": [
@@ -92,6 +93,6 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com; frame-src https://sohel201705.github.io https://meesho-a-plus-listing-b5ea0.firebaseapp.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net; frame-src https://sohel201705.github.io https://meesho-a-plus-listing-b5ea0.firebaseapp.com;"
   }
 }

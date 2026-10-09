@@ -195,21 +195,11 @@ async function buildAccess() {
     durationDays: Number(membership?.durationDays || plan?.durationDays || 0),
     expiryDate: membership?.expiryDate || null,
     shippingEnabled: active,
-    deviceLimit: Number(membership?.deviceLimit || plan?.deviceLimit || 3),
     products: {
       fill: { active, status: active ? 'active' : (status === 'EXPIRED' ? 'expired' : 'not_found'), planType: membership?.planId || '', planLabel: membership?.planName || plan?.name || '', expiresAt: membership?.expiryDate || null },
       ship: { active, status: active ? 'active' : (status === 'EXPIRED' ? 'expired' : 'not_found'), planType: membership?.planId || '', planLabel: membership?.planName || plan?.name || '', expiresAt: membership?.expiryDate || null }
     }
   };
-  if (active) {
-    const deviceResult = await registerCurrentDevice(user.uid, full.deviceLimit || 3, token);
-    if (!deviceResult.allowed) {
-      full.subscription_reason = 'device_locked';
-      return { allowed:false, reason:'device_locked', user:full, membership, plan, device:deviceResult };
-    }
-    full.deviceId = deviceResult.deviceId;
-    full.deviceCount = deviceResult.count;
-  }
   return { allowed: active, reason: active ? 'active' : (status === 'EXPIRED' ? 'expired' : status || 'not_activated'), user: full, membership, plan };
 }
 
@@ -336,31 +326,6 @@ async function logout() {
   ]);
 }
 
-async function registerCurrentDevice(uid, limit, token) {
-  if (!uid || !token) return { allowed:false, reason:'unauthenticated' };
-  const stored = await chrome.storage.local.get(['firebase_device_id']);
-  let deviceId = stored.firebase_device_id;
-  if (!deviceId) {
-    deviceId = (crypto.randomUUID ? crypto.randomUUID() : ('device_' + Date.now() + '_' + Math.random().toString(36).slice(2,10)));
-    await chrome.storage.local.set({ firebase_device_id: deviceId });
-  }
-  const listUrl = FIRESTORE_BASE + '/devices/' + encodeURIComponent(uid) + '/sessions?pageSize=50';
-  const res = await fetch(listUrl, { headers:{ Authorization:'Bearer ' + token } });
-  if (!res.ok) return { allowed:false, reason:'device_check_failed', deviceId };
-  const data = await res.json().catch(()=>({}));
-  const docs = Array.isArray(data.documents) ? data.documents : [];
-  const suffix = '/sessions/' + deviceId;
-  const existing = docs.find(d => String(d.name || '').endsWith(suffix));
-  const maxDevices = Math.max(1, Number(limit || 3));
-  if (!existing && docs.length >= maxDevices) return { allowed:false, reason:'device_locked', deviceId, count:docs.length, limit:maxDevices };
-  const oldFields = fromFirestoreFields(existing?.fields || {});
-  const now = new Date().toISOString();
-  await firestorePatch('devices/' + uid + '/sessions/' + deviceId, {
-    deviceId, uid, lastSeenAt:now, firstSeenAt:oldFields.firstSeenAt || now,
-    userAgent: navigator.userAgent, platform: navigator.platform || '', label:'Chrome Extension'
-  }, token, ['deviceId','uid','lastSeenAt','firstSeenAt','userAgent','platform','label']);
-  return { allowed:true, deviceId, count:existing ? docs.length : docs.length + 1, limit:maxDevices };
-}
 async function redeemActivationCode(code) {
   const token = await getValidFirebaseToken({ interactive: false });
   const stored = await getStoredSession();
@@ -370,76 +335,19 @@ async function redeemActivationCode(code) {
   const normalized = String(code || '').trim().toUpperCase();
   if (!normalized) return { ok: false, error: 'Enter an activation code.' };
 
-  const keyDoc = await firestoreGet(`activationKeys/${normalized}`, token);
-  const key = keyDoc?.fields;
-  if (!key) return { ok: false, error: 'Activation code not found.' };
-  if (String(key.status || '').toUpperCase() !== 'AVAILABLE') return { ok: false, error: 'This activation code is already used or unavailable.' };
-  if (key.assignedEmail && String(key.assignedEmail).toLowerCase() !== String(user.email).toLowerCase()) return { ok: false, error: 'This activation code is assigned to another Google account.' };
-
-  const planDoc = await firestoreGet(`plans/${key.planId}`, token);
-  const plan = planDoc?.fields;
-  if (!plan || plan.active === false) return { ok: false, error: 'The plan attached to this activation code is not available.' };
-
-  const membership = {
-    uid: user.uid,
-    email: user.email,
-    planId: key.planId,
-    planName: key.planName || plan.name || key.planId,
-    status: 'ACTIVE',
-    durationDays: Number(key.durationDays || plan.durationDays || 0),
-    deviceLimit: Number(key.deviceLimit || plan.deviceLimit || 3),
-    shippingEnabled: true,
-    activationKey: normalized,
-    startDate: key.startDate || new Date().toISOString(),
-    expiryDate: key.expiryDate || null,
-    activatedAt: new Date().toISOString()
-  };
-  const keyUpdate = {
-    ...key,
-    status: 'REDEEMED',
-    redeemedBy: user.uid,
-    redeemedEmail: user.email,
-    redeemedAt: new Date().toISOString()
-  };
-
-  const writes = [
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/memberships/${encodeURIComponent(user.uid)}`,
-        fields: toFirestoreFields(membership)
-      }
-    },
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/activationKeys/${encodeURIComponent(normalized)}`,
-        fields: toFirestoreFields(keyUpdate)
-      }
-    },
-    {
-      update: {
-        name: `${FIRESTORE_RESOURCE_PREFIX}/users/${encodeURIComponent(user.uid)}`,
-        fields: toFirestoreFields({
-          uid: user.uid,
-          email: user.email,
-          name: user.full_name || user.name || user.email,
-          photoURL: user.photoURL || '',
-          lastMembershipPlan: membership.planId,
-          membershipStatus: 'ACTIVE',
-          membershipUpdatedAt: new Date().toISOString()
-        })
-      }
-    }
-  ];
-
-  const res = await fetch(FIRESTORE_COMMIT, {
+  // A callable transaction consumes the key once and writes all included product entitlements atomically.
+  const endpoint = 'https://asia-south1-meesho-a-plus-listing-b5ea0.cloudfunctions.net/redeemActivationKey';
+  const res = await fetch(endpoint, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ writes })
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { code: normalized, product: 'meesho' } })
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: out?.error?.message || 'Activation could not be completed.' };
+  const result = out?.result || out?.data || {};
+  if (result.ok !== true) return { ok: false, error: result.error || 'Activation could not be completed.' };
   const access = await buildAccess();
-  return { ok: true, access };
+  return { ok: true, access, includedProducts: result.includedProducts || ['meesho'] };
 }
 
 async function openWhatsApp(url) {
@@ -479,6 +387,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'FIREBASE_LOGIN':
           sendResponse(await login());
           return;
+        case 'GET_TUTORIAL_URL': {
+          const token = await getValidFirebaseToken({ interactive: false });
+          if (!token) { sendResponse({ ok: false, url: '', downloadUrl: '' }); return; }
+          const settingsDoc = await firestoreGet('settings/general', token);
+          const settings = settingsDoc?.fields || {};
+          sendResponse({
+            ok: true,
+            url: String(settings.meeshoTutorialUrl || ''),
+            downloadUrl: String(settings.meeshoMasterDownloadUrl || '')
+          });
+          return;
+        }
         case 'FIREBASE_LOGOUT':
           await logout();
           sendResponse({ ok: true });
