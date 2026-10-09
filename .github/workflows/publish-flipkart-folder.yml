@@ -1,0 +1,43 @@
+name: Publish Flipkart Extension Folder
+
+on:
+  push:
+    branches:
+      - publish-flipkart-1-6-8-20261009
+    paths:
+      - "packages/READY"
+
+permissions:
+  contents: write
+
+jobs:
+  extract-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publishing branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Extract and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat packages/flipkart-1.6.8-part-*.b64 | base64 --decode > /tmp/flipkart-1.6.8.zip
+          unzip -t /tmp/flipkart-1.6.8.zip
+          mkdir -p Flipkart-Extension
+          unzip -oq /tmp/flipkart-1.6.8.zip -d Flipkart-Extension
+          test -f Flipkart-Extension/manifest.json
+          grep -q '"name": "FLIPKART A+ LISTING AUTOMATION PRO"' Flipkart-Extension/manifest.json
+          grep -q '"version": "1.6.8"' Flipkart-Extension/manifest.json
+          rm -rf packages
+      - name: Commit folder only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Flipkart-Extension packages
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Publish FLIPKART A+ LISTING AUTOMATION PRO v1.6.8"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
