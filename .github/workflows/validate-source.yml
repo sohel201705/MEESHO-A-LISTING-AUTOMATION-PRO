@@ -39,6 +39,9 @@ jobs:
           node --check Extension/content.js
           node --input-type=module --check < admin/admin.js
 
+      - name: Compile Firestore Rules with the local emulator
+        run: npx --yes firebase-tools emulators:exec --only firestore --config firebase/firebase.json --project demo-free-mode "echo Firestore Rules compiled in emulator."
+
       - name: Verify free-mode backup and membership safeguards
         shell: bash
         run: |
