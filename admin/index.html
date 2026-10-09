@@ -85,6 +85,12 @@
       <section id="section-plans" class="section">
         <div class="panel glass">
           <div class="panel-head"><div><h3>Membership plans</h3><p>Price, duration and product access are controlled here. Shipping stays included.</p></div><button id="new-plan" class="primary">+ New Plan</button></div>
+          <div class="plan-scope-tabs" role="tablist" aria-label="Filter plans by product">
+            <button type="button" class="plan-scope-tab active" data-plan-scope="meesho" role="tab" aria-selected="true">Meesho Plans</button>
+            <button type="button" class="plan-scope-tab" data-plan-scope="flipkart" role="tab" aria-selected="false">Flipkart Plans</button>
+            <button type="button" class="plan-scope-tab" data-plan-scope="combined" role="tab" aria-selected="false">Combo Plans</button>
+          </div>
+          <div id="plans-scope-description" class="plan-scope-description">Meesho-only memberships</div>
           <div id="plans-list" class="cards-grid"></div>
         </div>
         <div id="plan-editor" class="panel glass hidden">

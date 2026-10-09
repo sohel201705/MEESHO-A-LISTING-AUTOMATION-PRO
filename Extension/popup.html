@@ -1827,6 +1827,12 @@
     .view.active { overflow-y:auto!important; scrollbar-width:thin; scrollbar-color:#29476f transparent; }
     .view.active::-webkit-scrollbar { width:6px; }
     .view.active::-webkit-scrollbar-thumb { background:#29476f; border-radius:8px; }
+
+    .pricing-scope-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0 0 6px;padding:4px;border:1px solid #dbeafe;border-radius:12px;background:#eaf2ff}
+    .pricing-scope-btn{min-height:36px;padding:7px 5px;border:1px solid transparent;border-radius:8px;background:transparent;color:#475569;font-size:10px;font-weight:900;letter-spacing:.035em;cursor:pointer;transition:all .16s ease}
+    .pricing-scope-btn:hover{border-color:#93c5fd;color:#1d4ed8}
+    .pricing-scope-btn.active{background:linear-gradient(135deg,#2563eb,#3b82f6);border-color:#2563eb;color:#fff;box-shadow:0 4px 10px rgba(37,99,235,.2)}
+    .pricing-scope-title{text-align:center;font-size:11px;font-weight:900;letter-spacing:.04em;color:#1e3a8a;margin:0 0 11px;text-transform:uppercase}
 </style>
 </head>
 
@@ -1911,6 +1917,12 @@
   <div class="view" id="view-pricing" style="padding: 12px 16px; background: #eff6ff;">
     <div class="auth-title" style="margin-top: 4px; font-size: 18px; margin-bottom: 6px;">Premium Access — Sohel Enterprise</div>
     <div style="text-align:center; color:#637381; font-size:11px; margin-bottom:10px;">Choose an active membership plan published by the Admin Panel.</div>
+    <div class="pricing-scope-switch" id="pricing-scope-switch" role="group" aria-label="Membership product category">
+      <button type="button" class="pricing-scope-btn active" data-pricing-scope="meesho" aria-pressed="true">MEESHO</button>
+      <button type="button" class="pricing-scope-btn" data-pricing-scope="flipkart" aria-pressed="false">FLIPKART</button>
+      <button type="button" class="pricing-scope-btn" data-pricing-scope="combined" aria-pressed="false">COMBO</button>
+    </div>
+    <div id="pricing-scope-title" class="pricing-scope-title">Meesho plans</div>
 
     <section class="activation-box activation-box--neon" id="activation-box">
       <div class="activation-box__header">

@@ -67,7 +67,7 @@ jobs:
           const content = fs.readFileSync('Extension/content.js', 'utf8');
           const shipping = fs.readFileSync('Extension/js/shippingOptimizer.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.16.4');
+          assert.equal(manifest.version, '3.16.5');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));

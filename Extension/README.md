@@ -1,4 +1,4 @@
-# MEESHO A+ LISTING AUTOMATION PRO — Extension
+# MEESHO A+ LISTING AUTOMATION PRO — Extension v3.16.5
 
 ## Unified access
 
@@ -32,3 +32,7 @@ Set the Chrome Extension OAuth Client ID in:
 
 Firebase project:
 `meesho-a-plus-listing-b5ea0`
+
+
+## Membership plan picker
+The pricing view starts on Meesho plans and lets the customer switch to Flipkart-only or Combo plans. This changes only the displayed plan category; the original Firestore plan IDs, prices, activation keys, and membership entitlements remain in use.
