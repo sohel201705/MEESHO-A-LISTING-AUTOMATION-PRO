@@ -138,7 +138,7 @@ exports.factoryResetNonAdminData = onCall({
   return {
     ok: true,
     backupPath,
-    deletedFirestoreRootCollections: rootCollections.filter(c => c.id !== 'admins' || true).length,
+    processedFirestoreRootCollections: rootCollections.length,
     deletedAuthUsers: removableUids.length,
     preservedAdminUid: ADMIN_UID,
     nextStep: 'Run Initialize DB / Integration from the Admin Panel to recreate collection markers, default plans, and missing settings.'
