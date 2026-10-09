@@ -32,3 +32,12 @@ Repository: `sohel201705/MEESHO-A-LISTING-AUTOMATION-PRO`
 Replace any OAuth client placeholders before testing extension Google login. Never put service-account private keys in repository code or client-side files.
 
 The local backup is a JSON snapshot of Firestore documents, not an export of Firebase Authentication user credentials. Keep downloaded backups somewhere private.
+
+## Extension data boundary (login + membership only)
+
+- Firebase is used for Google authentication, the minimum account record needed for Admin user management, membership/product entitlement checks, plan/expiry checks, and redeeming an activation key.
+- The minimal login record in `users/{uid}` contains account metadata such as UID, email, display name, profile photo URL, provider, verification state and last-login time. Membership activation updates only the membership fields needed for entitlement management.
+- No per-action activity log is written for Product Scan, AutoFill, profile selection, edit, save, import, export or delete.
+- Saved Profiles, field values and Scan snapshots stay in Chrome's local extension storage. Import/export is local JSON; it does not synchronize to `codes-market.xyz`, Supabase, or another profile server.
+- When a user intentionally scans/saves a product or uploads images, product-operation requests still go to Meesho's own platform APIs because those actions must interact with the seller portal. That is not an upload of the saved profile to our own Admin backend.
+- Extension login still refreshes Firebase authentication tokens, reads the current membership and relevant plan data, and reads Admin-configured tutorial/download links when the user opens those links.
