@@ -1,0 +1,60 @@
+name: Publish current Meesho extension ZIP
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          with open('Extension/manifest.json', encoding='utf-8') as f:
+              m = json.load(f)
+          assert m.get('manifest_version') == 3
+          assert m.get('name') == 'MEESHO A+ LISTING AUTOMATION PRO'
+          print('Validated:', m['name'], m['version'])
+          PY
+
+      - name: Build extension ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(python -c "import json; print(json.load(open('Extension/manifest.json'))['version'])")
+          mkdir -p release-assets
+          ZIP="release-assets/MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_${VERSION}.zip"
+          (cd Extension && zip -rq "../$ZIP" . -x '_metadata/*' '*.DS_Store')
+          unzip -t "$ZIP"
+          python - "$ZIP" "$VERSION" <<'PY'
+          import json, sys, zipfile
+          asset, expected = sys.argv[1], sys.argv[2]
+          with zipfile.ZipFile(asset) as z:
+              assert z.testzip() is None
+              m = json.loads(z.read('manifest.json'))
+              assert m['name'] == 'MEESHO A+ LISTING AUTOMATION PRO'
+              assert m['version'] == expected
+          print('ZIP verified:', asset)
+          PY
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: meesho-v${{ github.run_number }}-${{ github.sha }}
+          name: MEESHO A+ LISTING AUTOMATION PRO ${{ github.sha }}
+          files: release-assets/MEESHO_A_PLUS_LISTING_AUTOMATION_PRO_*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
