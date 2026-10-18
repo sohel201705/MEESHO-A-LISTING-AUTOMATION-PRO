@@ -31,9 +31,30 @@ function safeKeyName(k){
 function redactSecrets(message,k){
  let out=String(message&&message.message||message||'Unknown error');
  const key=String(k&&k.apiKey||'');if(key)out=out.split(key).join('[API key redacted]');
- return out.replace(/\\b(?:AIzaSy[A-Za-z0-9_-]{12,}|gsk_[A-Za-z0-9_-]{12,}|xai-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{12,})\\b/g,'[API key redacted]').slice(0,180);
+ return out.replace(/\b(?:AIzaSy[A-Za-z0-9_-]{12,}|gsk_[A-Za-z0-9_-]{12,}|xai-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{12,})\b/g,'[API key redacted]').slice(0,180);
 }
-async function keys(){const r=await get(KEY);return Array.isArray(r[KEY])?r[KEY]:[];}
+async function keys(){
+ const r=await get(KEY);let list=Array.isArray(r[KEY])?r[KEY]:[],changed=false;
+ // Recover common provider-selection mistakes from earlier extension versions:
+ // Groq keys start with gsk_; Google AI Studio keys commonly start with AIzaSy.
+ list=list.map(k=>{
+  if(!k||typeof k!=='object')return k;
+  const apiKey=String(k.apiKey||''),endpoint=String(k.endpoint||'');
+  if(k.provider==='compatible'&&/^gsk_/i.test(apiKey)){
+   changed=true;
+   return Object.assign({},k,{provider:'groq',model:/^qwen\\//i.test(String(k.model||''))?'qwen/qwen3.8-27b':modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
+  }
+  if(k.provider==='compatible'&&/^AIzaSy/i.test(apiKey)){
+   changed=true;
+   return Object.assign({},k,{provider:'gemini',model:modelDefault('gemini'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Google Gemini key':k.name});
+  }
+  if(k.provider==='groq'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('groq'),endpoint:''});}
+  if(k.provider==='gemini'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('gemini'),endpoint:''});}
+  return k;
+ });
+ if(changed)await set({[KEY]:list});
+ return list;
+}
 async function persistKeys(v){await set({[KEY]:v});await renderKeys();}
 async function renderKeys(){
  const host=$('ai-provider-key-list');if(!host)return;host.replaceChildren();const all=await keys();
