@@ -2320,9 +2320,14 @@
               <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
               <label>Model ID<input id="ai-key-model" type="text" placeholder="Model ID from provider"></label>
               <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
-              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste provider API key"></label>
+              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
+              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
+              <label>Bulk add API keys (one per line; optional format: Label | API key)
+                <textarea id="ai-key-bulk" rows="4" placeholder="Gemini Key 1 | paste-key-here&#10;Gemini Key 2 | paste-key-here&#10;paste another key on its own line"></textarea>
+              </label>
+              <p class="ai-muted">All lines use the selected provider and model. Lines beginning with # are ignored. Duplicate keys for the same provider are skipped.</p>
+              <button id="ai-add-bulk-keys-btn" type="button" class="ai-secondary-btn">Add All Keys in List</button>
               <p id="ai-provider-hint" class="ai-muted"></p>
-              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add API Key</button>
             </div>
           </div>
           <div class="ai-settings-section">
