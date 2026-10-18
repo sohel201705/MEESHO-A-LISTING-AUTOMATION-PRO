@@ -89,12 +89,24 @@ function officialTaxEvidence(field,candidate,evidence,research){
  const sourceText=(row.title+' '+row.snippet).toLowerCase();
  if(isHsn){
   const digits=String(candidate||'').replace(/\D/g,'');
+  if(!/^\d{4}(?:\d{2})?(?:\d{2})?$/.test(digits))return null;
+  const escaped=digits.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\ const sourceText=(row.title+' '+row.snippet).toLowerCase();
+ if(isHsn){
+  const digits=String(candidate||'').replace(/\D/g,'');
   const sourceDigits=(row.title+' '+row.snippet).replace(/\D/g,'');
   if(digits.length<4||!sourceDigits.includes(digits))return null;
  }else{
   const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
   const compact=sourceText.replace(/\s+/g,'');
   if(!compact.includes(String(Number(n[0]))+'%'))return null;
+ }');
+  const hasCode=new RegExp('(?:hsn|tariff|classification|commodity|heading)[^\\d]{0,40}'+escaped+'\\b','i').test(row.title+' '+row.snippet);
+  if(!hasCode)return null;
+ }else{
+  const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
+  const rate=String(Number(n[0])).replace('.','\\.');
+  const ratePattern=new RegExp('(?:gst|tax|rate|slab)[^\\d%]{0,30}'+rate+'\\s*%|'+rate+'\\s*%[^\\w]{0,18}(?:gst|tax|rate|slab)','i');
+  if(!ratePattern.test(sourceText))return null;
  }
  return row;
 }
@@ -352,18 +364,21 @@ function exactUnitOption(field,candidates){
   const hit=options.find(o=>norm(o)===norm(candidate));
   if(hit!==undefined)return String(hit);
  }
- return options.length?'':'';
+ return '';
 }
 function exactCapacityOption(field,ml,label){
  const options=Array.isArray(field.values)?field.values:[];
+ const x=norm(label),isLitres=/capacity_in_l|capacity in l|\b(in l|litre|liter)\b/.test(x),isMl=/\bml\b|milliliter|millilitre/.test(x);
  for(const option of options){
   const optionMl=capacityInMl(option);
   if(optionMl!==null&&Math.abs(optionMl-ml)<0.01)return String(option);
+  const number=String(option||'').trim().match(/^\d+(?:\.\d+)?$/);
+  if(number&&isLitres&&Math.abs(Number(number[0])*1000-ml)<0.01)return String(option);
+  if(number&&isMl&&Math.abs(Number(number[0])-ml)<0.01)return String(option);
  }
- const x=norm(label);
  if(!options.length){
-  if(/capacity_in_l|capacity in l|\b(in l|litre|liter)\b/.test(x))return String(Number((ml/1000).toFixed(4)));
-  if(/\bml\b|milliliter|millilitre/.test(x))return String(Number(ml.toFixed(4)));
+  if(isLitres)return String(Number((ml/1000).toFixed(4)));
+  if(isMl)return String(Number(ml.toFixed(4)));
  }
  return '';
 }
