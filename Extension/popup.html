@@ -1840,7 +1840,7 @@
     .ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
     .ai-head h3{font-size:15px;margin:2px 0 5px;color:#0f172a}.ai-head p,.ai-muted{font-size:11px;line-height:1.45;color:#64748b;margin:4px 0}
     .ai-kicker{font-size:9px;font-weight:800;letter-spacing:1px;color:#2563eb}.ai-status-pill{font-size:9px;font-weight:800;background:#eff6ff;color:#1d4ed8;padding:5px 7px;border-radius:99px;white-space:nowrap}
-    .ai-product-grid,.ai-default-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    .ai-scan-summary{font-size:11px;line-height:1.4;padding:8px;border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:6px;margin:5px 0 8px}\n    .ai-product-grid,.ai-default-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
     .ai-catalog-card label{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:700;color:#475569;min-width:0}
     .ai-catalog-card input,.ai-catalog-card textarea,.ai-catalog-card select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:7px;font:inherit;font-size:11px;color:#0f172a;background:#fff}
     .ai-catalog-card input[type=file]{padding:7px;font-weight:400}.ai-full-label{display:flex;flex-direction:column;gap:5px;margin:8px 0}
@@ -2289,6 +2289,8 @@
           <div><div class="ai-kicker">AI WORKFLOW</div><h3>AI Catalog Autofill</h3><p>Scan the selected catalog, upload photos, generate a draft and autofill.</p></div>
           <span class="ai-status-pill">MULTI-API</span>
         </div>
+        <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
+        <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Scan Current Meesho Catalog</button>
         <div class="ai-product-grid">
           <label>Product name (optional)<input id="ai-product-name" type="text" placeholder="e.g. 750ml water bottle"></label>
           <label>Material (only if known)<input id="ai-product-material" type="text" placeholder="Verified material"></label>
