@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/ai-catalog-autofill
+      - main
     paths:
       - 'Extension/**'
       - '.github/workflows/package-extension.yml'
@@ -41,4 +42,4 @@ jobs:
           name: MEESHO-A-LISTING-AUTOMATION-PRO-Extension
           path: dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
