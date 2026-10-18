@@ -607,16 +607,26 @@ async function autofill(){
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
   if(pending.length&&!confirm('Some fields need confirmation. Continue autofill? Unknown values will remain untouched.'))return;
   const payload=Object.assign({},draft);
+  // Values explicitly typed/selected in the existing Step 2 form override AI suggestions.
+  document.querySelectorAll('#dynamic-sections-container [id^="f_"]').forEach(input=>{
+   const identifier=input.id.slice(2),value=String(input.value||'').trim();
+   if(value)payload[identifier]=value;
+  });
+  // Keep per-size table entries that the seller typed manually.
+  document.querySelectorAll('#size-measure-table input[id*="__"]').forEach(input=>{
+   const value=String(input.value||'').trim();if(value)payload[input.id]=value;
+  });
   if(selected.length)payload._variation_sizes=selected.join(',');
   await set({meesho_autofill_values:payload});
   say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
   const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the Meesho page and retry.'));if(!r)return reject(new Error('Meesho did not return an autofill result.'));resolve(r);}));
   const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
   if(filled===0){
-   say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.'),'error');return;
+   say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.')+' Inspect the failed-field list in the message, then retry.','error');return;
   }
   if(result.stopped||failed.length){
-   say('Partial autofill: '+filled+' field(s). '+(result.message||failed.join(', '))+' Check the failed fields below before saving.','warning');return;
+   const shown=failed.slice(0,6).join(', ')+(failed.length>6?'… and '+(failed.length-6)+' more':'');
+   say('Partial autofill: '+filled+' field(s). '+shown+'. '+(result.stopped?'Some fields could not be filled. ':'')+'Review the remaining fields before saving.','warning');return;
   }
   say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}
