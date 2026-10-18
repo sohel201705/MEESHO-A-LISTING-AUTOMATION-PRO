@@ -609,23 +609,85 @@ function showPreview(fields,values,needs,stats,research){
  root.appendChild(el('p','ai-muted','Review the draft. Unverified tax/legal values and actual measurements are not guessed. Search sources are shown above when Google access is available.'));
 }
 function isProductNameField(f){return /product_name/.test(String(f.identifier||''))||/^product name$/i.test(String(f.label||'').trim());}
+async function identifyProductFromPhotos(imgs,providedFacts){
+ const seed=imgs.map(i=>cleanSearchSeed(i.name)).filter(Boolean).slice(0,6);
+ const prompt=[
+  'You identify an e-commerce product from its supplied photos so the user can search the web for the exact item.',
+  'Return ONLY valid JSON: {"productName":"concise specific searchable product title","brandIfLegible":"","modelIfLegible":"","colorIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"confidence":"high|medium|low"}.',
+  'Do not invent a brand, model, capacity, material or feature. Use brand/model only when actually legible in a photograph. For a generic title, describe only visibly supported product type and shape. If unclear, return a cautious generic title and confidence "low".',
+  'Visible filename hints:',JSON.stringify(seed),
+  'Seller-provided confirmed facts:',String(providedFacts||'none supplied')
+ ].join('\n');
+ return parseJson((await callAI(prompt,imgs.slice(0,3))).text);
+}
 async function generate(googleAllowed){
  try{
-  say('Scanning the current Meesho form…');
+  clearLiveLog();
+  liveLog('PIPELINE START · product research + catalog draft','info');
+  say('Scanning the selected Meesho catalog…');
   const scan=await scanCurrentCatalog(false),s=schema(scan);
-  if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
+  if(!s.fields.length)throw new Error('No form fields found. Select the catalog and scan again.');
+  liveLog('CATALOG SCAN · '+s.fields.length+' mapped fields; '+s.measurements.length+' per-size measurement fields.','ok');
+
+  const inventoryInput=$('ai-product-inventory');
+  if(inventoryInput&&!String(inventoryInput.value||'').trim())inventoryInput.value='100';
   const p={
    productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),
    color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),
    productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),
    productHeight:$('ai-product-height').value.trim(),productCapacity:$('ai-product-capacity')?$('ai-product-capacity').value.trim():'',
-   sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()
+   sellingPrice:$('ai-product-price').value.trim(),productMrp:$('ai-product-mrp')?$('ai-product-mrp').value.trim():'',
+   inventory:inventoryInput&&String(inventoryInput.value||'').trim()?String(Math.max(0,Math.floor(Number(inventoryInput.value)||0))):'100',
+   productFacts:$('ai-product-facts').value.trim()
   };
+  if(inventoryInput)inventoryInput.value=p.inventory;
+  p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice);
+  updatePricePreview();
+  if(p.sellingPrice&&p.wrongReturnPrice)liveLog('PRICE RULE · Meesho Price ₹'+p.sellingPrice+' → Wrong/Defective Returns Price ₹'+p.wrongReturnPrice+' (₹5 less).','ok');
+  else if(p.sellingPrice)liveLog('PRICE RULE · Selling price must be greater than ₹5 to calculate a non-negative returns price.','warn');
+  else liveLog('PRICE RULE · Selling Price not entered; price fields stay blank until supplied.','warn');
+  liveLog('INVENTORY · '+p.inventory+' unit(s) selected'+(inventoryInput?' (editable; default 100).':'.'),'info');
+  if(p.productMrp)liveLog('MRP · Using the seller-entered MRP ₹'+p.productMrp+'.','info');
+  else liveLog('MRP · No verified MRP entered; will not invent one.','warn');
+
   const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images();
-  say('Searching Google for official product specifications and HSN/GST evidence…');
+  if(!p.productName){
+   try{
+    say('Identifying product title from the photos before Google Search…');
+    liveLog('VISION IDENTIFICATION · inferring a cautious searchable title from the first 3 photos.','info');
+    const identified=await identifyProductFromPhotos(imgs,p.productFacts);
+    const candidate=String(identified.productName||identified.title||'').trim();
+    if(candidate.length>=4&&String(identified.confidence||'medium').toLowerCase()!=='low'){
+     p.productName=candidate;$('ai-product-name').value=candidate;
+     const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();
+     if(brand||model)liveLog('VISION IDENTIFICATION · legible brand/model hints detected; checking them against Google results.','info');
+     const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
+     const cap=String(identified.capacityIfPrinted||'').trim();if(!p.productCapacity&&capacityInMl(cap)!==null)p.productCapacity=cap;
+     const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];
+     if(visible.length&&!p.productFacts)p.productFacts='Visible text from product photos (verify): '+visible.join('; ');
+     liveLog('VISION IDENTIFICATION · proposed title: '+candidate+'.','ok');
+    }else{
+     const fallback=cleanSearchSeed(imgs.map(i=>i.name).join(' '));
+     if(fallback){p.productName=fallback;$('ai-product-name').value=fallback;}
+     liveLog('VISION IDENTIFICATION · confidence low; using conservative filename/title hint: '+(p.productName||'unidentified product')+'.','warn');
+    }
+   }catch(e){
+    const fallback=cleanSearchSeed(imgs.map(i=>i.name).join(' '));
+    if(fallback){p.productName=fallback;$('ai-product-name').value=fallback;}
+    liveLog('VISION IDENTIFICATION · failed; continuing with '+(p.productName||'the image filename')+'. Details: '+redactSecrets(e,null),'warn');
+   }
+  }
+  if(!p.productCapacity){
+   const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
+   if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
+  }
+  say('Searching Google for product specifications, category clues and official tax sources…');
+  liveLog('GOOGLE RESEARCH · query based on the identified/seller-provided product title.','info');
   researchNow=await researchProduct(p,imgs,googleAllowed);
   renderResearchSources(researchNow);
-  say('Google Search: '+researchNow.results.length+' result(s). Analyzing photos, matching fields and drafting values…',researchNow.results.length?'':'warning');
+  liveLog('GOOGLE RESEARCH · '+researchNow.results.length+' result(s) captured from '+new Set(researchNow.results.map(r=>r.domain)).size+' domain(s).','ok');
+  if(researchNow.error)liveLog('GOOGLE RESEARCH · '+researchNow.error,'warn');
+  say('Analyzing all photos and matching values to the scanned field schema…');
   const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs);
   const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
@@ -637,11 +699,18 @@ async function generate(googleAllowed){
    const capMatch=String(p.productFacts+' '+draftTitle).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
   }
+  p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice);
+  if(p.sellingPrice&&!p.wrongReturnPrice)needs.push({identifier:'only_wrong_return_price',reason:'Enter a selling price greater than ₹5; the returns price is always calculated as selling price minus ₹5.'});
   const codes=draftTitle?await productCodes(draftTitle,p):{styleCode:'',skuCode:''};
+  liveLog('VALUE MAPPING · applying title-based SKU/Style Code, seller defaults and explicit pricing rules.','info');
   s.fields.forEach(f=>{
-   const old=captured(scan,f.identifier);if(old){values[f.identifier]=old;return;}
+   const old=captured(scan,f.identifier);
    const fixed=preset(f,p,d);
-   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved or user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
+   const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
+   // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
+   if(old&&!isPriceOrInventory){values[f.identifier]=old;return;}
+   if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
+   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    const generatedValue=generatedCodeForField(f,codes);
    if(generatedValue){
     if(allowed(generatedValue,f)){values[f.identifier]=generatedValue;generated++;}
@@ -665,11 +734,10 @@ async function generate(googleAllowed){
    }
    values[f.identifier]=String(v).trim();ai++;
   });
-  // Product capacity entered by the seller can safely fill capacity/volume fields, subject to exact dropdown matching.
   if(p.productCapacity){
    const capacityFields=s.fields.filter(f=>/(capacity|volume)/i.test(f.label+' '+String(f.identifier||'').replace(/_/g,' ')));
    capacityFields.forEach(f=>{
-    if(captured(scan,f.identifier)||String(values[f.identifier]||'').trim())return;
+    if(captured(scan,f.identifier))return;
     const label=norm(f.label+' '+f.identifier),ml=capacityInMl(p.productCapacity);if(ml===null)return;
     const candidate=exactCapacityOption(f,ml,label);
     if(candidate&&allowed(candidate,f))values[f.identifier]=candidate;
@@ -682,12 +750,13 @@ async function generate(googleAllowed){
     needs.push({identifier:f.identifier,reason:'Required field is blank because a verified value was not found.'});
   });
   draft=values;pending=needs;
+  liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
   showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
   $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
-  const imageNote=answer.provider==='groq'&&imgs.length>3?' Groq analyzes up to 3 photos per request.':'';
+  const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
   const researchNote=researchNow.results.length?' Google research added.':(' Google search unavailable: '+(researchNow.error||'no results')+'.');
-  say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||imageNote||researchNow.error?'warning':'success');
- }catch(e){say(e.message||'AI generation failed.','error');}
+  say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||researchNow.error?'warning':'success');
+ }catch(e){liveLog('PIPELINE ERROR · '+redactSecrets(e,null),'error');say(redactSecrets(e,null),'error');}
 }
 async function autofill(){
  try{
