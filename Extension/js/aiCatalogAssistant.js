@@ -66,6 +66,25 @@ function schema(scan){
  (scan.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>{const a={identifier:f.identifier||f.id,label:f.label||f.identifier||f.id,mandatory:!!f.mandatory,inputType:f.inputType||'text',values:Array.isArray(f.values)?f.values:[],section:s.label||s.id||''};if(!a.identifier)return;(s.id==='product_size_data'?measurements:fields).push(a);}));
  return {fields,measurements};
 }
+function updateScanSummary(scan){
+ const host=$('ai-scan-summary');if(!host)return;
+ const fields=[];(scan.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>fields.push(f)));
+ const values=scan.capturedValues||{};
+ const blank=fields.filter(f=>!String(values[f.identifier||f.id]||'').trim()).length;
+ const required=fields.filter(f=>f.mandatory&&!String(values[f.identifier||f.id]||'').trim()).length;
+ const sizes=(scan.sections||[]).find(s=>s.id==='variations');
+ host.textContent='Scanned '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
+}
+async function scanCurrentCatalog(showMessage){
+ const access=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!access||!access.allowed)throw new Error('Active membership required.');
+ const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
+ if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open Meesho Seller Panel and select the catalog first.');
+ const scan=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'SCAN_FORM'},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not scan the Meesho page. Refresh the page and retry.'));if(!r||r.error||!Array.isArray(r.sections))return reject(new Error((r&&r.error)||'No form schema detected. Select a catalog first.'));resolve(r);}));
+ await set({last_scan_result:scan});scanNow=scan;updateScanSummary(scan);
+ if(typeof renderStructuredForm==='function')renderStructuredForm(scan);
+ if(showMessage)say('Catalog form scanned. Check blank and mandatory field counts above.','success');
+ return scan;
+}
 function preset(f,p,d){
  const x=norm(f.label+' '+f.identifier.replace(/_/g,' ')),garment=/(kurta|bust|shoulder|hip|waist|sleeve|inseam|garment|chest|dress size|size chart)/i.test(x);
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
@@ -148,14 +167,7 @@ function showPreview(fields,values,needs,stats){
 }
 async function generate(){
  try{
-  const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
-  const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
-  if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open Meesho Seller Panel and select the catalog first.');
-  const res=await get(['last_scan_result']);let scan=res.last_scan_result;
-  if(!scan||!Array.isArray(scan.sections)||!scan.sections.length){
-   scan=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'SCAN_FORM'},r=>{if(chrome.runtime.lastError)return reject(new Error('Refresh the Meesho page and click Scan.'));if(!r||r.error||!Array.isArray(r.sections))return reject(new Error((r&&r.error)||'Scan the form first.'));resolve(r);}));
-  }
-  await set({last_scan_result:scan});scanNow=scan;const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
+  const scan=await scanCurrentCatalog(false);const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
   const p={productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),productHeight:$('ai-product-height').value.trim(),sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()};
   const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s,imgs)),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
@@ -187,6 +199,7 @@ async function autofill(){
 }
 function init(){
  if(!$('ai-catalog-assistant'))return;
+ $('ai-scan-current-btn').addEventListener('click',async()=>{try{say('Scanning current catalog form…');await scanCurrentCatalog(true);}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
  $('ai-add-key-btn').addEventListener('click',addKey);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
