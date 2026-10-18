@@ -107,3 +107,13 @@ async function gemini(k,prompt,imgs){
  if(!r.ok)throw new Error('Gemini '+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
  const out=((((data.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||'').join('\n').trim();if(!out)throw new Error('Gemini returned empty response.');return out;
 }
+
+async function compatible(k,prompt,imgs){
+ const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
+ let url=String(k.endpoint||'').trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
+ const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
+ const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
+ if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
+ const message=((((data.choices||[])[0]||{}).message||{}).content);
+ const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
+}
