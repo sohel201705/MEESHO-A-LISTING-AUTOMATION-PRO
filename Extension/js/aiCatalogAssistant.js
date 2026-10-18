@@ -302,6 +302,28 @@ function convertUnit(value,label,source){
  if(source==='cm'){if(/\bmm\b|millimeter|millimetre/.test(s))v=n*10;else if(/\bin\b|inch|inches/.test(s))v=n/2.54;else if(/\b(m|meter|metre)\b/.test(s))v=n/100;}
  return String(Number(v.toFixed(4)));
 }
+function capacityInMl(value){
+ const m=String(value||'').trim().match(/(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
+ if(!m)return null;const n=Number(m[1]);if(!Number.isFinite(n)||n<=0)return null;
+ return /^m/i.test(m[2])?n:n*1000;
+}
+function fieldText(f){return norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||''));}
+function isPhysicalMeasureField(f){
+ const x=fieldText(f);
+ if(/\b(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|armhole|thigh|outseam|rise)\b/.test(x))return false;
+ return /\b(product weight|net weight|gross weight|package weight|shipping weight|product height|product length|product breadth|product width|product depth|package height|package length|package breadth|package width|item dimensions|product dimensions)\b/.test(x)||
+  /\b(product_weight_in_gms|product_weight|product_height|product_length|product_breadth|product_width|product_depth)\b/.test(String(f.identifier||''));
+}
+function sourceSupportsExactMeasure(field,candidate,research){
+ const label=fieldText(field),value=String(candidate||'').trim(),unit=/weight/.test(label)?'(?:g|gm|gms|gram|grams|kg|kilogram)':'(?:mm|cm|in|inch|inches|m|meter|meters|metre|metres)';
+ const n=value.match(/\d+(?:\.\d+)?/);if(!n)return false;
+ return (research.results||[]).some(r=>{
+  const text=(r.title+' '+r.snippet).replace(/,/g,' ');
+  const regex=new RegExp('(?:^|\\\\D)'+n[0].replace('.','\\\\.')+'\\\\s*'+unit+'\\\\b','i');
+  return regex.test(text);
+ });
+}
+
 function preset(f,p,d){
  const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\bcm\b|\bmm\b|\binches?\b|\bmeters?\b|\bmetres?\b)/i.test(x);
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
@@ -316,6 +338,7 @@ function preset(f,p,d){
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
  if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
+ const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){if(/\\b(in l|litre|liter|capacity_in_l)\\b/.test(x))return String(Number((capMl/1000).toFixed(4)));if(/\\bml\\b|milliliter|millilitre/.test(x))return String(Number(capMl.toFixed(4)));return String(p.productCapacity);}
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
  if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
  if(!garment&&explicitDimension&&p.productLength&&/\blength\b/.test(x))return convertUnit(p.productLength,x,'cm');
@@ -340,7 +363,7 @@ function promptFor(scan,p,d,s,research){
  'Do not modify existing non-empty currentFormValues. Do not estimate real dimensions or net/package weight from a photo. Use product/official source specs when available; otherwise leave unknown measurements blank.',
  'Do not use seller address as manufacturer/packer address or treat importer as not applicable without evidence.',
  'Data and source snippets:',JSON.stringify(data)
- ].join('\\n');
+ ].join('\n');
 }
 function decodeImage(dataUrl){const m=String(dataUrl||'').match(/^data:([^;]+);base64,(.*)$/);if(!m)throw new Error('Could not decode photo.');return {mimeType:m[1],data:m[2]};}
 
@@ -453,21 +476,24 @@ async function generate(googleAllowed){
   if(draftTitle&&!p.productName&&titleField&&proposed[titleField.identifier])$('ai-product-name').value=String(proposed[titleField.identifier]).trim();
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+draftTitle).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
-   if(capMatch)p.productCapacity=(Number(capMatch[1])*(/^m/i.test(capMatch[2])?1:1000)).toString();
+   if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
   }
   const codes=draftTitle?await productCodes(draftTitle,p):{styleCode:'',skuCode:''};
   s.fields.forEach(f=>{
    const old=captured(scan,f.identifier);if(old){values[f.identifier]=old;return;}
    const fixed=preset(f,p,d);
-   if(fixed){if(allowed(f,fixed)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved or user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
+   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved or user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
    const generatedValue=generatedCodeForField(f,codes);
    if(generatedValue){
-    if(allowed(f,generatedValue)){values[f.identifier]=generatedValue;generated++;}
+    if(allowed(generatedValue,f)){values[f.identifier]=generatedValue;generated++;}
     else{needs.push({identifier:f.identifier,reason:'Generated Style Code/SKU does not match this field’s allowed options; check the field manually.'});bad++;}
     return;
    }
    const v=proposed[f.identifier];if(v===undefined||v===null||!String(v).trim())return;
    if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
+   if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
+    needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
+   }
    if(isTaxField(f)){
     const src=officialTaxEvidence(f,String(v),evidence[f.identifier],researchNow);
     if(!src){
@@ -485,7 +511,7 @@ async function generate(googleAllowed){
    const capacityFields=s.fields.filter(f=>/(capacity|volume)/i.test(f.label+' '+String(f.identifier||'').replace(/_/g,' ')));
    capacityFields.forEach(f=>{
     if(captured(scan,f.identifier)||String(values[f.identifier]||'').trim())return;
-    const label=norm(f.label+' '+f.identifier),ml=Number(p.productCapacity);
+    const label=norm(f.label+' '+f.identifier),ml=capacityInMl(p.productCapacity);if(ml===null)return;
     let candidate=String(p.productCapacity);
     if(/\b(in l|litre|liter|\bl\b)/.test(label))candidate=String(Number((ml/1000).toFixed(4)));
     if(/\bml\b|milliliter|millilitre/.test(label))candidate=String(Number(ml.toFixed(4)));
