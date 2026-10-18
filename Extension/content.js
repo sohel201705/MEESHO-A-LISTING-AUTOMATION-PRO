@@ -104,21 +104,27 @@
   }
 
   async function closeOpenDropdown() {
-    const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root');
+    const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root, [role="listbox"], [role="menu"]');
     if (!portal) return;
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     for (let i = 0; i < 10; i++) {
-      if (!document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root')) break;
+      if (!document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root, [role="listbox"], [role="menu"]')) break;
       await sleep(10);
     }
   }
 
   function findVisibleSizeMenu() {
-    for (const el of document.querySelectorAll('ul[role="menu"]')) {
-      if (el.getBoundingClientRect().width > 0) return el;
-    }
-    return null;
+    const selectors = '[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root';
+    const candidates = Array.from(document.querySelectorAll(selectors)).filter(el => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    });
+    candidates.sort((a,b) => {
+      const count = el => el.querySelectorAll('li, p, [role="option"], [role="menuitem"], button').length;
+      return count(b)-count(a);
+    });
+    return candidates[0] || null;
   }
 
   function clickSizeRow(row) {
@@ -135,98 +141,74 @@
 
   async function selectSizeDropdown(triggerEl, sizesStr, failed = []) {
     await closeOpenDropdown();
-
-    const wantedSizes = sizesStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    if (wantedSizes.length === 0) return false;
-
-    const existingMenus = new Set(document.querySelectorAll('ul[role="menu"]'));
-
-    const reactSuccess = callReactOnClick(triggerEl);
-    if (!reactSuccess) {
+    const wantedSizes = String(sizesStr||'').split(',').map(s => s.trim()).filter(Boolean);
+    if (!wantedSizes.length) return false;
+    const existing = new Set(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
+    const handled = callReactOnClick(triggerEl);
+    if (!handled) {
       realClick(triggerEl);
-      const inp = triggerEl.querySelector('input');
-      if (inp) realClick(inp);
+      const input = triggerEl && triggerEl.querySelector('input');
+      if (input) realClick(input);
     }
-
     let menu = await new Promise(resolve => {
-      function check() {
-        for (const el of document.querySelectorAll('ul[role="menu"]')) {
-          if (!existingMenus.has(el) && el.getBoundingClientRect().width > 0) { resolve(el); return; }
-        }
-      }
+      const check = () => {
+        const candidates = Array.from(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
+        const visible = candidates.filter(el => {
+          const r=el.getBoundingClientRect();
+          return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';
+        });
+        const fresh = visible.find(el=>!existing.has(el));
+        if(fresh){observer.disconnect();resolve(fresh);return;}
+        if(visible.length){observer.disconnect();resolve(visible[visible.length-1]);}
+      };
+      const observer = new MutationObserver(check);
+      observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','aria-expanded']});
       check();
-      const obs = new MutationObserver(check);
-      obs.observe(document.body, { childList: true, subtree: true });
-      setTimeout(() => { obs.disconnect(); resolve(null); }, 5000);
+      setTimeout(()=>{observer.disconnect();resolve(null);},3500);
     });
-
-    if (!menu) menu = findVisibleSizeMenu();
-
-    if (!menu) {
-      failed.push('Remove Exiting Size Selection');
-      return false;
+    if(!menu)menu=findVisibleSizeMenu();
+    if(!menu){failed.push('Size selector did not open; please select the size manually.');return false;}
+    const clicked=[];
+    for(const target of wantedSizes){
+      const active=menu.isConnected?menu:findVisibleSizeMenu();
+      if(!active){if(clicked.length)break;failed.push('Size selector closed before '+target+' was selected.');return false;}
+      const options=Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, [data-value]'));
+      const option=options.find(el=>norm(el.textContent)===norm(target))||
+        options.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
+      if(!option){failed.push('Size option not found: '+target);continue;}
+      const clickTarget=option.tagName==='P'&&option.parentElement?option.parentElement:option;
+      clickSizeRow(clickTarget);
+      await sleep(180);
+      clicked.push(target);
+      menu=findVisibleSizeMenu()||menu;
     }
-
-    const clicked = [];
-    for (const sizeTarget of wantedSizes) {
-      const activeMenu = menu.isConnected ? menu : findVisibleSizeMenu();
-      if (!activeMenu) break;
-
-      const allP = Array.from(activeMenu.querySelectorAll('p'));
-      const pEl = allP.find(p => norm(p.textContent) === norm(sizeTarget)) ||
-        allP.find(p => norm(p.textContent).startsWith(norm(sizeTarget))) ||
-        allP.find(p => norm(p.textContent).includes(norm(sizeTarget)));
-
-      if (!pEl) {
-        failed.push(`Size: ${sizeTarget}`);
-        continue;
-      }
-
-      const row = pEl.parentElement;
-      clickSizeRow(row);
+    if(!clicked.length){await closeOpenDropdown();return false;}
+    let active=menu&&menu.isConnected?menu:findVisibleSizeMenu();
+    let applyBtn=null;
+    if(active)applyBtn=Array.from(active.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim()));
+    if(!applyBtn)applyBtn=Array.from(document.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim())&&btn.getBoundingClientRect().width>0);
+    if(applyBtn){
+      applyBtn.scrollIntoView({behavior:'auto',block:'center'});
       await sleep(100);
-      clicked.push(sizeTarget);
-    }
-
-    if (clicked.length === 0) {
+      const handledApply=callReactOnClick(applyBtn);
+      if(!handledApply)realClick(applyBtn);
+      await sleep(400);
       await closeOpenDropdown();
-      return false;
+      return true;
     }
-
-    let applyBtn = null;
-    const finalMenu = menu.isConnected ? menu : findVisibleSizeMenu();
-    if (finalMenu) {
-      applyBtn = Array.from(finalMenu.querySelectorAll('button')).find(btn => btn.textContent.trim().startsWith('Apply'));
+    // Single-select variants often close immediately and have no Apply button.
+    // Do not demand an Apply button or double-click it, which can undo a selection.
+    const triggerText=norm(String(triggerEl&&triggerEl.textContent||'')+' '+String(triggerEl&&triggerEl.querySelector('input')?.value||''));
+    if(active&&active.isConnected){
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      await sleep(120);
     }
-    if (!applyBtn) {
-      applyBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.trim().startsWith('Apply') && btn.getBoundingClientRect().width > 0);
-    }
-
-    if (!applyBtn) {
-      failed.push('Size Selection Menu (Apply Button)');
-      await closeOpenDropdown();
-      return false;
-    }
-
-    await sleep(150);
-    const applyTarget = applyBtn.querySelector('span.MuiTypography-root') || applyBtn;
-
-    callReactOnClick(applyTarget);
-    await sleep(100);
-
-    if (applyTarget.isConnected) {
-      realClick(applyTarget);
-    }
-
-    await sleep(400);
-
-    if (applyBtn.isConnected && applyBtn.getBoundingClientRect().width > 0) {
-      const t = applyBtn.querySelector('span.MuiTypography-root') || applyBtn;
-      callReactOnClick(t);
-      await sleep(200);
-      if (t.isConnected) realClick(t);
-    }
-    return true;
+    const stillOpen=!!findVisibleSizeMenu();
+    const selectedVisible=clicked.every(target=>triggerText.includes(norm(target)));
+    if(!stillOpen||selectedVisible)return true;
+    failed.push('Size options were clicked but the selection could not be verified. Please check the Meesho size field.');
+    await closeOpenDropdown();
+    return false;
   }
 
   function waitForDropdownSearchBox(existingSet, timeoutMs = 2000) {
@@ -288,19 +270,43 @@
     importer_name: ['importer name'],
     importer_address: ['importer address'],
     importer_pincode: ['importer pincode'],
-    supplier_gst_percent: ['gst'],
+    supplier_gst_percent: ['gst', 'gst rate', 'gst percentage'],
     hsn_code: ['hsn code', 'hsn'],
-    product_weight_in_gms: ['net weight'],
-    size: ['size'],
+    product_weight_in_gms: ['net weight', 'product weight in gms'],
+    size: ['size', 'select size', 'select sizes', 'available sizes'],
     brand: ['brand'],
     ornamentation: ['ornamentation'],
     sleeve_styling: ['sleeve styling'],
     description: ['description'],
-    meesho_price: ['meesho price'],
-    product_mrp: ['mrp'],
+    meesho_price: ['meesho price', 'selling price'],
+    product_mrp: ['mrp', 'maximum retail price'],
     only_wrong_return_price: ['wrong/defective returns price', 'wrong return price'],
-    inventory: ['inventory'],
-    supplier_sku_id: ['sku id'],
+    inventory: ['inventory', 'stock quantity'],
+    supplier_sku_id: ['sku id', 'supplier sku id'],
+    capacity_in_l: ['capacity in l', 'capacity'],
+    product_breadth: ['product breadth', 'breadth'],
+    product_height: ['product height'],
+    product_length: ['product length'],
+    product_unit: ['product unit', 'dimension unit'],
+    product_weight: ['product weight'],
+    product_weight_unit: ['product weight unit', 'weight unit'],
+    type: ['type', 'bottle type'],
+    volume_unit: ['volume unit'],
+    leak_proof: ['leak proof', 'leakproof'],
+    material: ['material', 'fabric'],
+    generic_name: ['generic name'],
+    multipack: ['net quantity', 'net quantity (n)', 'multipack'],
+    color: ['color', 'colour'],
+    country_of_origin: ['country of origin', 'origin country'],
+    manufacturer_name: ['manufacturer name'],
+    manufacturer_address: ['manufacturer address'],
+    manufacturer_pincode: ['manufacturer pincode', 'manufacturer pin code'],
+    packer_name: ['packer name'],
+    packer_address: ['packer address'],
+    packer_pincode: ['packer pincode', 'packer pin code'],
+    importer_name: ['importer name'],
+    importer_address: ['importer address'],
+    importer_pincode: ['importer pincode', 'importer pin code'],
     bust_size: ['bust size'],
     shoulder_size: ['shoulder size'],
     waist_size: ['waist size'],
@@ -353,7 +359,7 @@
     const candidates = [identifier, toCamel(identifier)];
     for (const id of candidates) {
       const el = document.getElementById(id) || document.querySelector(`[name="${CSS.escape(id)}"]`);
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
         return classifyInput(el);
       }
     }
@@ -388,7 +394,7 @@
       if (!t || t.length < 2 || t.length > 50) continue;
       const parent = node.parentElement;
       if (!parent || ['INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'SCRIPT', 'STYLE', 'BUTTON'].includes(parent.tagName)) continue;
-      if (t === 'size' || t.startsWith('size ')) candidates.push({ node, len: t.length });
+      if (/^(size|select size|select sizes|choose size|choose sizes|available size|available sizes|size selection|variation size|variation sizes)$/.test(t) || t.startsWith('size ')) candidates.push({ node, len: t.length });
     }
     candidates.sort((a, b) => a.len - b.len);
     for (const c of candidates) {
@@ -506,7 +512,7 @@
       let finalVal = value;
       if (identifier === 'supplier_sku_id') {
         const rowSize = findSizeForElement(el);
-        if (rowSize) finalVal = `${value}-${rowSize}`;
+        if (rowSize) finalVal = `${value}-${rowSize.replace(/[^A-Z0-9]+/gi, "")}`;
       }
 
       const ok = await fillFieldDirect(f, finalVal, identifier, failed);
@@ -1036,7 +1042,7 @@
         if (stopped) finalMsg += ' [STOPPED DUE TO FAILURE]';
 
         sendResponse({
-          success: true, filled, stopped,
+          success: true, filled, failed, stopped,
           message: finalMsg
         });
       }).catch(err => {
