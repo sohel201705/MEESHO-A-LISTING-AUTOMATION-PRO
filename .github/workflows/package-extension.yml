@@ -8,6 +8,12 @@ on:
     paths:
       - 'Extension/**'
       - '.github/workflows/package-extension.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Extension/**'
+      - '.github/workflows/package-extension.yml'
 
 permissions:
   contents: read
