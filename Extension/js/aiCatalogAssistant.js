@@ -117,3 +117,22 @@ async function compatible(k,prompt,imgs){
  const message=((((data.choices||[])[0]||{}).message||{}).content);
  const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
 }
+
+async function callAI(prompt,imgs){
+ const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
+ const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
+ for(let i=0;i<order.length;i++){
+  const k=order[i];say('Trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
+  try{const text=k.provider==='gemini'?await gemini(k,prompt,imgs):await compatible(k,prompt,imgs);await set({[ROT]:(start+i+1)%list.length});return {text,name:k.name||label(k.provider)};}
+  catch(e){errors.push(label(k.provider)+' '+(k.name||'key')+': '+String(e.message||e).slice(0,130));}
+ }
+ throw new Error('All enabled API keys failed. '+errors.join(' | '));
+}
+function parseJson(text){
+ let s=String(text||'').trim(),f=String.fromCharCode(96);
+ s=s.replace(new RegExp('^'+f+f+f+'(?:json)?\\\\s*','i'),'').replace(new RegExp('\\\\s*'+f+f+f+'$'),'');
+ try{return JSON.parse(s);}catch(e){}
+ const a=s.indexOf('{'),b=s.lastIndexOf('}');if(a>=0&&b>a){try{return JSON.parse(s.slice(a,b+1));}catch(e){}}
+ throw new Error('AI response was not valid JSON. Try another model or API key.');
+}
+function allowed(value,field){return !field.values.length||field.values.some(o=>norm(o)===norm(value));}
