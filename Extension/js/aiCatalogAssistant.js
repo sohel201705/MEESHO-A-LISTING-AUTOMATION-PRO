@@ -40,11 +40,11 @@ async function keys(){
  list=list.map(k=>{
   if(!k||typeof k!=='object')return k;
   const apiKey=String(k.apiKey||''),endpoint=String(k.endpoint||'');
-  if(k.provider==='compatible'&&/^gsk_/i.test(apiKey)){
+  if(k.provider!=='groq'&&/^gsk_/i.test(apiKey)){
    changed=true;
    return Object.assign({},k,{provider:'groq',model:String(k.model||'').startsWith('qwen/')?'qwen/qwen3.8-27b':modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
   }
-  if(k.provider==='compatible'&&/^AIzaSy/i.test(apiKey)){
+  if(k.provider!=='gemini'&&/^AIzaSy/i.test(apiKey)){
    changed=true;
    return Object.assign({},k,{provider:'gemini',model:modelDefault('gemini'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Google Gemini key':k.name});
   }
@@ -95,8 +95,13 @@ async function checkProviderPermission(p,endpoint){
  return await askPermission(endpoint);
 }
 async function addKey(){
- const p=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim(),model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
- if(!apiKey)return say('Enter an API key first.','error');if(!model)return say('Enter the model ID.','error');
+ const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
+ if(!apiKey)return say('Enter an API key first.','error');
+ let p=selectedProvider;
+ if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
+ if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
+ const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ if(!model)return say('Enter the model ID.','error');
  let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
  const item=makeKey(p,model,endpoint,apiKey,$('ai-key-name').value.trim()||label(p)+' key');
