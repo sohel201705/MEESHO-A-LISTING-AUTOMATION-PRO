@@ -2318,7 +2318,9 @@
             <div class="ai-provider-form">
               <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
               <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
-              <label>Model ID<input id="ai-key-model" type="text" placeholder="Model ID from provider"></label>
+              <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
+              <datalist id="ai-model-options"></datalist>
+              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
               <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
               <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
               <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>

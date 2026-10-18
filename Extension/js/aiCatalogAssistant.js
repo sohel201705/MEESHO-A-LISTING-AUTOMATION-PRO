@@ -10,30 +10,78 @@ const norm=v=>String(v||'').replace(/[＊*]/g,'').replace(/\s+/g,' ').trim().toL
 function say(m,t){if(!$('ai-status'))return;$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
 function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
 function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
+function modelChoices(p){
+ if(p==='gemini')return [
+  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · Free tier · vision'},
+  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · Free tier · vision'},
+  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · Free tier · vision'},
+  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · Free tier · vision'}
+ ];
+ if(p==='groq')return [
+  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · free-tier rate limits'}
+ ];
+ return [];
+}
 function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
-async function keys(){const r=await get(KEY);return Array.isArray(r[KEY])?r[KEY]:[];}
+function safeKeyName(k){
+ const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
+ if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
+ return name;
+}
+function redactSecrets(message,k){
+ let out=String(message&&message.message||message||'Unknown error');
+ const key=String(k&&k.apiKey||'');if(key)out=out.split(key).join('[API key redacted]');
+ return out.replace(/\b(?:AIzaSy[A-Za-z0-9_-]{12,}|gsk_[A-Za-z0-9_-]{12,}|xai-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{12,})\b/g,'[API key redacted]').slice(0,180);
+}
+async function keys(){
+ const r=await get(KEY);let list=Array.isArray(r[KEY])?r[KEY]:[],changed=false;
+ // Recover common provider-selection mistakes from earlier extension versions:
+ // Groq keys start with gsk_; Google AI Studio keys commonly start with AIzaSy.
+ list=list.map(k=>{
+  if(!k||typeof k!=='object')return k;
+  const apiKey=String(k.apiKey||''),endpoint=String(k.endpoint||'');
+  if(k.provider!=='groq'&&/^gsk_/i.test(apiKey)){
+   changed=true;
+   return Object.assign({},k,{provider:'groq',model:String(k.model||'').startsWith('qwen/')?'qwen/qwen3.8-27b':modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
+  }
+  if(k.provider!=='gemini'&&/^AIzaSy/i.test(apiKey)){
+   changed=true;
+   return Object.assign({},k,{provider:'gemini',model:modelDefault('gemini'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Google Gemini key':k.name});
+  }
+  if(k.provider==='groq'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('groq'),endpoint:''});}
+  if(k.provider==='gemini'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('gemini'),endpoint:''});}
+  return k;
+ });
+ if(changed)await set({[KEY]:list});
+ return list;
+}
 async function persistKeys(v){await set({[KEY]:v});await renderKeys();}
 async function renderKeys(){
  const host=$('ai-provider-key-list');if(!host)return;host.replaceChildren();const all=await keys();
  if(!all.length){host.appendChild(el('div','ai-empty','No API keys added. Add one or more keys below.'));return;}
  all.forEach(k=>{
   const row=el('div','ai-key-row'),meta=el('div','ai-key-meta'),controls=el('div','ai-key-controls');
-  meta.appendChild(el('strong','',k.name||label(k.provider)));
+  meta.appendChild(el('strong','',safeKeyName(k)));
   meta.appendChild(el('span','ai-muted',label(k.provider)+' · '+k.model));
   if(k.endpoint)meta.appendChild(el('span','ai-muted',k.endpoint));
   meta.appendChild(el('span','ai-muted','Saved key: ••••'+String(k.apiKey||'').slice(-4)));
-  const lab=el('label','ai-toggle-label'),enabled=el('input');enabled.type='checkbox';enabled.checked=k.enabled!==false;enabled.setAttribute('aria-label','Enable '+(k.name||label(k.provider)));lab.appendChild(enabled);lab.appendChild(document.createTextNode(' Enabled'));controls.appendChild(lab);
+  const lab=el('label','ai-toggle-label'),enabled=el('input');enabled.type='checkbox';enabled.checked=k.enabled!==false;enabled.setAttribute('aria-label','Enable '+safeKeyName(k));lab.appendChild(enabled);lab.appendChild(document.createTextNode(' Enabled'));controls.appendChild(lab);
   enabled.addEventListener('change',async()=>{const a=await keys();await persistKeys(a.map(x=>x.id===k.id?Object.assign({},x,{enabled:enabled.checked}):x));});
   const del=el('button','ai-small-btn ai-danger','Remove');del.type='button';del.addEventListener('click',async()=>{await persistKeys((await keys()).filter(x=>x.id!==k.id));say('API key removed.','success');});
   controls.appendChild(del);row.appendChild(meta);row.appendChild(controls);host.appendChild(row);
  });
+}
+function updateModelChoices(p){
+ const list=$('ai-model-options');if(!list)return;list.replaceChildren();
+ modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
 }
 function updateProviderForm(){
  const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
  $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
  if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
- $('ai-provider-hint').textContent=p==='gemini'?'Gemini generateContent API. Default model is the current Gemini 3.8 Flash; change it if your key requires a different model.':p==='groq'?'Use a current Groq vision-capable model.':'Use an HTTPS OpenAI-compatible Chat Completions endpoint, e.g. xAI Grok.';
+ updateModelChoices(p);
+ $('ai-provider-hint').textContent=p==='gemini'?'Recommended free-tier vision models: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, and 3.1 Flash-Lite. Free-tier quotas and availability depend on your Google AI Studio project.':p==='groq'?'Recommended Groq vision model: qwen/qwen3.8-27b (up to 3 images/request). Groq free-tier rate limits apply.':'Custom OpenAI-compatible endpoints may be paid; xAI/Grok is not guaranteed free. Do not use a Groq model ID with an xAI endpoint.';
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
@@ -47,8 +95,13 @@ async function checkProviderPermission(p,endpoint){
  return await askPermission(endpoint);
 }
 async function addKey(){
- const p=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim(),model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
- if(!apiKey)return say('Enter an API key first.','error');if(!model)return say('Enter the model ID.','error');
+ const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
+ if(!apiKey)return say('Enter an API key first.','error');
+ let p=selectedProvider;
+ if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
+ if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
+ const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ if(!model)return say('Enter the model ID.','error');
  let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
  const item=makeKey(p,model,endpoint,apiKey,$('ai-key-name').value.trim()||label(p)+' key');
@@ -156,8 +209,8 @@ function preset(f,p,d){
  return '';
 }
 function captured(scan,id){const v=(scan.capturedValues||{})[id];return v===undefined||v===null?'':String(v).trim();}
-function promptFor(scan,p,d,s,imgs){
- const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},uploadedImageNames:imgs.map(i=>i.name)};
+function promptFor(scan,p,d,s){
+ const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{}};
  return ['You are an e-commerce product-listing assistant. Analyze the supplied product photos and scanned form schema.','Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}]}. No markdown.','Use only identifiers listed in scannedFields; never create new keys. Generate an accurate searchable title and description if these fields exist.','Never invent material, capacity, certification, compatibility, water resistance, dimensions, product weight, country of origin, brand, manufacturer, packer, HSN, GST or legal claims.',
  'A user-entered selling price may only fill an explicit Meesho/selling/transfer price field; never copy it into MRP, wrong/defective return price, or other price fields.',
  'Generic Length/Width/Height fields are ambiguous: fill dimensions from user input only when the scanned label clearly identifies product/item/package/shipping dimensions or a unit such as cm/mm/inches. Never substitute a product dimension for a clothing size measurement.','Use sellerDefaults only when the field label clearly matches. Do not substitute seller address for manufacturer or packer address.','For dropdowns choose an exact allowedValues option only; otherwise omit and request confirmation.','Do not modify existing non-empty currentFormValues. Unknown mandatory fields stay blank and need confirmation. Never estimate garment measurements or packaging weight from an image.','Schema and user data:',JSON.stringify(data)].join('\n');
@@ -169,7 +222,8 @@ async function post(url,opts){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),45000);
  try{return await fetch(url,Object.assign({},opts,{signal:c.signal}));}finally{clearTimeout(timer);}
 }
-async function gemini(k,prompt,imgs){
+async function gemini(k,prompt,imgs=[]){
+ if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{text:prompt}];imgs.forEach(i=>{const x=decodeImage(i.dataUrl);parts.push({inline_data:{mime_type:x.mimeType,data:x.data}});});
  const r=await post('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(k.model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':k.apiKey},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',temperature:0.2}})});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
@@ -177,7 +231,8 @@ async function gemini(k,prompt,imgs){
  const out=((((data.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||'').join('\n').trim();if(!out)throw new Error('Gemini returned empty response.');return out;
 }
 
-async function compatible(k,prompt,imgs){
+async function compatible(k,prompt,imgs=[]){
+ if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
  let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
@@ -187,13 +242,19 @@ async function compatible(k,prompt,imgs){
  const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
 }
 
-async function callAI(prompt,imgs){
+async function callAI(prompt,imgs=[]){
+ if(!Array.isArray(imgs)||!imgs.length)throw new Error('Product photos are missing. Upload at least one photo and try again.');
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
   const k=order[i];say('Trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
-  try{const text=k.provider==='gemini'?await gemini(k,prompt,imgs):await compatible(k,prompt,imgs);await set({[ROT]:(start+i+1)%list.length});return {text,name:k.name||label(k.provider)};}
-  catch(e){errors.push(label(k.provider)+' '+(k.name||'key')+': '+String(e.message||e).slice(0,130));}
+  try{
+   const providerImages=k.provider==='groq'?imgs.slice(0,3):imgs.slice(0,5);
+   if(imgs.length>providerImages.length)say('Trying '+label(k.provider)+'; this provider will analyze the first '+providerImages.length+' of '+imgs.length+' photos…');
+   const text=k.provider==='gemini'?await gemini(k,prompt,providerImages):await compatible(k,prompt,providerImages);
+   await set({[ROT]:(start+i+1)%list.length});return {text,name:safeKeyName(k),provider:k.provider,imagesUsed:providerImages.length};
+  }
+  catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));}
  }
  throw new Error('All enabled API keys failed. '+errors.join(' | '));
 }
@@ -220,7 +281,7 @@ async function generate(){
  try{
   const scan=await scanCurrentCatalog(false);const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
   const p={productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),productHeight:$('ai-product-height').value.trim(),sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()};
-  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s,imgs)),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
+  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s),imgs),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   let ai=0,presetCount=0,bad=0;
   s.fields.forEach(f=>{
@@ -233,7 +294,8 @@ async function generate(){
   s.fields.forEach(f=>{if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Required field is blank because its value is not verified.'});});
   draft=values;pending=needs;showPreview(s.fields,values,needs,{ai:ai,preset:presetCount,bad:bad});
   $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
-  say('Draft ready using '+answer.name+'. Review it before autofill.',needs.length?'warning':'success');
+  const imageNote=answer.provider==='groq'&&imgs.length>3?' Groq analyzed the first 3 photos.':'';
+  say('Draft ready using '+answer.name+'.'+imageNote+' Review it before autofill.',needs.length||imageNote?'warning':'success');
  }catch(e){say(e.message||'AI generation failed.','error');}
 }
 async function autofill(){
