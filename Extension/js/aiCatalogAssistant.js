@@ -204,8 +204,8 @@ function preset(f,p,d){
  return '';
 }
 function captured(scan,id){const v=(scan.capturedValues||{})[id];return v===undefined||v===null?'':String(v).trim();}
-function promptFor(scan,p,d,s,imgs){
- const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},uploadedImageNames:imgs.map(i=>i.name)};
+function promptFor(scan,p,d,s){
+ const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{}};
  return ['You are an e-commerce product-listing assistant. Analyze the supplied product photos and scanned form schema.','Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}]}. No markdown.','Use only identifiers listed in scannedFields; never create new keys. Generate an accurate searchable title and description if these fields exist.','Never invent material, capacity, certification, compatibility, water resistance, dimensions, product weight, country of origin, brand, manufacturer, packer, HSN, GST or legal claims.',
  'A user-entered selling price may only fill an explicit Meesho/selling/transfer price field; never copy it into MRP, wrong/defective return price, or other price fields.',
  'Generic Length/Width/Height fields are ambiguous: fill dimensions from user input only when the scanned label clearly identifies product/item/package/shipping dimensions or a unit such as cm/mm/inches. Never substitute a product dimension for a clothing size measurement.','Use sellerDefaults only when the field label clearly matches. Do not substitute seller address for manufacturer or packer address.','For dropdowns choose an exact allowedValues option only; otherwise omit and request confirmation.','Do not modify existing non-empty currentFormValues. Unknown mandatory fields stay blank and need confirmation. Never estimate garment measurements or packaging weight from an image.','Schema and user data:',JSON.stringify(data)].join('\n');
@@ -245,8 +245,9 @@ async function callAI(prompt,imgs=[]){
   const k=order[i];say('Trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
   try{
    const providerImages=k.provider==='groq'?imgs.slice(0,3):imgs.slice(0,5);
+   if(imgs.length>providerImages.length)say('Trying '+label(k.provider)+'; this provider will analyze the first '+providerImages.length+' of '+imgs.length+' photos…');
    const text=k.provider==='gemini'?await gemini(k,prompt,providerImages):await compatible(k,prompt,providerImages);
-   await set({[ROT]:(start+i+1)%list.length});return {text,name:safeKeyName(k)};
+   await set({[ROT]:(start+i+1)%list.length});return {text,name:safeKeyName(k),provider:k.provider,imagesUsed:providerImages.length};
   }
   catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));}
  }
@@ -275,7 +276,7 @@ async function generate(){
  try{
   const scan=await scanCurrentCatalog(false);const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
   const p={productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),productHeight:$('ai-product-height').value.trim(),sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()};
-  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s,imgs),imgs),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
+  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s),imgs),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   let ai=0,presetCount=0,bad=0;
   s.fields.forEach(f=>{
@@ -288,7 +289,8 @@ async function generate(){
   s.fields.forEach(f=>{if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Required field is blank because its value is not verified.'});});
   draft=values;pending=needs;showPreview(s.fields,values,needs,{ai:ai,preset:presetCount,bad:bad});
   $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
-  say('Draft ready using '+answer.name+'. Review it before autofill.',needs.length?'warning':'success');
+  const imageNote=answer.provider==='groq'&&imgs.length>3?' Groq analyzed the first 3 photos.':'';
+  say('Draft ready using '+answer.name+'.'+imageNote+' Review it before autofill.',needs.length||imageNote?'warning':'success');
  }catch(e){say(e.message||'AI generation failed.','error');}
 }
 async function autofill(){
