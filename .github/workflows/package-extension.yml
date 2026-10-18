@@ -1,0 +1,38 @@
+name: Package Extension ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ai-catalog-autofill
+    paths:
+      - 'Extension/**'
+      - '.github/workflows/package-extension.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build Extension-only ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Extension/manifest.json
+          mkdir -p dist
+          cd Extension
+          zip -r ../dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip . -x '*/.DS_Store'
+          test -s ../dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MEESHO-A-LISTING-AUTOMATION-PRO-Extension
+          path: dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip
+          if-no-files-found: error
+          retention-days: 30
