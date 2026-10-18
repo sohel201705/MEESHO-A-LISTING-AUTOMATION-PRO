@@ -105,8 +105,9 @@ jobs:
           assert.ok(aiAssistant.includes('Array.isArray(imgs)'));
           assert.ok(aiAssistant.includes('redactSecrets(e,k)'));
           assert.ok(aiAssistant.includes('imgs.slice(0,3)'));
-          assert.ok(aiAssistant.includes("k.provider==='compatible'&&/^gsk_/i.test(apiKey)"));
-          assert.ok(aiAssistant.includes("k.provider==='compatible'&&/^AIzaSy/i.test(apiKey)"));
+          assert.ok(aiAssistant.includes("k.provider!=='groq'&&/^gsk_/i.test(apiKey)"));
+          assert.ok(aiAssistant.includes("k.provider!=='gemini'&&/^AIzaSy/i.test(apiKey)"));
+          assert.ok(aiAssistant.includes("if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini'"));
           assert.ok(aiAssistant.includes('function modelChoices(p)'));
           assert.ok(popupHtml.includes('ai-model-options'));
           assert.ok(popupHtml.includes('js/aiCatalogAssistant.js'));
