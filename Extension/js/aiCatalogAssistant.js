@@ -37,7 +37,7 @@ function updateProviderForm(){
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
- return await new Promise(resolve=>chrome.permissions.contains({origins:[pattern]},ok=>{if(ok)return resolve(true);chrome.permissions.request({origins:[pattern]},resolve);}));
+ return await new Promise(resolve=>chrome.permissions.request({origins:[pattern]},resolve));
 }
 async function addKey(){
  const p=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim(),model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
@@ -94,7 +94,6 @@ function promptFor(scan,p,d,s,imgs){
 }
 function decodeImage(dataUrl){const m=String(dataUrl||'').match(/^data:([^;]+);base64,(.*)$/);if(!m)throw new Error('Could not decode photo.');return {mimeType:m[1],data:m[2]};}
 
-// test?marker
 
 async function post(url,opts){
  const c=new AbortController(),timer=setTimeout(()=>c.abort(),45000);
@@ -110,7 +109,7 @@ async function gemini(k,prompt,imgs){
 
 async function compatible(k,prompt,imgs){
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
- let url=String(k.endpoint||'').trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
+ let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
  if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
