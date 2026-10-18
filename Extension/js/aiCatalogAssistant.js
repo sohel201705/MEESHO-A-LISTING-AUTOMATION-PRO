@@ -276,6 +276,43 @@ function schema(scan){
  }));
  return {fields,measurements};
 }
+function variationNames(scan){
+ const section=(scan&&scan.sections||[]).find(s=>s.id==='variations');
+ return Array.isArray(section&&section.data)?section.data.map(x=>String(x||'').trim()).filter(Boolean):[];
+}
+function selectedVariationSizes(){
+ const host=$('ai-variation-sizes');
+ const selected=host?Array.from(host.querySelectorAll('input.ai-variation-size-cb:checked')).map(x=>x.value):[];
+ if(selected.length)return selected;
+ const names=variationNames(scanNow);
+ return names.length===1&&norm(names[0])==='free size'?[names[0]]:[];
+}
+function syncLegacySizeCheckboxes(){
+ const selected=selectedVariationSizes();
+ const legacy=Array.from(document.querySelectorAll('.size-cb'));
+ if(legacy.length){
+  legacy.forEach(cb=>{cb.checked=selected.some(v=>norm(v)===norm(cb.value));});
+  if(typeof renderSizeMeasurements==='function')renderSizeMeasurements(selected.join(','));
+ }
+}
+function renderAiVariationSizes(scan){
+ const host=$('ai-variation-sizes');if(!host)return;
+ const prior=Array.from(host.querySelectorAll('input.ai-variation-size-cb:checked')).map(x=>x.value);
+ const legacy=Array.from(document.querySelectorAll('.size-cb:checked')).map(x=>x.value);
+ const sizes=variationNames(scan),remembered=prior.length?prior:legacy;
+ host.replaceChildren();
+ if(!sizes.length){host.appendChild(el('span','ai-muted','No size options detected on the selected catalog.'));return;}
+ let selected=remembered.filter(x=>sizes.some(sz=>norm(sz)===norm(x)));
+ if(!selected.length&&sizes.length===1&&norm(sizes[0])==='free size')selected=[sizes[0]];
+ sizes.forEach(size=>{
+  const label=el('label','ai-size-option'),cb=el('input');
+  cb.type='checkbox';cb.className='ai-variation-size-cb';cb.value=size;cb.checked=selected.some(x=>norm(x)===norm(size));
+  cb.addEventListener('change',syncLegacySizeCheckboxes);
+  label.appendChild(cb);label.appendChild(document.createTextNode(size));host.appendChild(label);
+ });
+ syncLegacySizeCheckboxes();
+}
+
 function updateScanSummary(scan){
  const host=$('ai-scan-summary');if(!host)return;
  const fields=[];(scan.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>fields.push(f)));
@@ -284,6 +321,7 @@ function updateScanSummary(scan){
  const required=fields.filter(f=>f.mandatory&&!String(values[f.identifier||f.id]||'').trim()).length;
  const sizes=(scan.sections||[]).find(s=>s.id==='variations');
  host.textContent='Scanned '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
+ renderAiVariationSizes(scan);
 }
 async function scanCurrentCatalog(showMessage){
  const access=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!access||!access.allowed)throw new Error('Active membership required.');
@@ -292,7 +330,8 @@ async function scanCurrentCatalog(showMessage){
  const scan=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'SCAN_FORM'},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not scan the Meesho page. Refresh the page and retry.'));if(!r||r.error||!Array.isArray(r.sections))return reject(new Error((r&&r.error)||'No form schema detected. Select a catalog first.'));resolve(r);}));
  await set({last_scan_result:scan});scanNow=scan;updateScanSummary(scan);
  if(typeof renderStructuredForm==='function')renderStructuredForm(scan);
- if(showMessage)say('Catalog form scanned. Check blank and mandatory field counts above.','success');
+ syncLegacySizeCheckboxes();
+ if(showMessage)say('Catalog form scanned. Review product fields and selected size variants above.','success');
  return scan;
 }
 function convertUnit(value,label,source){
@@ -339,7 +378,7 @@ function preset(f,p,d){
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
  if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
- const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){if(/\\b(in l|litre|liter|capacity_in_l)\\b/.test(x))return String(Number((capMl/1000).toFixed(4)));if(/\\bml\\b|milliliter|millilitre/.test(x))return String(Number(capMl.toFixed(4)));return String(p.productCapacity);}
+ const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){if(/\b(in l|litre|liter|capacity_in_l)\b/.test(x))return String(Number((capMl/1000).toFixed(4)));if(/\bml\b|milliliter|millilitre/.test(x))return String(Number(capMl.toFixed(4)));return String(p.productCapacity);}
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
  if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
  if(!garment&&explicitDimension&&p.productLength&&/\blength\b/.test(x))return convertUnit(p.productLength,x,'cm');
@@ -539,10 +578,22 @@ async function autofill(){
   const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
   const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
   if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho catalog tab again.');
-  if(pending.length&&!confirm('Some fields need confirmation. Continue autofill and leave unknown fields untouched?'))return;
-  await set({meesho_autofill_values:draft});
-  const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:draft},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the page and retry.'));if(!r||r.success===false)return reject(new Error((r&&(r.message||r.error))||'Autofill failed.'));resolve(r);}));
-  say('Autofill completed: '+Number(result.filled||0)+' field(s). Review Meesho before saving/submitting.','success');
+  const sizes=variationNames(scanNow),selected=selectedVariationSizes();
+  if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
+  if(pending.length&&!confirm('Some fields need confirmation. Continue autofill? Unknown values will remain untouched.'))return;
+  const payload=Object.assign({},draft);
+  if(selected.length)payload._variation_sizes=selected.join(',');
+  await set({meesho_autofill_values:payload});
+  say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
+  const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the Meesho page and retry.'));if(!r)return reject(new Error('Meesho did not return an autofill result.'));resolve(r);}));
+  const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
+  if(filled===0){
+   say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.'),'error');return;
+  }
+  if(result.stopped||failed.length){
+   say('Partial autofill: '+filled+' field(s). '+(result.message||failed.join(', '))+' Check the failed fields below before saving.','warning');return;
+  }
+  say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}
 }
 function init(){
@@ -552,7 +603,15 @@ function init(){
  $('ai-add-key-btn').addEventListener('click',addKey);
  $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
- $('ai-generate-btn').addEventListener('click',generate);
+ $('ai-generate-btn').addEventListener('click',async()=>{
+  const btn=$('ai-generate-btn');btn.disabled=true;
+  try{
+   // Request only Google Search host access from the user's Analyze click.
+   const googleAllowed=await requestGoogleSearchPermission();
+   await generate(googleAllowed);
+  }catch(e){say(e.message||'Catalog research failed.','error');}
+  finally{btn.disabled=false;}
+ });
  $('ai-autofill-btn').addEventListener('click',autofill);
  $('ai-product-images').addEventListener('change',()=>{
   const host=$('ai-image-list');host.replaceChildren();const files=Array.from($('ai-product-images').files||[]);
