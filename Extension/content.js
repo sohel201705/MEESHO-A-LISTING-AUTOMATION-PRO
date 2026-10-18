@@ -659,7 +659,7 @@
       if (!value || String(value).trim() === '') continue;
 
       const field = findField(id);
-      if (!field) continue;
+      if (!field) { failed.push(id + ' not found on the Meesho page'); continue; }
 
       if (field.type === 'mui') {
         field.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
@@ -692,6 +692,8 @@
         if (ok) filled++;
         await closeOpenDropdown();
         await sleep(50);
+      } else {
+        failed.push('Selected size(s) could not be matched to a Meesho size selector.');
       }
     }
 
