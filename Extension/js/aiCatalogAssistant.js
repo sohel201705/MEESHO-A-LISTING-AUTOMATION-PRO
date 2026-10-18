@@ -33,7 +33,7 @@ function parseGoogleResults(html){
   const h=heading||card.querySelector('h3');if(!h)return;
   const anchor=h.closest('a')||Array.from(card.querySelectorAll('a')).find(a=>a.querySelector('h3'));if(!anchor)return;
   let href=anchor.href||anchor.getAttribute('href')||'';
-  if(href.startsWith('/url?')){try{const u=new URL(href,'https://www.google.com');href=u.searchParams.get('q')||u.searchParams.get('url')||'';}catch(e){}}
+  try{const parsedHref=new URL(href,'https://www.google.com');if(/(^|\\.)google\\.(com|co\\.in)$/i.test(parsedHref.hostname)&&parsedHref.pathname==='/url')href=parsedHref.searchParams.get('q')||parsedHref.searchParams.get('url')||'';}catch(e){}
   href=validExternalUrl(href);if(!href||seen.has(href))return;
   const title=String(h.textContent||'').replace(/\s+/g,' ').trim();
   const snippet=String(card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st')?.textContent||'').replace(/\s+/g,' ').trim();
@@ -556,7 +556,7 @@ async function generate(googleAllowed){
     if(/\b(in l|litre|liter|\bl\b)/.test(label))candidate=String(Number((ml/1000).toFixed(4)));
     if(/\bml\b|milliliter|millilitre/.test(label))candidate=String(Number(ml.toFixed(4)));
     if(allowed(candidate,f))values[f.identifier]=candidate;
-    else if(f.values.length)needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no exact matching dropdown option. Select the closest truthful option manually; none was guessed.'});
+    else if(f.values.length&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no exact matching dropdown option. Select the closest truthful option manually; none was guessed.'});
    });
   }
   s.measurements.forEach(f=>{if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
