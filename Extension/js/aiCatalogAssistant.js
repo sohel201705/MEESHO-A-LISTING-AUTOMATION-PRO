@@ -394,35 +394,116 @@ function parseJson(text){
 }
 function allowed(value,field){return !field.values.length||field.values.some(o=>norm(o)===norm(value));}
 
-function showPreview(fields,values,needs,stats){
+function renderResearchSources(research){
+ const host=$('ai-research-sources');if(!host)return;host.replaceChildren();
+ host.style.display='block';
+ const title=el('div','ai-preview-title',research&&research.results&&research.results.length?'Google Research Sources':'Google Research');
+ host.appendChild(title);
+ if(!research||!research.results||!research.results.length){
+  host.appendChild(el('p','ai-muted',research&&research.error?'Research unavailable: '+research.error:'No Google results were captured. Product drafting may continue, but HSN/GST must remain unresolved without official evidence.'));
+  return;
+ }
+ host.appendChild(el('p','ai-muted','Search seed: '+(research.seed||'Not available')+' · '+research.results.length+' source(s).'));
+ const list=el('div','ai-research-list');
+ research.results.slice(0,8).forEach(r=>{
+  const row=el('div','ai-research-source'),a=el('a','',r.title||r.domain);
+  a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=(r.title||r.domain);
+  row.appendChild(a);row.appendChild(el('div','ai-muted',r.domain+' · '+(r.snippet||'No snippet returned.')));
+  list.appendChild(row);
+ });
+ host.appendChild(list);
+}
+function showPreview(fields,values,needs,stats,research){
  const root=$('ai-preview');root.replaceChildren();root.style.display='block';
  root.appendChild(el('div','ai-preview-title','AI Draft Preview'));
- root.appendChild(el('div','ai-muted','AI values: '+stats.ai+' · Defaults: '+stats.preset+' · Dropdown mismatches: '+stats.bad+' · Needs confirmation: '+needs.length));
+ root.appendChild(el('div','ai-muted','AI values: '+stats.ai+' · Defaults: '+stats.preset+' · Generated codes: '+stats.generated+' · Dropdown mismatches: '+stats.bad+' · Needs confirmation: '+needs.length));
+ if(research&&research.seed)root.appendChild(el('div','ai-muted','Google research seed: '+research.seed));
  const list=el('div','ai-preview-list');
  fields.forEach(f=>{const v=values[f.identifier],row=el('div','ai-preview-item');row.appendChild(el('span','ai-preview-label',f.label+(f.mandatory?' *':'')));row.appendChild(el('span','ai-preview-value'+(v?'':' ai-blank'),v?String(v):'Not filled'));list.appendChild(row);});
  root.appendChild(list);
+ const sizes=selectedVariationSizes();
+ if(sizes.length)root.appendChild(el('p','ai-muted','Size variants to select on Meesho: '+sizes.join(', ')));
  if(needs.length){const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs confirmation — '+needs.length));const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});box.appendChild(ul);root.appendChild(box);}
- root.appendChild(el('p','ai-muted','Review the draft. Unverified legal details and product measurements remain blank.'));
+ root.appendChild(el('p','ai-muted','Review the draft. Unverified tax/legal values and actual measurements are not guessed. Search sources are shown above when Google access is available.'));
 }
-async function generate(){
+function isProductNameField(f){return /product_name/.test(String(f.identifier||''))||/^product name$/i.test(String(f.label||'').trim());}
+async function generate(googleAllowed){
  try{
-  const scan=await scanCurrentCatalog(false);const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
-  const p={productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),productHeight:$('ai-product-height').value.trim(),sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()};
-  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s),imgs),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
+  say('Scanning the current Meesho form…');
+  const scan=await scanCurrentCatalog(false),s=schema(scan);
+  if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
+  const p={
+   productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),
+   color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),
+   productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),
+   productHeight:$('ai-product-height').value.trim(),productCapacity:$('ai-product-capacity')?$('ai-product-capacity').value.trim():'',
+   sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()
+  };
+  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images();
+  say('Searching Google for official product specifications and HSN/GST evidence…');
+  researchNow=await researchProduct(p,imgs,googleAllowed);
+  renderResearchSources(researchNow);
+  say('Google Search: '+researchNow.results.length+' result(s). Analyzing photos, matching fields and drafting values…',researchNow.results.length?'':'warning');
+  const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs);
+  const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
-  let ai=0,presetCount=0,bad=0;
+  let ai=0,presetCount=0,bad=0,generated=0;
+  const titleField=s.fields.find(isProductNameField);
+  const draftTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
+  if(draftTitle&&!p.productName&&titleField&&proposed[titleField.identifier])$('ai-product-name').value=String(proposed[titleField.identifier]).trim();
+  if(!p.productCapacity){
+   const capMatch=String(p.productFacts+' '+draftTitle).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
+   if(capMatch)p.productCapacity=(Number(capMatch[1])*(/^m/i.test(capMatch[2])?1:1000)).toString();
+  }
+  const codes=draftTitle?await productCodes(draftTitle,p):{styleCode:'',skuCode:''};
   s.fields.forEach(f=>{
    const old=captured(scan,f.identifier);if(old){values[f.identifier]=old;return;}
    const fixed=preset(f,p,d);
-   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved/user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
-   const v=proposed[f.identifier];if(v!==undefined&&v!==null&&String(v).trim()){if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}values[f.identifier]=String(v).trim();ai++;}
+   if(fixed){if(allowed(f,fixed)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved or user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
+   const generatedValue=generatedCodeForField(f,codes);
+   if(generatedValue){
+    if(allowed(f,generatedValue)){values[f.identifier]=generatedValue;generated++;}
+    else{needs.push({identifier:f.identifier,reason:'Generated Style Code/SKU does not match this field’s allowed options; check the field manually.'});bad++;}
+    return;
+   }
+   const v=proposed[f.identifier];if(v===undefined||v===null||!String(v).trim())return;
+   if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
+   if(isTaxField(f)){
+    const src=officialTaxEvidence(f,String(v),evidence[f.identifier],researchNow);
+    if(!src){
+     needs.push({identifier:f.identifier,reason:'AI suggested candidate "'+String(v)+'", but Google results did not contain a directly matching official CBIC/GST source for this exact code/rate. It was not filled. Verify the product classification before use.'});
+     return;
+    }
+    values[f.identifier]=String(v).trim();ai++;
+    needs.push({identifier:f.identifier,reason:'Official result matched this candidate: '+src.url+'. Confirm the exact classification applies to this product before submitting.'});
+    return;
+   }
+   values[f.identifier]=String(v).trim();ai++;
   });
-  s.measurements.forEach(f=>{if(f.mandatory)needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
-  s.fields.forEach(f=>{if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Required field is blank because its value is not verified.'});});
-  draft=values;pending=needs;showPreview(s.fields,values,needs,{ai:ai,preset:presetCount,bad:bad});
+  // Product capacity entered by the seller can safely fill capacity/volume fields, subject to exact dropdown matching.
+  if(p.productCapacity){
+   const capacityFields=s.fields.filter(f=>/(capacity|volume)/i.test(f.label+' '+String(f.identifier||'').replace(/_/g,' ')));
+   capacityFields.forEach(f=>{
+    if(captured(scan,f.identifier)||String(values[f.identifier]||'').trim())return;
+    const label=norm(f.label+' '+f.identifier),ml=Number(p.productCapacity);
+    let candidate=String(p.productCapacity);
+    if(/\b(in l|litre|liter|\bl\b)/.test(label))candidate=String(Number((ml/1000).toFixed(4)));
+    if(/\bml\b|milliliter|millilitre/.test(label))candidate=String(Number(ml.toFixed(4)));
+    if(allowed(candidate,f))values[f.identifier]=candidate;
+    else if(f.values.length)needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no exact matching dropdown option. Select the closest truthful option manually; none was guessed.'});
+   });
+  }
+  s.measurements.forEach(f=>{if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
+  s.fields.forEach(f=>{
+   if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))
+    needs.push({identifier:f.identifier,reason:'Required field is blank because a verified value was not found.'});
+  });
+  draft=values;pending=needs;
+  showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
   $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
-  const imageNote=answer.provider==='groq'&&imgs.length>3?' Groq analyzed the first 3 photos.':'';
-  say('Draft ready using '+answer.name+'.'+imageNote+' Review it before autofill.',needs.length||imageNote?'warning':'success');
+  const imageNote=answer.provider==='groq'&&imgs.length>3?' Groq analyzes up to 3 photos per request.':'';
+  const researchNote=researchNow.results.length?' Google research added.':(' Google search unavailable: '+(researchNow.error||'no results')+'.');
+  say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||imageNote||researchNow.error?'warning':'success');
  }catch(e){say(e.message||'AI generation failed.','error');}
 }
 async function autofill(){
