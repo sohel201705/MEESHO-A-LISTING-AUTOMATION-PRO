@@ -67,8 +67,10 @@ jobs:
           const popup = fs.readFileSync('Extension/popup.js', 'utf8');
           const content = fs.readFileSync('Extension/content.js', 'utf8');
           const shipping = fs.readFileSync('Extension/js/shippingOptimizer.js', 'utf8');
+          const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
+          const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.0');
+          assert.equal(manifest.version, '3.17.1');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -91,5 +93,13 @@ jobs:
           assert.ok(html.includes('backup-file-input'));
           assert.ok(html.includes('Download Backup (JSON)'));
           assert.ok(admin.includes("snap.docs.filter(d=>d.id!=='_meta')"));
-          console.log('Free-mode configuration, backup/restore UI, key redemption and Admin-preservation checks passed.');
+          assert.ok(aiAssistant.includes('function isGarmentMeasurement'));
+          assert.ok(aiAssistant.includes('explicitDimension'));
+          assert.ok(aiAssistant.includes('gemini-3.8-flash'));
+          assert.ok(aiAssistant.includes('qwen/qwen3.8-27b'));
+          assert.ok(aiAssistant.includes('Bulk add complete'));
+          assert.ok(popupHtml.includes('js/aiCatalogAssistant.js'));
+          assert.ok(manifest.host_permissions.includes('https://generativelanguage.googleapis.com/*'));
+          assert.ok(manifest.host_permissions.includes('https://api.groq.com/*'));
+          console.log('Free-mode safeguards and AI catalog feature checks passed.');
           NODE
