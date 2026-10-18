@@ -126,7 +126,25 @@ function generatedCodeForField(field,codes){
 }
 const el=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=String(txt);return n;};
 const norm=v=>String(v||'').replace(/[＊*]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
-function say(m,t){if(!$('ai-status'))return;$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
+function liveLog(message,level='info'){
+ const host=$('ai-live-log');if(!host)return;
+ const line=document.createElement('span');line.className='live-line ai-live-line-'+level;
+ const dt=new Date(),stamp=[dt.getHours(),dt.getMinutes(),dt.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');
+ line.textContent='['+stamp+'] ['+String(level||'info').toUpperCase()+'] '+String(message||'');
+ host.appendChild(line);host.appendChild(document.createTextNode('\\n'));
+ while(host.children.length>100)host.removeChild(host.firstElementChild);
+ host.scrollTop=host.scrollHeight;
+ const state=$('ai-live-state');if(state)state.textContent=level==='error'?'ERROR':level==='warn'?'ATTENTION':level==='ok'?'COMPLETE':'RUNNING';
+}
+function clearLiveLog(){
+ const host=$('ai-live-log');if(host)host.textContent='';
+ const state=$('ai-live-state');if(state)state.textContent='READY';
+}
+function say(m,t){
+ if($('ai-status')){$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
+ const level=t==='error'?'error':(t==='warning'?'warn':(t==='success'?'ok':'info'));
+ if(m)liveLog(m,level);
+}
 function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
 function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
 function modelChoices(p){
@@ -260,9 +278,11 @@ async function saveDefaults(){
 
 const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({name:file.name,mimeType:file.type||'image/jpeg',dataUrl:String(reader.result||'')});reader.onerror=()=>reject(new Error('Could not read image: '+file.name));reader.readAsDataURL(file);});
 async function images(){
- const files=Array.from($('ai-product-images').files||[]);if(!files.length)throw new Error('Upload at least one product photo.');if(files.length>5)throw new Error('Upload no more than 5 photos.');
+ const files=Array.from($('ai-product-images').files||[]);if(!files.length)throw new Error('Upload at least one product photo.');if(files.length>10)throw new Error('Upload no more than 10 photos of the same product at once.');
  for(const f of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(f.type))throw new Error('Use JPG, PNG, WEBP or GIF: '+f.name);if(f.size>8*1024*1024)throw new Error(f.name+' is over 8 MB.');}
- const all=await Promise.all(files.map(readImage));const host=$('ai-image-list');host.replaceChildren();all.forEach(i=>host.appendChild(el('span','ai-image-chip',i.name)));return all;
+ liveLog('Loading '+files.length+' photos for one product.','info');
+ const all=await Promise.all(files.map(readImage));const host=$('ai-image-list');host.replaceChildren();all.forEach((i,n)=>host.appendChild(el('span','ai-image-chip',(n+1)+'. '+i.name)));
+ liveLog('Image set ready: '+all.length+' photo(s).','ok');return all;
 }
 function isGarmentMeasurement(f){
  const x=norm((f.label||'')+' '+String(f.identifier||'').replace(/_/g,' '));
@@ -393,6 +413,27 @@ function sourceSupportsExactMeasure(field,candidate,research){
  });
 }
 
+function parseMoney(value){
+ const cleaned=String(value??'').replace(/[₹,\s]/g,'').replace(/[^0-9.-]/g,'');
+ const n=Number(cleaned);return Number.isFinite(n)?n:null;
+}
+function formatMoney(value){
+ const n=Number(value);if(!Number.isFinite(n))return '';
+ return String(Number(n.toFixed(2)));
+}
+function calculateWrongReturnPrice(sellingPrice){
+ const n=parseMoney(sellingPrice);
+ return n!==null&&n>5?formatMoney(n-5):'';
+}
+function updatePricePreview(){
+ const price=$('ai-product-price'),target=$('ai-product-return-price');
+ if(!price||!target)return;
+ target.value=calculateWrongReturnPrice(price.value);
+ target.placeholder=String(price.value||'').trim()?'Calculated automatically':'Enter selling price first';
+ if(String(price.value||'').trim()&&parseMoney(price.value)<=5)target.title='Selling price must be more than ₹5 to subtract ₹5 safely.';
+ else target.title='Always calculated as selling price minus ₹5.';
+}
+
 function preset(f,p,d){
  const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\bcm\b|\bmm\b|\binches?\b|\bmeters?\b|\bmetres?\b)/i.test(x);
  if(p.productName&&/(product name|product_name)/.test(x))return p.productName;
@@ -407,6 +448,9 @@ function preset(f,p,d){
  if(/(customer care phone|support phone|customer care number|contact phone)/.test(x)&&d.supportPhone)return d.supportPhone;
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
+ if(/(wrong|defective|return)/.test(x)&&/price/.test(x)&&p.sellingPrice)return p.wrongReturnPrice||'';
+ if(/\bmrp\b|maximum retail price/.test(x)&&p.productMrp)return p.productMrp;
+ if(/\binventory\b|stock quantity/.test(x))return String(p.inventory===undefined||p.inventory===null||p.inventory===''?100:p.inventory);
  if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
  const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){const option=exactCapacityOption(f,capMl,x);if(option)return option;}
  if(/\bweight unit\b/.test(x)&&p.productWeight){const unit=exactUnitOption(f,['g','gm','gms','gram','grams','Grams','Gms']);if(unit)return unit;}
