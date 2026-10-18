@@ -94,7 +94,7 @@ async function images(){
 }
 function isGarmentMeasurement(f){
  const x=norm((f.label||'')+' '+String(f.identifier||'').replace(/_/g,' '));
- return /\\b(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size length|armhole|thigh|outseam|rise)\\b/i.test(x);
+ return /\b(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size length|armhole|thigh|outseam|rise)\b/i.test(x);
 }
 function schema(scan){
  const fields=[],measurements=[];
@@ -134,24 +134,24 @@ function convertUnit(value,label,source){
  return String(Number(v.toFixed(4)));
 }
 function preset(f,p,d){
- const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\\bcm\\b|\\bmm\\b|\\binches?\\b|\\bmeters?\\b|\\bmetres?\\b)/i.test(x);
+ const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\bcm\b|\bmm\b|\binches?\b|\bmeters?\b|\bmetres?\b)/i.test(x);
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
  if(/(seller name|seller legal name|merchant name|seller company)/.test(x)&&d.sellerName)return d.sellerName;
  if(/(seller address|seller registered address|merchant address)/.test(x)&&d.sellerAddress)return d.sellerAddress;
- if(/(manufacturer name|manufactured by|manufacturer)/.test(x)&&!/address/.test(x)&&d.manufacturerName)return d.manufacturerName;
- if(/(manufacturer address|manufacturing address)/.test(x)&&d.manufacturerAddress)return d.manufacturerAddress;
- if(/(packer name|packed by|packer)/.test(x)&&!/address/.test(x)&&d.packerName)return d.packerName;
- if(/(packer address|packing address)/.test(x)&&d.packerAddress)return d.packerAddress;
+ if(/(manufacturer( name)?|manufactured by)/.test(x)&&!/(address|pincode|pin code|postal code|zip|date)/.test(x)&&d.manufacturerName)return d.manufacturerName;
+ if(/(manufacturer address|manufacturing address)/.test(x)&&!/(pincode|pin code|postal code|zip)/.test(x)&&d.manufacturerAddress)return d.manufacturerAddress;
+ if(/(packer( name)?|packed by)/.test(x)&&!/(address|pincode|pin code|postal code|zip|date)/.test(x)&&d.packerName)return d.packerName;
+ if(/(packer address|packing address)/.test(x)&&!/(pincode|pin code|postal code|zip)/.test(x)&&d.packerAddress)return d.packerAddress;
  if(/(country of origin|origin country|made in)/.test(x)&&d.countryOfOrigin)return d.countryOfOrigin;
  if(/(customer care phone|support phone|customer care number|contact phone)/.test(x)&&d.supportPhone)return d.supportPhone;
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
- if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\\bmrp\\b|wrong|defective|return)/.test(x))return p.sellingPrice;
+ if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
  if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
- if(!garment&&explicitDimension&&p.productLength&&/\\blength\\b/.test(x))return convertUnit(p.productLength,x,'cm');
- if(!garment&&explicitDimension&&p.productWidth&&/\\bwidth\\b/.test(x))return convertUnit(p.productWidth,x,'cm');
- if(!garment&&explicitDimension&&p.productHeight&&/\\bheight\\b/.test(x))return convertUnit(p.productHeight,x,'cm');
+ if(!garment&&explicitDimension&&p.productLength&&/\blength\b/.test(x))return convertUnit(p.productLength,x,'cm');
+ if(!garment&&explicitDimension&&p.productWidth&&/\bwidth\b/.test(x))return convertUnit(p.productWidth,x,'cm');
+ if(!garment&&explicitDimension&&p.productHeight&&/\bheight\b/.test(x))return convertUnit(p.productHeight,x,'cm');
  if(p.productFacts&&/(product details|additional details|product description|product information)/.test(x))return p.productFacts;
  return '';
 }
