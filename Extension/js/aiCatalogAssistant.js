@@ -509,22 +509,64 @@ async function compatible(k,prompt,imgs=[]){
  const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
 }
 
+function mergeImageBatchResponses(texts){
+ const combined={values:{},needsConfirmation:[],evidence:{}},seenNeeds=new Set(),conflicts=new Set();
+ texts.forEach((text,index)=>{
+  const obj=parseJson(text);
+  if(!obj||typeof obj!=='object'||!obj.values||typeof obj.values!=='object'){
+   throw new Error('Image batch '+(index+1)+' did not return a field-value JSON object.');
+  }
+  Object.entries(obj.values).forEach(([key,value])=>{
+   if(value===undefined||value===null||!String(value).trim())return;
+   if(combined.values[key]===undefined||!String(combined.values[key]).trim())combined.values[key]=value;
+   else if(norm(combined.values[key])!==norm(value)){
+    const conflict=key+'|'+String(combined.values[key])+'|'+String(value);
+    if(!conflicts.has(key)){
+     conflicts.add(key);
+     combined.needsConfirmation.push({identifier:key,reason:'Photo batches disagreed on this value ("'+String(combined.values[key])+'" vs "'+String(value)+'"). Review all product photos and confirm before publishing.'});
+    }
+   }
+  });
+  (Array.isArray(obj.needsConfirmation)?obj.needsConfirmation:[]).forEach(n=>{
+   if(!n||!n.identifier)return;const k=n.identifier+'|'+String(n.reason||'');if(seenNeeds.has(k))return;seenNeeds.add(k);combined.needsConfirmation.push(n);
+  });
+  if(obj.evidence&&typeof obj.evidence==='object'){
+   Object.entries(obj.evidence).forEach(([key,value])=>{
+    if(combined.evidence[key]===undefined&&value)combined.evidence[key]=value;
+    else if(value&&combined.evidence[key]&&JSON.stringify(value)!==JSON.stringify(combined.evidence[key])){
+     combined.needsConfirmation.push({identifier:key,reason:'Photo batches returned different evidence sources. Confirm the official source and exact field value.'});
+    }
+   });
+  }
+ });
+ return JSON.stringify(combined);
+}
 async function callAI(prompt,imgs=[]){
  if(!Array.isArray(imgs)||!imgs.length)throw new Error('Product photos are missing. Upload at least one photo and try again.');
+ if(imgs.length>10)throw new Error('Too many photos. Select up to 10 photos of this one product.');
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
-  const k=order[i];say('Trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
+  const k=order[i],batchSize=k.provider==='groq'?3:5,batches=[];
+  for(let p=0;p<imgs.length;p+=batchSize)batches.push(imgs.slice(p,p+batchSize));
   try{
-   const providerImages=k.provider==='groq'?imgs.slice(0,3):imgs.slice(0,5);
-   if(imgs.length>providerImages.length)say('Trying '+label(k.provider)+'; this provider will analyze the first '+providerImages.length+' of '+imgs.length+' photos…');
-   const text=k.provider==='gemini'?await gemini(k,prompt,providerImages):await compatible(k,prompt,providerImages);
-   await set({[ROT]:(start+i+1)%list.length});return {text,name:safeKeyName(k),provider:k.provider,imagesUsed:providerImages.length};
+   const texts=[];
+   for(let b=0;b<batches.length;b++){
+    const message='Analyzing photo batch '+(b+1)+'/'+batches.length+' via '+label(k.provider)+' ('+batches[b].length+' photo(s)).';
+    say(message);
+    const text=k.provider==='gemini'?await gemini(k,prompt,batches[b]):await compatible(k,prompt,batches[b]);
+    texts.push(text);
+   }
+   const resultText=texts.length===1?texts[0]:mergeImageBatchResponses(texts);
+   await set({[ROT]:(start+i+1)%list.length});
+   liveLog('All '+imgs.length+' photos were sent in '+batches.length+' batch(es) using '+label(k.provider)+'.','ok');
+   return {text:resultText,name:safeKeyName(k),provider:k.provider,imagesUsed:imgs.length,imageBatches:batches.length};
   }
-  catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));}
+  catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));liveLog(label(k.provider)+' failed; trying next enabled key if available.','warn');}
  }
  throw new Error('All enabled API keys failed. '+errors.join(' | '));
 }
+
 function parseJson(text){
  let s=String(text||'').trim(),f=String.fromCharCode(96);
  s=s.replace(new RegExp('^'+f+f+f+'(?:json)?\\\\s*','i'),'').replace(new RegExp('\\\\s*'+f+f+f+'$'),'');
