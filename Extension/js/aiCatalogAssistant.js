@@ -85,6 +85,13 @@ async function scanCurrentCatalog(showMessage){
  if(showMessage)say('Catalog form scanned. Check blank and mandatory field counts above.','success');
  return scan;
 }
+function convertUnit(value,label,source){
+ const n=Number(value);if(!Number.isFinite(n))return String(value);
+ const s=norm(label);let v=n;
+ if(source==='g'){if(/\\bkg\\b|kilogram/.test(s))v=n/1000;else if(/\\bmg\\b|milligram/.test(s))v=n*1000;}
+ if(source==='cm'){if(/\\bmm\\b|millimeter|millimetre/.test(s))v=n*10;else if(/\\bin\\b|inch|inches/.test(s))v=n/2.54;else if(/\\b(m|meter|metre)\\b/.test(s))v=n/100;}
+ return String(Number(v.toFixed(4)));
+}
 function preset(f,p,d){
  const x=norm(f.label+' '+f.identifier.replace(/_/g,' ')),garment=/(kurta|bust|shoulder|hip|waist|sleeve|inseam|garment|chest|dress size|size chart)/i.test(x);
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
@@ -100,9 +107,9 @@ function preset(f,p,d){
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
  if(p.sellingPrice&&/(selling price|transfer price|price|mrp)/.test(x))return p.sellingPrice;
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
- if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return p.productWeight;
- if(!garment&&p.productLength&&/length/.test(x)&&!/(sleeve|kurta|garment|bottom|bust)/.test(x))return p.productLength;
- if(!garment&&p.productWidth&&/width/.test(x))return p.productWidth;if(!garment&&p.productHeight&&/height/.test(x))return p.productHeight;
+ if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
+ if(!garment&&p.productLength&&/length/.test(x)&&!/(sleeve|kurta|garment|bottom|bust)/.test(x))return convertUnit(p.productLength,x,'cm');
+ if(!garment&&p.productWidth&&/width/.test(x))return convertUnit(p.productWidth,x,'cm');if(!garment&&p.productHeight&&/height/.test(x))return convertUnit(p.productHeight,x,'cm');
  if(p.productFacts&&/(product details|additional details|product description|product information)/.test(x))return p.productFacts;
  return '';
 }
