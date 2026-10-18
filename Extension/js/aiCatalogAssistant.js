@@ -13,10 +13,18 @@ function requestGoogleSearchPermission(){
  });
 }
 function cleanSearchSeed(value){
- return String(value||'').replace(/\\.(jpe?g|png|webp|gif)$/i,'').replace(/\\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\\b/gi,' ').replace(/[_-]+/g,' ').replace(/\\s+/g,' ').trim().slice(0,140);
+ return String(value||'')
+  .replace(/\.(jpe?g|png|webp|gif)$/i,'')
+  .replace(/\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\b/gi,' ')
+  .replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,140);
 }
 function validExternalUrl(raw){
- try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return '';if(/(^|\\.)google\\.(com|co\\.in)$/i.test(u.hostname)||/googleusercontent|accounts\\.google|support\\.google/i.test(u.hostname))return '';return u.href;}catch(e){return '';}
+ try{
+  const u=new URL(raw);
+  if(!['http:','https:'].includes(u.protocol))return '';
+  if(/(^|\.)google\.(com|co\.in)$/i.test(u.hostname)||/googleusercontent|accounts\.google|support\.google/i.test(u.hostname))return '';
+  return u.href;
+ }catch(e){return '';}
 }
 function parseGoogleResults(html){
  const doc=new DOMParser().parseFromString(String(html||''),'text/html'),items=[],seen=new Set();
@@ -27,8 +35,8 @@ function parseGoogleResults(html){
   let href=anchor.href||anchor.getAttribute('href')||'';
   if(href.startsWith('/url?')){try{const u=new URL(href,'https://www.google.com');href=u.searchParams.get('q')||u.searchParams.get('url')||'';}catch(e){}}
   href=validExternalUrl(href);if(!href||seen.has(href))return;
-  const title=String(h.textContent||'').replace(/\\s+/g,' ').trim();
-  const snippet=String(card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st')?.textContent||'').replace(/\\s+/g,' ').trim();
+  const title=String(h.textContent||'').replace(/\s+/g,' ').trim();
+  const snippet=String(card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st')?.textContent||'').replace(/\s+/g,' ').trim();
   if(!title||title.length<3)return;
   seen.add(href);items.push({title,url:href,snippet:snippet.slice(0,700),domain:new URL(href).hostname});
  };
@@ -40,7 +48,7 @@ async function searchGoogle(query){
  const url='https://www.google.com/search?q='+encodeURIComponent(query)+'&num=7&hl=en&gl=in';
  const res=await post(url,{method:'GET',credentials:'omit',headers:{'Accept':'text/html,application/xhtml+xml'}});
  if(!res.ok)throw new Error('Google Search HTTP '+res.status);
- const html=await res.text();if(/unusual traffic|not a robot|captcha|consent\\.google/i.test(html.slice(0,25000)))throw new Error('Google returned a consent or anti-bot page.');
+ const html=await res.text();if(/unusual traffic|not a robot|captcha|consent\.google/i.test(html.slice(0,25000)))throw new Error('Google returned a consent or anti-bot page.');
  const results=parseGoogleResults(html);if(!results.length)throw new Error('Google Search results could not be parsed.');
  return results;
 }
@@ -64,13 +72,13 @@ async function researchProduct(p,imgs,allowed){
  if(!research.results.length&&!research.error)research.error='No usable Google results were found.';
  return research;
 }
-const OFFICIAL_TAX_HOST=/(^|\\.)(cbic\\.gov\\.in|cbic-gst\\.gov\\.in|gst\\.gov\\.in|taxinformation\\.cbic\\.gov\\.in)$/i;
+const OFFICIAL_TAX_HOST=/(^|\.)(cbic\.gov\.in|cbic-gst\.gov\.in|gst\.gov\.in)$/i;
 function isTaxField(field){
  const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label);
- return /\\bhsn\\b/.test(x)||(/\\bgst\\b/.test(x)&&!/(gstin|gst number|registration)/.test(x));
+ return /\bhsn\b/.test(x)||(/\bgst\b/.test(x)&&!/(gstin|gst number|registration)/.test(x));
 }
 function officialTaxEvidence(field,candidate,evidence,research){
- const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label),isHsn=/\\bhsn\\b/.test(x);
+ const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label),isHsn=/\bhsn\b/.test(x);
  let sourceUrl='';
  if(typeof evidence==='string')sourceUrl=evidence;
  else if(evidence&&typeof evidence==='object')sourceUrl=String(evidence.url||evidence.sourceUrl||'');
@@ -78,14 +86,15 @@ function officialTaxEvidence(field,candidate,evidence,research){
  if(!row)return null;
  let host='';try{host=new URL(row.url).hostname;}catch(e){}
  if(!OFFICIAL_TAX_HOST.test(host))return null;
- const text=(row.title+' '+row.snippet).toLowerCase(),digits=String(candidate||'').replace(/\\D/g,'');
+ const sourceText=(row.title+' '+row.snippet).toLowerCase();
  if(isHsn){
-  const sourceDigits=(row.title+' '+row.snippet).replace(/\\D/g,'');
+  const digits=String(candidate||'').replace(/\D/g,'');
+  const sourceDigits=(row.title+' '+row.snippet).replace(/\D/g,'');
   if(digits.length<4||!sourceDigits.includes(digits))return null;
  }else{
-  const n=String(candidate||'').match(/\\d+(?:\\.\\d+)?/);if(!n)return null;
-  const rate=Number(n[0]),ratePattern=new RegExp('(?:gst|tax|rate|schedule|slab|\u005c\\\\s)\\\\D{0,18}'+String(rate).replace('.','\\\\.')+'\\\\s*%|'+String(rate).replace('.','\\\\.')+'\\\\s*%','i');
-  if(!ratePattern.test(text))return null;
+  const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
+  const compact=sourceText.replace(/\s+/g,'');
+  if(!compact.includes(String(Number(n[0]))+'%'))return null;
  }
  return row;
 }
@@ -94,26 +103,24 @@ function hashText(text){
  return (h>>>0).toString(16).toUpperCase().padStart(8,'0');
 }
 function slugCode(text,maxLen){
- return String(text||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,maxLen).replace(/-+$/g,'')||'PRODUCT';
+ return String(text||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,maxLen).replace(/-+$/g,'')||'PRODUCT';
 }
 async function productCodes(title,p){
- const stableTitle=cleanSearchSeed(title)||cleanSearchSeed((researchNow.results||[]).slice(0,1).map(x=>x.title).join(' '))||'PRODUCT';
- const identity=[stableTitle,p.material||'',p.color||'',p.productFacts||''].join('|').toLowerCase().replace(/\\s+/g,' ').trim();
+ const stableTitle=cleanSearchSeed(title)||'PRODUCT';
+ const identity=[stableTitle,p.material||'',p.color||'',p.productFacts||''].join('|').toLowerCase().replace(/\s+/g,' ').trim();
  const h=hashText(identity),storageKey='ai_generated_product_codes_v1',res=await get(storageKey),map=res[storageKey]||{};
  if(map[h]&&map[h].styleCode&&map[h].skuCode)return map[h];
  const core=slugCode(stableTitle,16),short=slugCode(stableTitle,10);
  const codes={styleCode:'SE-'+core+'-'+h.slice(0,6),skuCode:'SE-'+short+'-'+h.slice(2,10),identityHash:h};
- map[h]=codes;
- const entries=Object.entries(map).slice(-250);await set({[storageKey]:Object.fromEntries(entries)});
+ map[h]=codes;const entries=Object.entries(map).slice(-250);await set({[storageKey]:Object.fromEntries(entries)});
  return codes;
 }
 function generatedCodeForField(field,codes){
  const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label);
  if(/supplier product id|supplier_product_id|style code|style id|product id/.test(x))return codes.styleCode;
- if(/supplier sku id|supplier_sku_id|\\bsku id\\b|stock keeping unit/.test(x))return codes.skuCode;
+ if(/supplier sku id|supplier_sku_id|\bsku id\b|stock keeping unit/.test(x))return codes.skuCode;
  return '';
 }
-
 const el=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=String(txt);return n;};
 const norm=v=>String(v||'').replace(/[＊*]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
 function say(m,t){if(!$('ai-status'))return;$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
