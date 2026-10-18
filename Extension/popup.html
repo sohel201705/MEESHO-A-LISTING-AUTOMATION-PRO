@@ -1834,6 +1834,35 @@
     .pricing-scope-btn.active{background:linear-gradient(135deg,#2563eb,#3b82f6);border-color:#2563eb;color:#fff;box-shadow:0 4px 10px rgba(37,99,235,.2)}
     .pricing-scope-title{text-align:center;font-size:11px;font-weight:900;letter-spacing:.04em;color:#1e3a8a;margin:0 0 11px;text-transform:uppercase}
 </style>
+
+  <style>
+    .ai-catalog-card{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:12px;margin:10px 0 14px;box-shadow:0 3px 12px rgba(15,23,42,.05);color:#0f172a}
+    .ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
+    .ai-head h3{font-size:15px;margin:2px 0 5px;color:#0f172a}.ai-head p,.ai-muted{font-size:11px;line-height:1.45;color:#64748b;margin:4px 0}
+    .ai-kicker{font-size:9px;font-weight:800;letter-spacing:1px;color:#2563eb}.ai-status-pill{font-size:9px;font-weight:800;background:#eff6ff;color:#1d4ed8;padding:5px 7px;border-radius:99px;white-space:nowrap}
+    .ai-product-grid,.ai-default-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    .ai-catalog-card label{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:700;color:#475569;min-width:0}
+    .ai-catalog-card input,.ai-catalog-card textarea,.ai-catalog-card select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:7px;font:inherit;font-size:11px;color:#0f172a;background:#fff}
+    .ai-catalog-card input[type=file]{padding:7px;font-weight:400}.ai-full-label{display:flex;flex-direction:column;gap:5px;margin:8px 0}
+    .ai-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+    .ai-primary-btn,.ai-secondary-btn,.ai-small-btn{border:0;border-radius:7px;padding:9px 8px;font-weight:800;font-size:11px;cursor:pointer}
+    .ai-primary-btn{background:#1d4ed8;color:#fff}.ai-secondary-btn{background:#e2e8f0;color:#0f172a}.ai-primary-btn:disabled,.ai-secondary-btn:disabled{opacity:.45;cursor:not-allowed}
+    .ai-status{font-size:11px;line-height:1.4;margin-top:7px;min-height:15px;color:#475569;overflow-wrap:anywhere}.ai-status.success{color:#047857}.ai-status.error{color:#b91c1c}.ai-status.warning{color:#92400e}
+    .ai-preview{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:9px}.ai-preview-title{font-size:13px;font-weight:800;margin-bottom:5px}
+    .ai-preview-list{max-height:260px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;margin:7px 0}.ai-preview-item{display:grid;grid-template-columns:42% 58%;gap:6px;padding:6px 7px;border-bottom:1px solid #f1f5f9;font-size:10px}.ai-preview-item:last-child{border-bottom:0}
+    .ai-preview-label{font-weight:700;color:#475569;overflow-wrap:anywhere}.ai-preview-value{overflow-wrap:anywhere;color:#0f172a}.ai-preview-value.ai-blank{color:#94a3b8;font-style:italic}
+    .ai-needs-box{padding:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:10px;margin:8px 0;color:#78350f}.ai-needs-box ul{margin:6px 0 0 14px}.ai-needs-box li{margin:4px 0;overflow-wrap:anywhere}
+    .ai-settings{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:9px}.ai-settings summary{font-size:11px;font-weight:800;cursor:pointer;color:#1e40af}
+    .ai-security-note{font-size:10px;line-height:1.45;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:7px;margin:8px 0;color:#475569}
+    .ai-settings-section{border:1px solid #e2e8f0;border-radius:8px;padding:9px;margin-top:9px}.ai-settings-section h4{font-size:12px;margin-bottom:5px;color:#0f172a}
+    .ai-provider-key-list{display:flex;flex-direction:column;gap:7px;margin:7px 0}.ai-key-row{border:1px solid #e2e8f0;border-radius:7px;padding:8px;display:flex;justify-content:space-between;gap:7px;align-items:flex-start}
+    .ai-key-meta{display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere;font-size:10px}.ai-key-controls{display:flex;flex-direction:column;align-items:flex-end;gap:7px;white-space:nowrap}
+    .ai-toggle-label{display:flex!important;flex-direction:row!important;align-items:center;gap:3px!important;font-size:9px!important}.ai-toggle-label input{width:auto!important}
+    .ai-small-btn{padding:5px 7px;font-size:9px}.ai-danger{background:#fee2e2;color:#991b1b}.ai-provider-form{display:flex;flex-direction:column;gap:8px;border-top:1px dashed #cbd5e1;padding-top:9px;margin-top:9px}
+    .ai-chip-list{display:flex;gap:5px;flex-wrap:wrap}.ai-image-chip{padding:4px 6px;background:#f1f5f9;color:#334155;border-radius:5px;font-size:9px;overflow-wrap:anywhere}
+    .ai-empty{padding:8px;border:1px dashed #cbd5e1;border-radius:6px;color:#64748b;font-size:10px}.ai-default-grid .span-2{grid-column:span 2}
+  </style>
+
 </head>
 
 <body>
@@ -2253,6 +2282,68 @@
         <div class="scan-status" id="scan-status"></div>
       </div>
 
+
+      <!-- AI Catalog Assistant: image analysis + saved seller defaults -->
+      <section id="ai-catalog-assistant" class="ai-catalog-card">
+        <div class="ai-head">
+          <div><div class="ai-kicker">AI WORKFLOW</div><h3>AI Catalog Autofill</h3><p>Scan the selected catalog, upload photos, generate a draft and autofill.</p></div>
+          <span class="ai-status-pill">MULTI-API</span>
+        </div>
+        <div class="ai-product-grid">
+          <label>Product name (optional)<input id="ai-product-name" type="text" placeholder="e.g. 750ml water bottle"></label>
+          <label>Material (only if known)<input id="ai-product-material" type="text" placeholder="Verified material"></label>
+          <label>Color (optional)<input id="ai-product-color" type="text" placeholder="Known color"></label>
+          <label>Selling price / override<input id="ai-product-price" type="number" min="0" step="0.01" placeholder="Optional price"></label>
+          <label>Product weight (g)<input id="ai-product-weight" type="number" min="0" step="0.1" placeholder="Actual weight"></label>
+          <label>Product length (cm)<input id="ai-product-length" type="number" min="0" step="0.1" placeholder="Actual length"></label>
+          <label>Product width (cm)<input id="ai-product-width" type="number" min="0" step="0.1" placeholder="Actual width"></label>
+          <label>Product height (cm)<input id="ai-product-height" type="number" min="0" step="0.1" placeholder="Actual height"></label>
+        </div>
+        <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Capacity, set count, package contents, model or other confirmed facts"></textarea></label>
+        <label class="ai-full-label">Product photos (JPG / PNG / WEBP; max 5 files, 8 MB each)<input id="ai-product-images" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple></label>
+        <div id="ai-image-list" class="ai-chip-list"></div>
+        <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
+        <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
+        <div id="ai-preview" class="ai-preview" style="display:none"></div>
+        <details class="ai-settings">
+          <summary>Settings · Multiple API Keys &amp; Saved Seller Defaults</summary>
+          <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
+          <div class="ai-settings-section">
+            <h4>AI API Providers</h4>
+            <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
+            <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
+            <div class="ai-provider-form">
+              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
+              <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
+              <label>Model ID<input id="ai-key-model" type="text" placeholder="Model ID from provider"></label>
+              <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
+              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste provider API key"></label>
+              <p id="ai-provider-hint" class="ai-muted"></p>
+              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add API Key</button>
+            </div>
+          </div>
+          <div class="ai-settings-section">
+            <h4>Saved Seller Defaults</h4>
+            <p class="ai-muted">Add your confirmed business details here. They are used only when a scanned field clearly matches. Product weight and dimensions stay per-product above.</p>
+            <div class="ai-default-grid">
+              <label>Brand<input id="ai-default-brand" type="text"></label>
+              <label>Seller / business name<input id="ai-default-seller-name" type="text"></label>
+              <label class="span-2">Seller address<textarea id="ai-default-seller-address" rows="2"></textarea></label>
+              <label>Manufacturer name<input id="ai-default-manufacturer-name" type="text"></label>
+              <label>Manufacturer address<input id="ai-default-manufacturer-address" type="text"></label>
+              <label>Packer name<input id="ai-default-packer-name" type="text"></label>
+              <label>Packer address<input id="ai-default-packer-address" type="text"></label>
+              <label>Country of origin<input id="ai-default-country" type="text" placeholder="Only if confirmed"></label>
+              <label>Customer support phone<input id="ai-default-support-phone" type="text"></label>
+              <label>Customer support email<input id="ai-default-support-email" type="email"></label>
+              <label>HSN code<input id="ai-default-hsn" type="text" placeholder="Only if confirmed"></label>
+              <label>GST rate<input id="ai-default-gst" type="text" placeholder="Only if confirmed"></label>
+            </div>
+            <button id="ai-save-defaults-btn" type="button" class="ai-secondary-btn">Save Seller Defaults</button>
+          </div>
+        </details>
+      </section>
+
       <!-- STEP 2: Fill -->
       <div class="step-label">STEP 2 — FILL VALUES</div>
 
@@ -2272,6 +2363,7 @@
   </div>
 
   <script src="popup.js"></script>
+  <script src="js/aiCatalogAssistant.js"></script>
 </body>
 
 </html>
