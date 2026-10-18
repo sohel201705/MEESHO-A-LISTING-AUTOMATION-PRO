@@ -320,6 +320,7 @@
 
   function classifyInput(input) {
     if (!input) return null;
+    if (input.tagName === 'SELECT') return { inputEl: input, triggerEl: input, type: 'select' };
     const isReadonly = input.hasAttribute('readonly') || input.readOnly;
     if (isReadonly && input.type === 'text') {
       return { inputEl: input, triggerEl: input.parentElement, type: 'mui' };
@@ -866,7 +867,8 @@
 
     function mapApiField(f, sectionId) {
 
-      if (f.identifier.toLowerCase() === 'size' && sectionId === 'product_details_data') {
+      if (!f || !f.identifier) return null;
+      if (String(f.identifier).toLowerCase() === 'size' && sectionId === 'product_details_data') {
         seenIds.add(f.identifier);
         return null;
       }
@@ -876,8 +878,8 @@
       return {
         identifier: f.identifier,
         label: f.name,
-        inputType: f.type.toLowerCase(),
-        values: f.values || [],
+        inputType: String(f.type || 'text').toLowerCase(),
+        values: Array.isArray(f.values) ? f.values : [],
         mandatory: !!f.mandatory
       };
     }
@@ -887,7 +889,7 @@
     if (__capturedProductFields) {
       const api = __capturedProductFields;
 
-      if (api.product_details_data) {
+      if (Array.isArray(api.product_details_data)) {
         const sec = getSection('product_details_data');
         api.product_details_data.forEach(f => {
           const mapped = mapApiField(f, 'product_details_data');
@@ -911,7 +913,7 @@
         });
       }
 
-      if (api.product_data) {
+      if (Array.isArray(api.product_data)) {
         const sec = getSection('product_data');
         api.product_data.forEach(f => {
           const mapped = mapApiField(f, 'product_data');
@@ -919,7 +921,7 @@
         });
       }
 
-      if (api.other_data) {
+      if (Array.isArray(api.other_data)) {
         const sec = getSection('other_data');
         api.other_data.forEach(f => {
           const mapped = mapApiField(f, 'other_data');
