@@ -42,7 +42,7 @@ async function keys(){
   const apiKey=String(k.apiKey||''),endpoint=String(k.endpoint||'');
   if(k.provider==='compatible'&&/^gsk_/i.test(apiKey)){
    changed=true;
-   return Object.assign({},k,{provider:'groq',model:String(k.model||'').startsWith('qwen/'):modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
+   return Object.assign({},k,{provider:'groq',model:String(k.model||'').startsWith('qwen/')?'qwen/qwen3.8-27b':modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
   }
   if(k.provider==='compatible'&&/^AIzaSy/i.test(apiKey)){
    changed=true;
