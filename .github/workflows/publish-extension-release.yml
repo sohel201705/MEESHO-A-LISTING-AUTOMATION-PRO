@@ -1,0 +1,71 @@
+name: Publish Extension Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Extension/**'
+      - '.github/workflows/publish-extension-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+
+      - name: Read extension version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const m=require('./Extension/manifest.json'); if(!m.version) process.exit(1); console.log('version='+m.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "JSON.parse(require('node:fs').readFileSync('Extension/manifest.json', 'utf8'))"
+          node --check Extension/background.js
+          node --check Extension/popup.js
+          node --check Extension/js/aiCatalogAssistant.js
+          node --check Extension/content.js
+          node --check Extension/interceptor.js
+          node --check Extension/js/meeshoApi.js
+          node --check Extension/js/shippingOptimizer.js
+
+      - name: Build Extension-only ZIP and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Extension/manifest.json
+          mkdir -p dist
+          cd Extension
+          zip -r ../dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip . -x '*/.DS_Store'
+          cd ../dist
+          sha256sum MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip > MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip.sha256
+          test -s MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip
+          test -s MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: MEESHO A+ LISTING AUTOMATION PRO v${{ steps.meta.outputs.version }}
+          body: |
+            Stable Extension-only ZIP for MEESHO A+ LISTING AUTOMATION PRO.
+
+            Installation: download and extract the ZIP, open chrome://extensions, enable Developer mode, click Load unpacked, and select the extracted folder containing manifest.json.
+
+            AI provider keys and seller defaults are stored in local Chrome extension storage. Review all generated fields, particularly mandatory and legal/tax fields, before saving a catalog.
+          files: |
+            dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip
+            dist/MEESHO-A-LISTING-AUTOMATION-PRO-Extension.zip.sha256
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
