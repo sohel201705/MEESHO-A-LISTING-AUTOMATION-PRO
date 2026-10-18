@@ -136,3 +136,68 @@ function parseJson(text){
  throw new Error('AI response was not valid JSON. Try another model or API key.');
 }
 function allowed(value,field){return !field.values.length||field.values.some(o=>norm(o)===norm(value));}
+
+function showPreview(fields,values,needs,stats){
+ const root=$('ai-preview');root.replaceChildren();root.style.display='block';
+ root.appendChild(el('div','ai-preview-title','AI Draft Preview'));
+ root.appendChild(el('div','ai-muted','AI values: '+stats.ai+' · Defaults: '+stats.preset+' · Dropdown mismatches: '+stats.bad+' · Needs confirmation: '+needs.length));
+ const list=el('div','ai-preview-list');
+ fields.forEach(f=>{const v=values[f.identifier],row=el('div','ai-preview-item');row.appendChild(el('span','ai-preview-label',f.label+(f.mandatory?' *':'')));row.appendChild(el('span','ai-preview-value'+(v?'':' ai-blank'),v?String(v):'Not filled'));list.appendChild(row);});
+ root.appendChild(list);
+ if(needs.length){const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs confirmation — '+needs.length));const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});box.appendChild(ul);root.appendChild(box);}
+ root.appendChild(el('p','ai-muted','Review the draft. Unverified legal details and product measurements remain blank.'));
+}
+async function generate(){
+ try{
+  const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
+  const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
+  if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open Meesho Seller Panel and select the catalog first.');
+  const res=await get(['last_scan_result']);let scan=res.last_scan_result;
+  if(!scan||!Array.isArray(scan.sections)||!scan.sections.length){
+   scan=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'SCAN_FORM'},r=>{if(chrome.runtime.lastError)return reject(new Error('Refresh the Meesho page and click Scan.'));if(!r||r.error||!Array.isArray(r.sections))return reject(new Error((r&&r.error)||'Scan the form first.'));resolve(r);}));
+  }
+  await set({last_scan_result:scan});scanNow=scan;const s=schema(scan);if(!s.fields.length)throw new Error('No form fields found. Scan the selected catalog first.');
+  const p={productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),productHeight:$('ai-product-height').value.trim(),sellingPrice:$('ai-product-price').value.trim(),productFacts:$('ai-product-facts').value.trim()};
+  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images(),answer=await callAI(promptFor(scan,p,d,s,imgs)),parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{};
+  const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
+  let ai=0,presetCount=0,bad=0;
+  s.fields.forEach(f=>{
+   const old=captured(scan,f.identifier);if(old){values[f.identifier]=old;return;}
+   const fixed=preset(f,p,d);
+   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Saved/user-entered value does not exactly match the allowed dropdown options.'});bad++;}return;}
+   const v=proposed[f.identifier];if(v!==undefined&&v!==null&&String(v).trim()){if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}values[f.identifier]=String(v).trim();ai++;}
+  });
+  s.measurements.forEach(f=>{if(f.mandatory)needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
+  s.fields.forEach(f=>{if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Required field is blank because its value is not verified.'});});
+  draft=values;pending=needs;showPreview(s.fields,values,needs,{ai:ai,preset:presetCount,bad:bad});
+  $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
+  say('Draft ready using '+answer.name+'. Review it before autofill.',needs.length?'warning':'success');
+ }catch(e){say(e.message||'AI generation failed.','error');}
+}
+async function autofill(){
+ try{
+  if(!draft||!scanNow)throw new Error('Generate a draft first.');
+  const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
+  const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
+  if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho catalog tab again.');
+  if(pending.length&&!confirm('Some fields need confirmation. Continue autofill and leave unknown fields untouched?'))return;
+  await set({meesho_autofill_values:draft});
+  const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:draft},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the page and retry.'));if(!r||r.success===false)return reject(new Error((r&&(r.message||r.error))||'Autofill failed.'));resolve(r);}));
+  say('Autofill completed: '+Number(result.filled||0)+' field(s). Review Meesho before saving/submitting.','success');
+ }catch(e){say(e.message||'Autofill failed.','error');}
+}
+function init(){
+ if(!$('ai-catalog-assistant'))return;
+ $('ai-provider-type').addEventListener('change',updateProviderForm);
+ $('ai-add-key-btn').addEventListener('click',addKey);
+ $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
+ $('ai-generate-btn').addEventListener('click',generate);
+ $('ai-autofill-btn').addEventListener('click',autofill);
+ $('ai-product-images').addEventListener('change',()=>{
+  const host=$('ai-image-list');host.replaceChildren();const files=Array.from($('ai-product-images').files||[]);
+  files.forEach(f=>host.appendChild(el('span','ai-image-chip',f.name)));say(files.length?files.length+' photo(s) selected.':'');
+ });
+ loadDefaults();renderKeys();updateProviderForm();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
