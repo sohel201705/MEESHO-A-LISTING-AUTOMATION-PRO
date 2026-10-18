@@ -86,27 +86,18 @@ function officialTaxEvidence(field,candidate,evidence,research){
  if(!row)return null;
  let host='';try{host=new URL(row.url).hostname;}catch(e){}
  if(!OFFICIAL_TAX_HOST.test(host))return null;
- const sourceText=(row.title+' '+row.snippet).toLowerCase();
+ const sourceText=String(row.title+' '+row.snippet),lower=sourceText.toLowerCase();
  if(isHsn){
   const digits=String(candidate||'').replace(/\D/g,'');
   if(!/^\d{4}(?:\d{2})?(?:\d{2})?$/.test(digits))return null;
-  const escaped=digits.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\ const sourceText=(row.title+' '+row.snippet).toLowerCase();
- if(isHsn){
-  const digits=String(candidate||'').replace(/\D/g,'');
-  const sourceDigits=(row.title+' '+row.snippet).replace(/\D/g,'');
-  if(digits.length<4||!sourceDigits.includes(digits))return null;
+  const keyword=lower.search(/hsn|tariff|classification|commodity|heading/);
+  if(keyword<0)return null;
+  const nearby=sourceText.slice(Math.max(0,keyword-70),Math.min(sourceText.length,keyword+150)).replace(/\D/g,'');
+  if(!nearby.includes(digits))return null;
  }else{
   const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
-  const compact=sourceText.replace(/\s+/g,'');
-  if(!compact.includes(String(Number(n[0]))+'%'))return null;
- }');
-  const hasCode=new RegExp('(?:hsn|tariff|classification|commodity|heading)[^\\d]{0,40}'+escaped+'\\b','i').test(row.title+' '+row.snippet);
-  if(!hasCode)return null;
- }else{
-  const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
-  const rate=String(Number(n[0])).replace('.','\\.');
-  const ratePattern=new RegExp('(?:gst|tax|rate|slab)[^\\d%]{0,30}'+rate+'\\s*%|'+rate+'\\s*%[^\\w]{0,18}(?:gst|tax|rate|slab)','i');
-  if(!ratePattern.test(sourceText))return null;
+  const compact=lower.replace(/[\s,]/g,'');
+  if(!/(gst|tax|rate|slab)/i.test(lower)||!compact.includes(String(Number(n[0]))+'%'))return null;
  }
  return row;
 }
