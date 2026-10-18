@@ -260,6 +260,7 @@
     combo_of: ['combo of'],
     multipack: ['net quantity', 'net quantity (n)'],
     generic_name: ['generic name'],
+    add_ons: ['add ons', 'add-on', 'add-ons'],
     country_of_origin: ['country of origin'],
     manufacturer_name: ['manufacturer name'],
     manufacturer_address: ['manufacturer address'],
