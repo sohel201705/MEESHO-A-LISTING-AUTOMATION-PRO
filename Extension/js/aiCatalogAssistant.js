@@ -33,7 +33,7 @@ function parseGoogleResults(html){
   const h=heading||card.querySelector('h3');if(!h)return;
   const anchor=h.closest('a')||Array.from(card.querySelectorAll('a')).find(a=>a.querySelector('h3'));if(!anchor)return;
   let href=anchor.href||anchor.getAttribute('href')||'';
-  try{const parsedHref=new URL(href,'https://www.google.com');if(/(^|\\.)google\\.(com|co\\.in)$/i.test(parsedHref.hostname)&&parsedHref.pathname==='/url')href=parsedHref.searchParams.get('q')||parsedHref.searchParams.get('url')||'';}catch(e){}
+  try{const parsedHref=new URL(href,'https://www.google.com');if(/(^|\.)google\.(com|co\.in)$/i.test(parsedHref.hostname)&&parsedHref.pathname==='/url')href=parsedHref.searchParams.get('q')||parsedHref.searchParams.get('url')||'';}catch(e){}
   href=validExternalUrl(href);if(!href||seen.has(href))return;
   const title=String(h.textContent||'').replace(/\s+/g,' ').trim();
   const snippet=String(card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st')?.textContent||'').replace(/\s+/g,' ').trim();
@@ -346,6 +346,20 @@ function capacityInMl(value){
  if(!m)return null;const n=Number(m[1]);if(!Number.isFinite(n)||n<=0)return null;
  return /^m/i.test(m[2])?n:n*1000;
 }
+function exactCapacityOption(field,ml,label){
+ const options=Array.isArray(field.values)?field.values:[];
+ for(const option of options){
+  const optionMl=capacityInMl(option);
+  if(optionMl!==null&&Math.abs(optionMl-ml)<0.01)return String(option);
+ }
+ const x=norm(label);
+ if(!options.length){
+  if(/capacity_in_l|capacity in l|\b(in l|litre|liter)\b/.test(x))return String(Number((ml/1000).toFixed(4)));
+  if(/\bml\b|milliliter|millilitre/.test(x))return String(Number(ml.toFixed(4)));
+ }
+ return '';
+}
+
 function fieldText(f){return norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||''));}
 function isPhysicalMeasureField(f){
  const x=fieldText(f);
@@ -366,6 +380,7 @@ function sourceSupportsExactMeasure(field,candidate,research){
 
 function preset(f,p,d){
  const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\bcm\b|\bmm\b|\binches?\b|\bmeters?\b|\bmetres?\b)/i.test(x);
+ if(p.productName&&/(product name|product_name)/.test(x))return p.productName;
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
  if(/(seller name|seller legal name|merchant name|seller company)/.test(x)&&d.sellerName)return d.sellerName;
  if(/(seller address|seller registered address|merchant address)/.test(x)&&d.sellerAddress)return d.sellerAddress;
@@ -378,9 +393,12 @@ function preset(f,p,d){
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
  if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
- const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){if(/\b(in l|litre|liter|capacity_in_l)\b/.test(x))return String(Number((capMl/1000).toFixed(4)));if(/\bml\b|milliliter|millilitre/.test(x))return String(Number(capMl.toFixed(4)));return String(p.productCapacity);}
+ const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){const option=exactCapacityOption(f,capMl,x);if(option)return option;}
+ if(/\bweight unit\b/.test(x)&&p.productWeight){const unit=exactUnitOption(f,['g','gm','gms','gram','grams','Grams','Gms']);if(unit)return unit;}
+ if(/\bvolume unit\b/.test(x)&&capMl!==null){const unit=exactUnitOption(f,capMl>=1000?['L','l','Liter','Liters','Litre','Litres']:['ml','mL','ML','Milliliter','Millilitre']);if(unit)return unit;}
+ if(/\bproduct unit\b/.test(x)&&(p.productLength||p.productWidth||p.productHeight)){const unit=exactUnitOption(f,['cm','CM','Cm','centimeter','centimeters','centimetre','centimetres']);if(unit)return unit;}
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
- if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
+ if(!/\\b(weight unit|volume unit|product unit)\\b/.test(x)&&!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
  if(!garment&&explicitDimension&&p.productLength&&/\blength\b/.test(x))return convertUnit(p.productLength,x,'cm');
  if(!garment&&explicitDimension&&p.productWidth&&/\bwidth\b/.test(x))return convertUnit(p.productWidth,x,'cm');
  if(!garment&&explicitDimension&&p.productHeight&&/\bheight\b/.test(x))return convertUnit(p.productHeight,x,'cm');
@@ -552,11 +570,9 @@ async function generate(googleAllowed){
    capacityFields.forEach(f=>{
     if(captured(scan,f.identifier)||String(values[f.identifier]||'').trim())return;
     const label=norm(f.label+' '+f.identifier),ml=capacityInMl(p.productCapacity);if(ml===null)return;
-    let candidate=String(p.productCapacity);
-    if(/\b(in l|litre|liter|\bl\b)/.test(label))candidate=String(Number((ml/1000).toFixed(4)));
-    if(/\bml\b|milliliter|millilitre/.test(label))candidate=String(Number(ml.toFixed(4)));
-    if(allowed(candidate,f))values[f.identifier]=candidate;
-    else if(f.values.length&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no exact matching dropdown option. Select the closest truthful option manually; none was guessed.'});
+    const candidate=exactCapacityOption(f,ml,label);
+    if(candidate&&allowed(candidate,f))values[f.identifier]=candidate;
+    else if(f.values.length&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no semantically exact matching dropdown option. Select the correct option manually; none was guessed.'});
    });
   }
   s.measurements.forEach(f=>{if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
