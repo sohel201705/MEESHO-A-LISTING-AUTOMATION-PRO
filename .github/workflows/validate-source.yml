@@ -70,7 +70,7 @@ jobs:
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.2');
+          assert.equal(manifest.version, '3.17.3');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -113,5 +113,23 @@ jobs:
           assert.ok(popupHtml.includes('js/aiCatalogAssistant.js'));
           assert.ok(manifest.host_permissions.includes('https://generativelanguage.googleapis.com/*'));
           assert.ok(manifest.host_permissions.includes('https://api.groq.com/*'));
-          console.log('Free-mode safeguards and AI catalog feature checks passed.');
+          assert.ok(manifest.optional_host_permissions.includes('https://*/*'));
+          assert.ok(aiAssistant.includes('function researchProduct'));
+          assert.ok(aiAssistant.includes('function officialTaxEvidence'));
+          assert.ok(aiAssistant.includes('function productCodes'));
+          assert.ok(aiAssistant.includes('function generatedCodeForField'));
+          assert.ok(aiAssistant.includes('function exactCapacityOption'));
+          assert.ok(aiAssistant.includes('Google Research Sources'));
+          assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs)'));
+          assert.ok(aiAssistant.includes("payload._variation_sizes=selected.join(',')"));
+          assert.ok(aiAssistant.includes('#dynamic-sections-container [id^="f_"]'));
+          assert.ok(popupHtml.includes('id="ai-product-capacity"'));
+          assert.ok(popupHtml.includes('id="ai-variation-sizes"'));
+          assert.ok(popupHtml.includes('id="ai-research-sources"'));
+          assert.ok(content.includes("clickResult==='checkbox-failed'"));
+          assert.ok(content.includes('Selected size(s) could not be matched'));
+          assert.ok(content.includes("add_ons: ['add ons'"));
+          assert.ok(content.includes('bis_isi_certification_number'));
+          assert.ok(content.includes('cm_l_number'));
+          console.log('Free-mode safeguards and v3.17.3 catalog research/autofill regressions passed.');
           NODE
