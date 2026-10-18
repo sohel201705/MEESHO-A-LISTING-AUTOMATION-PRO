@@ -92,9 +92,19 @@ async function images(){
  for(const f of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(f.type))throw new Error('Use JPG, PNG, WEBP or GIF: '+f.name);if(f.size>8*1024*1024)throw new Error(f.name+' is over 8 MB.');}
  const all=await Promise.all(files.map(readImage));const host=$('ai-image-list');host.replaceChildren();all.forEach(i=>host.appendChild(el('span','ai-image-chip',i.name)));return all;
 }
+function isGarmentMeasurement(f){
+ const x=norm((f.label||'')+' '+String(f.identifier||'').replace(/_/g,' '));
+ return /\\b(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size length|armhole|thigh|outseam|rise)\\b/i.test(x);
+}
 function schema(scan){
  const fields=[],measurements=[];
- (scan.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>{const a={identifier:f.identifier||f.id,label:f.label||f.identifier||f.id,mandatory:!!f.mandatory,inputType:f.inputType||'text',values:Array.isArray(f.values)?f.values:[],section:s.label||s.id||''};if(!a.identifier)return;(s.id==='product_size_data'?measurements:fields).push(a);}));
+ (scan.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>{
+  const a={identifier:f.identifier||f.id,label:f.label||f.identifier||f.id,mandatory:!!f.mandatory,inputType:f.inputType||'text',values:Array.isArray(f.values)?f.values:[],section:s.label||s.id||''};
+  if(!a.identifier)return;
+  // Keep actual garment-size chart measurements separate; still expose net weight,
+  // catalog pricing and other product-level fields in the AI field schema.
+  if(s.id==='product_size_data'&&isGarmentMeasurement(a))measurements.push(a);else fields.push(a);
+ }));
  return {fields,measurements};
 }
 function updateScanSummary(scan){
@@ -124,7 +134,7 @@ function convertUnit(value,label,source){
  return String(Number(v.toFixed(4)));
 }
 function preset(f,p,d){
- const x=norm(f.label+' '+f.identifier.replace(/_/g,' ')),garment=/(kurta|bust|shoulder|hip|waist|sleeve|inseam|garment|chest|dress size|size chart)/i.test(x);
+ const x=norm(f.label+' '+String(f.identifier||'').replace(/_/g,' ')),garment=/(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|size length|armhole|thigh|outseam|rise)/i.test(x),explicitDimension=/(product|item|package|parcel|shipping|dimension|\\bcm\\b|\\bmm\\b|\\binches?\\b|\\bmeters?\\b|\\bmetres?\\b)/i.test(x);
  if(/brand( name)?/.test(x)&&d.brand)return d.brand;
  if(/(seller name|seller legal name|merchant name|seller company)/.test(x)&&d.sellerName)return d.sellerName;
  if(/(seller address|seller registered address|merchant address)/.test(x)&&d.sellerAddress)return d.sellerAddress;
@@ -136,18 +146,21 @@ function preset(f,p,d){
  if(/(customer care phone|support phone|customer care number|contact phone)/.test(x)&&d.supportPhone)return d.supportPhone;
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
- if(p.sellingPrice&&/(selling price|transfer price|price|mrp)/.test(x))return p.sellingPrice;
+ if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\\bmrp\\b|wrong|defective|return)/.test(x))return p.sellingPrice;
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
  if(!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
- if(!garment&&p.productLength&&/length/.test(x)&&!/(sleeve|kurta|garment|bottom|bust)/.test(x))return convertUnit(p.productLength,x,'cm');
- if(!garment&&p.productWidth&&/width/.test(x))return convertUnit(p.productWidth,x,'cm');if(!garment&&p.productHeight&&/height/.test(x))return convertUnit(p.productHeight,x,'cm');
+ if(!garment&&explicitDimension&&p.productLength&&/\\blength\\b/.test(x))return convertUnit(p.productLength,x,'cm');
+ if(!garment&&explicitDimension&&p.productWidth&&/\\bwidth\\b/.test(x))return convertUnit(p.productWidth,x,'cm');
+ if(!garment&&explicitDimension&&p.productHeight&&/\\bheight\\b/.test(x))return convertUnit(p.productHeight,x,'cm');
  if(p.productFacts&&/(product details|additional details|product description|product information)/.test(x))return p.productFacts;
  return '';
 }
 function captured(scan,id){const v=(scan.capturedValues||{})[id];return v===undefined||v===null?'':String(v).trim();}
 function promptFor(scan,p,d,s,imgs){
  const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},uploadedImageNames:imgs.map(i=>i.name)};
- return ['You are an e-commerce product-listing assistant. Analyze the supplied product photos and scanned form schema.','Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}]}. No markdown.','Use only identifiers listed in scannedFields; never create new keys. Generate an accurate searchable title and description if these fields exist.','Never invent material, capacity, certification, compatibility, water resistance, dimensions, product weight, country of origin, brand, manufacturer, packer, HSN, GST or legal claims.','Use sellerDefaults only when the field label clearly matches. Do not substitute seller address for manufacturer or packer address.','For dropdowns choose an exact allowedValues option only; otherwise omit and request confirmation.','Do not modify existing non-empty currentFormValues. Unknown mandatory fields stay blank and need confirmation. Never estimate garment measurements or packaging weight from an image.','Schema and user data:',JSON.stringify(data)].join('\n');
+ return ['You are an e-commerce product-listing assistant. Analyze the supplied product photos and scanned form schema.','Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}]}. No markdown.','Use only identifiers listed in scannedFields; never create new keys. Generate an accurate searchable title and description if these fields exist.','Never invent material, capacity, certification, compatibility, water resistance, dimensions, product weight, country of origin, brand, manufacturer, packer, HSN, GST or legal claims.',
+ 'A user-entered selling price may only fill an explicit Meesho/selling/transfer price field; never copy it into MRP, wrong/defective return price, or other price fields.',
+ 'Generic Length/Width/Height fields are ambiguous: fill dimensions from user input only when the scanned label clearly identifies product/item/package/shipping dimensions or a unit such as cm/mm/inches. Never substitute a product dimension for a clothing size measurement.','Use sellerDefaults only when the field label clearly matches. Do not substitute seller address for manufacturer or packer address.','For dropdowns choose an exact allowedValues option only; otherwise omit and request confirmation.','Do not modify existing non-empty currentFormValues. Unknown mandatory fields stay blank and need confirmation. Never estimate garment measurements or packaging weight from an image.','Schema and user data:',JSON.stringify(data)].join('\n');
 }
 function decodeImage(dataUrl){const m=String(dataUrl||'').match(/^data:([^;]+);base64,(.*)$/);if(!m)throw new Error('Could not decode photo.');return {mimeType:m[1],data:m[2]};}
 
