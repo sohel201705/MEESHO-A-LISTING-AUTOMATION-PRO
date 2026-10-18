@@ -39,12 +39,43 @@ async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
  return await new Promise(resolve=>chrome.permissions.request({origins:[pattern]},resolve));
 }
+function makeKey(p,model,endpoint,apiKey,name){
+ return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:name||label(p)+' key',model,endpoint,apiKey,enabled:true};
+}
+async function checkProviderPermission(p,endpoint){
+ if(p!=='compatible')return true;
+ return await askPermission(endpoint);
+}
 async function addKey(){
  const p=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim(),model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
  if(!apiKey)return say('Enter an API key first.','error');if(!model)return say('Enter the model ID.','error');
- if(p==='compatible'){let ok=false;try{ok=await askPermission(endpoint);}catch(e){return say(e.message,'error');}if(!ok)return say('API-host permission denied; key was not saved.','error');}
- const item={id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:$('ai-key-name').value.trim()||label(p)+' key',model,endpoint,apiKey,enabled:true};
- const all=await keys();all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
+ let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
+ if(!ok)return say('API-host permission denied; key was not saved.','error');
+ const item=makeKey(p,model,endpoint,apiKey,$('ai-key-name').value.trim()||label(p)+' key');
+ const all=await keys();if(all.some(k=>k.provider===p&&k.apiKey===apiKey))return say('This provider key is already saved.','warning');
+ all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
+}
+async function addBulkKeys(){
+ const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const raw=$('ai-key-bulk').value;
+ const entries=raw.split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('#')).map((line,index)=>{
+  const split=line.indexOf('|');
+  if(split<0)return {name:'',apiKey:line};
+  return {name:line.slice(0,split).trim(),apiKey:line.slice(split+1).trim()};
+ }).filter(item=>item.apiKey);
+ if(!entries.length)return say('Paste one API key per line in the bulk box first.','error');
+ if(!model)return say('Enter the model ID for this provider.','error');
+ let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
+ if(!ok)return say('API-host permission denied; no keys were added.','error');
+ const all=await keys();let added=0,duplicates=0;
+ entries.forEach((entry,index)=>{
+  if(all.some(k=>k.provider===p&&k.apiKey===entry.apiKey)){duplicates++;return;}
+  const name=entry.name||((label(p))+' key '+(all.filter(k=>k.provider===p).length+1));
+  all.push(makeKey(p,model,endpoint,entry.apiKey,name));added++;
+ });
+ if(added)await persistKeys(all);
+ $('ai-key-bulk').value='';
+ say('Bulk add complete: '+added+' added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.',added?'success':'warning');
 }
 async function loadDefaults(){
  const r=await get(DEFAULTS),d=r[DEFAULTS]||{},map={'ai-default-brand':'brand','ai-default-seller-name':'sellerName','ai-default-seller-address':'sellerAddress','ai-default-manufacturer-name':'manufacturerName','ai-default-manufacturer-address':'manufacturerAddress','ai-default-packer-name':'packerName','ai-default-packer-address':'packerAddress','ai-default-country':'countryOfOrigin','ai-default-support-phone':'supportPhone','ai-default-support-email':'supportEmail','ai-default-hsn':'hsn','ai-default-gst':'gst'};
@@ -209,6 +240,7 @@ function init(){
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{say('Scanning current catalog form…');await scanCurrentCatalog(true);}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
  $('ai-add-key-btn').addEventListener('click',addKey);
+ $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
  $('ai-generate-btn').addEventListener('click',generate);
  $('ai-autofill-btn').addEventListener('click',autofill);
