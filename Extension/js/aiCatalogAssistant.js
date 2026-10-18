@@ -346,6 +346,14 @@ function capacityInMl(value){
  if(!m)return null;const n=Number(m[1]);if(!Number.isFinite(n)||n<=0)return null;
  return /^m/i.test(m[2])?n:n*1000;
 }
+function exactUnitOption(field,candidates){
+ const options=Array.isArray(field.values)?field.values:[];
+ for(const candidate of candidates){
+  const hit=options.find(o=>norm(o)===norm(candidate));
+  if(hit!==undefined)return String(hit);
+ }
+ return options.length?'':'';
+}
 function exactCapacityOption(field,ml,label){
  const options=Array.isArray(field.values)?field.values:[];
  for(const option of options){
@@ -364,6 +372,7 @@ function fieldText(f){return norm(String(f.identifier||'').replace(/_/g,' ')+' '
 function isPhysicalMeasureField(f){
  const x=fieldText(f);
  if(/\b(bust|shoulder|hip|waist|sleeve|inseam|garment|kurta|chest|dress size|bottom|size chart|armhole|thigh|outseam|rise)\b/.test(x))return false;
+ if(/\b(weight unit|volume unit|product unit|dimension unit)\b/.test(x))return false;
  return /\b(product weight|net weight|gross weight|package weight|shipping weight|product height|product length|product breadth|product width|product depth|package height|package length|package breadth|package width|item dimensions|product dimensions)\b/.test(x)||
   /\b(product_weight_in_gms|product_weight|product_height|product_length|product_breadth|product_width|product_depth)\b/.test(String(f.identifier||''));
 }
