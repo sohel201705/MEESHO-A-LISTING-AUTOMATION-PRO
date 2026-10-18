@@ -88,8 +88,8 @@ async function scanCurrentCatalog(showMessage){
 function convertUnit(value,label,source){
  const n=Number(value);if(!Number.isFinite(n))return String(value);
  const s=norm(label);let v=n;
- if(source==='g'){if(/\\bkg\\b|kilogram/.test(s))v=n/1000;else if(/\\bmg\\b|milligram/.test(s))v=n*1000;}
- if(source==='cm'){if(/\\bmm\\b|millimeter|millimetre/.test(s))v=n*10;else if(/\\bin\\b|inch|inches/.test(s))v=n/2.54;else if(/\\b(m|meter|metre)\\b/.test(s))v=n/100;}
+ if(source==='g'){if(/\bkg\b|kilogram/.test(s))v=n/1000;else if(/\bmg\b|milligram/.test(s))v=n*1000;}
+ if(source==='cm'){if(/\bmm\b|millimeter|millimetre/.test(s))v=n*10;else if(/\bin\b|inch|inches/.test(s))v=n/2.54;else if(/\b(m|meter|metre)\b/.test(s))v=n/100;}
  return String(Number(v.toFixed(4)));
 }
 function preset(f,p,d){
