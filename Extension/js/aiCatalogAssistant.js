@@ -131,7 +131,7 @@ function liveLog(message,level='info'){
  const line=document.createElement('span');line.className='live-line ai-live-line-'+level;
  const dt=new Date(),stamp=[dt.getHours(),dt.getMinutes(),dt.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');
  line.textContent='['+stamp+'] ['+String(level||'info').toUpperCase()+'] '+String(message||'');
- host.appendChild(line);host.appendChild(document.createTextNode('\\n'));
+ host.appendChild(line);
  while(host.children.length>100)host.removeChild(host.firstElementChild);
  host.scrollTop=host.scrollHeight;
  const state=$('ai-live-state');if(state)state.textContent=level==='error'?'ERROR':level==='warn'?'ATTENTION':level==='ok'?'COMPLETE':'RUNNING';
@@ -375,7 +375,7 @@ function exactUnitOption(field,candidates){
   const hit=options.find(o=>norm(o)===norm(candidate));
   if(hit!==undefined)return String(hit);
  }
- return '';
+ return options.length?'':String(candidates[0]||'');
 }
 function exactCapacityOption(field,ml,label){
  const options=Array.isArray(field.values)?field.values:[];
@@ -457,7 +457,7 @@ function preset(f,p,d){
  if(/\bvolume unit\b/.test(x)&&capMl!==null){const unit=exactUnitOption(f,capMl>=1000?['L','l','Liter','Liters','Litre','Litres']:['ml','mL','ML','Milliliter','Millilitre']);if(unit)return unit;}
  if(/\bproduct unit\b/.test(x)&&(p.productLength||p.productWidth||p.productHeight)){const unit=exactUnitOption(f,['cm','CM','Cm','centimeter','centimeters','centimetre','centimetres']);if(unit)return unit;}
  if(p.material&&/(material|fabric type|material type)/.test(x))return p.material;if(p.color&&/(colour|color)/.test(x))return p.color;
- if(!/\\b(weight unit|volume unit|product unit)\\b/.test(x)&&!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
+ if(!/\b(weight unit|volume unit|product unit|dimension unit)\b/.test(x)&&!garment&&p.productWeight&&/weight/.test(x)&&!/(package|packaging|shipping|gross)/.test(x))return convertUnit(p.productWeight,x,'g');
  if(!garment&&explicitDimension&&p.productLength&&/\blength\b/.test(x))return convertUnit(p.productLength,x,'cm');
  if(!garment&&explicitDimension&&p.productWidth&&/\bwidth\b/.test(x))return convertUnit(p.productWidth,x,'cm');
  if(!garment&&explicitDimension&&p.productHeight&&/\bheight\b/.test(x))return convertUnit(p.productHeight,x,'cm');
@@ -711,6 +711,14 @@ async function generate(googleAllowed){
    if(old&&!isPriceOrInventory){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
    if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
+   if(isPriceOrInventory){
+    if(old){values[f.identifier]=old;return;}
+    if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier)){
+     const reason=/mrp|maximum retail/.test(norm(f.label))?'MRP needs the actual printed/verified value.':/(wrong|defective|return)/.test(norm(f.label))?'Enter a selling price greater than ₹5 so the returns price can be calculated as selling price minus ₹5.':'Enter or confirm the price/stock value.';
+     needs.push({identifier:f.identifier,reason});
+    }
+    return;
+   }
    const generatedValue=generatedCodeForField(f,codes);
    if(generatedValue){
     if(allowed(generatedValue,f)){values[f.identifier]=generatedValue;generated++;}
@@ -809,11 +817,13 @@ function init(){
   finally{btn.disabled=false;}
  });
  $('ai-autofill-btn').addEventListener('click',autofill);
+ $('ai-product-price').addEventListener('input',updatePricePreview);
  $('ai-product-images').addEventListener('change',()=>{
   const host=$('ai-image-list');host.replaceChildren();const files=Array.from($('ai-product-images').files||[]);
-  files.forEach(f=>host.appendChild(el('span','ai-image-chip',f.name)));say(files.length?files.length+' photo(s) selected.':'');
+  files.forEach((f,i)=>host.appendChild(el('span','ai-image-chip',(i+1)+'. '+f.name)));
+  say(files.length?files.length+' photo(s) selected for one product. Limit: 10.':'');
  });
- loadDefaults();renderKeys();updateProviderForm();
+ updatePricePreview();loadDefaults();renderKeys();updateProviderForm();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
