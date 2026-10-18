@@ -60,7 +60,7 @@ async function researchProduct(p,imgs,allowed){
  if(!seed){research.error='No product title or image filename available for Google Search.';return research;}
  const queries=[
   '"'+seed+'" official product specifications material capacity net weight dimensions India',
-  '"'+seed+'" HSN code GST rate India official CBIC GST tariff'
+  'site:cbic-gst.gov.in OR site:cbic.gov.in OR site:gst.gov.in "'+seed+'" HSN GST tariff rate India'
  ];
  research.queries=queries;
  const all=[];
@@ -513,7 +513,7 @@ async function generate(googleAllowed){
   let ai=0,presetCount=0,bad=0,generated=0;
   const titleField=s.fields.find(isProductNameField);
   const draftTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
-  if(draftTitle&&!p.productName&&titleField&&proposed[titleField.identifier])$('ai-product-name').value=String(proposed[titleField.identifier]).trim();
+  if(draftTitle&&!p.productName){p.productName=draftTitle;$('ai-product-name').value=draftTitle;}
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+draftTitle).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
