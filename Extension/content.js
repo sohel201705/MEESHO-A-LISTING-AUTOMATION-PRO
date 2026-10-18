@@ -254,7 +254,7 @@
 
   const LABEL_MAP = {
     product_name: ['product name'],
-    supplier_product_id: ['style code', 'product id'],
+    supplier_product_id: ['style code', 'product id', 'style code/ product id', 'style code/product id', 'supplier product id'],
     color: ['color'],
     fabric: ['fabric'],
     fit_shape: ['fit/ shape', 'fit/shape', 'fit shape'],
@@ -318,6 +318,10 @@
     importer_name: ['importer name'],
     importer_address: ['importer address'],
     importer_pincode: ['importer pincode', 'importer pin code'],
+    bis_isi_number: ['bis/isi certification number', 'bis isi certification number', 'bis/isi number', 'bis isi number'],
+    bis_isi_certification_number: ['bis/isi certification number', 'bis isi certification number'],
+    cm_l_number: ['cm/l number', 'cml number', 'cm l number'],
+    cml_number: ['cm/l number', 'cml number', 'cm l number'],
     bust_size: ['bust size'],
     shoulder_size: ['shoulder size'],
     waist_size: ['waist size'],
