@@ -319,7 +319,8 @@ function sourceSupportsExactMeasure(field,candidate,research){
  const n=value.match(/\d+(?:\.\d+)?/);if(!n)return false;
  return (research.results||[]).some(r=>{
   const text=(r.title+' '+r.snippet).replace(/,/g,' ');
-  const regex=new RegExp('(?:^|\\\\D)'+n[0].replace('.','\\\\.')+'\\\\s*'+unit+'\\\\b','i');
+  const escaped=n[0].replace('.','\\.');
+  const regex=new RegExp('(?:^|\\D)'+escaped+'\\s*'+unit+'\\b','i');
   return regex.test(text);
  });
 }
