@@ -129,12 +129,17 @@
 
   function clickSizeRow(row) {
     if (!row || !row.isConnected) return 'none';
-
+    // If the option has a real checkbox, click that control exactly once.
+    // This avoids double-toggling a controlled checkbox through both React and mouse events.
+    const checkbox = row.matches && row.matches('input[type="checkbox"]')
+      ? row : row.querySelector('input[type="checkbox"]');
+    if (checkbox) {
+      if (!checkbox.checked) checkbox.click();
+      return checkbox.checked ? 'checkbox-selected' : 'checkbox-failed';
+    }
     const svg = row.querySelector('svg');
     const target = svg || row;
-
     if (callReactOnClick(target)) return svg ? 'react-svg' : 'react-row';
-
     realClick(target);
     return svg ? 'native-svg' : 'native-row';
   }
@@ -177,8 +182,13 @@
         options.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
       if(!option){failed.push('Size option not found: '+target);continue;}
       const clickTarget=option.tagName==='P'&&option.parentElement?option.parentElement:option;
-      clickSizeRow(clickTarget);
+      const clickResult=clickSizeRow(clickTarget);
       await sleep(180);
+      const optionCheckbox=clickTarget.matches&&clickTarget.matches('input[type="checkbox"]')?clickTarget:clickTarget.querySelector('input[type="checkbox"]');
+      if(clickResult==='checkbox-failed'||(optionCheckbox&&!optionCheckbox.checked)){
+        failed.push('Could not select size option: '+target);
+        continue;
+      }
       clicked.push(target);
       menu=findVisibleSizeMenu()||menu;
     }
@@ -670,7 +680,7 @@
           filled++;
         } else {
           await closeOpenDropdown();
-          return { filled, failed, stopped: true };
+          buildLabelCache();
         }
         await sleep(50);
       } else {
@@ -678,7 +688,7 @@
         if (ok) {
           filled++;
         } else {
-          return { filled, failed, stopped: true };
+          buildLabelCache();
         }
       }
     }
@@ -714,7 +724,7 @@
       if (ok) {
         filled++;
       } else {
-        return { filled, failed, stopped: true };
+        buildLabelCache();
       }
     }
 
@@ -722,7 +732,7 @@
       const measureResult = await fillSizeMeasurements(sizeMeasures, failed);
       filled += measureResult.filled;
       if (measureResult.stopped) {
-        return { filled, failed, stopped: true };
+        buildLabelCache();
       }
     }
 
@@ -735,7 +745,7 @@
       if (SKIP.has(id)) continue;
 
       const field = findField(id);
-      if (!field) continue;
+      if (!field) { failed.push(id + ' not found on the Meesho page'); continue; }
 
       if (__fieldSectionMap[id] === 'other_data') {
         phase4Queue.push({ id, value, field });
@@ -766,22 +776,21 @@
             filled++;
           } else {
             await closeOpenDropdown();
-            return false;
+            buildLabelCache();
           }
           await sleep(50);
         } else {
           const ok = await fillFieldDirect(field, value, id, failed);
           if (ok) filled++;
-          else return false;
+          else buildLabelCache();
         }
       }
       return true;
     };
 
-    if (!(await fillAttrQueue(phase3Queue))) return { filled, failed, stopped: true };
-    if (!(await fillAttrQueue(phase4Queue))) return { filled, failed, stopped: true };
-
-    return { filled, failed, stopped: false };
+    await fillAttrQueue(phase3Queue);
+    await fillAttrQueue(phase4Queue);
+    return { filled, failed, stopped: failed.length > 0 };
   }
 
   function findLabelForInput(input) {
