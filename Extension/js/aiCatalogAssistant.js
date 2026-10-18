@@ -9,7 +9,7 @@ const el=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=
 const norm=v=>String(v||'').replace(/[＊*]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
 function say(m,t){if(!$('ai-status'))return;$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
 function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
-function modelDefault(p){return p==='gemini'?'gemini-2.5-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
+function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
 function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
 async function keys(){const r=await get(KEY);return Array.isArray(r[KEY])?r[KEY]:[];}
 async function persistKeys(v){await set({[KEY]:v});await renderKeys();}
@@ -33,7 +33,7 @@ function updateProviderForm(){
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
  $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
  if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
- $('ai-provider-hint').textContent=p==='gemini'?'Gemini generateContent API.':p==='groq'?'Use a current Groq vision-capable model.':'Use an HTTPS OpenAI-compatible Chat Completions endpoint, e.g. xAI Grok.';
+ $('ai-provider-hint').textContent=p==='gemini'?'Gemini generateContent API. Default model is the current Gemini 3.8 Flash; change it if your key requires a different model.':p==='groq'?'Use a current Groq vision-capable model.':'Use an HTTPS OpenAI-compatible Chat Completions endpoint, e.g. xAI Grok.';
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
