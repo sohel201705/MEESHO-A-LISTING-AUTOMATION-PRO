@@ -95,3 +95,15 @@ function promptFor(scan,p,d,s,imgs){
 function decodeImage(dataUrl){const m=String(dataUrl||'').match(/^data:([^;]+);base64,(.*)$/);if(!m)throw new Error('Could not decode photo.');return {mimeType:m[1],data:m[2]};}
 
 // test?marker
+
+async function post(url,opts){
+ const c=new AbortController(),timer=setTimeout(()=>c.abort(),45000);
+ try{return await fetch(url,Object.assign({},opts,{signal:c.signal}));}finally{clearTimeout(timer);}
+}
+async function gemini(k,prompt,imgs){
+ const parts=[{text:prompt}];imgs.forEach(i=>{const x=decodeImage(i.dataUrl);parts.push({inline_data:{mime_type:x.mimeType,data:x.data}});});
+ const r=await post('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(k.model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':k.apiKey},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',temperature:0.2}})});
+ const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
+ if(!r.ok)throw new Error('Gemini '+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
+ const out=((((data.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||'').join('\n').trim();if(!out)throw new Error('Gemini returned empty response.');return out;
+}
