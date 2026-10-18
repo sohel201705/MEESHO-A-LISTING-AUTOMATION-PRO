@@ -1370,7 +1370,16 @@ document.getElementById('autofill-btn')?.addEventListener('click', async () => {
           return;
         }
         if (response && response.success) {
-          showStatus(`Filled ${response.filled} field(s) successfully!`);
+          const filled = Number(response.filled || 0);
+          const failed = Array.isArray(response.failed) ? response.failed : [];
+          if (filled === 0) {
+            showStatus(response.message || 'No fields were filled. Refresh the selected Meesho catalog and retry.', 'error');
+          } else if (response.stopped || failed.length > 0) {
+            const detail = failed.slice(0, 5).join(', ') + (failed.length > 5 ? '… and ' + (failed.length - 5) + ' more' : '');
+            showStatus('Partial autofill: ' + filled + ' field(s). ' + (detail || response.message || 'Some fields need manual review.'), 'warning');
+          } else {
+            showStatus('Autofill completed: ' + filled + ' field(s). Review the catalog before saving/submitting.');
+          }
         } else {
           showStatus(response?.message || 'Could not fill form', 'error');
         }
