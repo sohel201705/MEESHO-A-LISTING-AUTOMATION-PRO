@@ -237,12 +237,10 @@
       active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
       row=locateSizeRow(active,target);
       if(!rowIsSelected(row)&&row){
-        // The Meesho form can rerender its controlled checkbox after a React event.
-        // Re-query the fresh row, then perform one real pointer click only if still unchecked.
-        const input=row.matches?.('input[type="checkbox"],input[type="radio"]')?row:row.querySelector?.('input[type="checkbox"],input[type="radio"]');
-        if(input&&!input.checked)input.click();
-        else realClick(row);
-        await sleep(60);
+        // Re-query after React settles. If the control click did not change state,
+        // target the whole refreshed option row with a real pointer event.
+        realClick(row);
+        await sleep(65);
         active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
         row=locateSizeRow(active,target);
       }
@@ -263,7 +261,14 @@
       await sleep(25);
       if (!callReactOnClick(applyBtn)) realClick(applyBtn);
       await sleep(120);
-      const menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
+      let menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
+      if(menuStillOpenAfterApply){
+        const refreshedMenu=findVisibleSizeMenu();
+        const refreshedApply=refreshedMenu&&Array.from(refreshedMenu.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim()));
+        if(refreshedApply)realClick(refreshedApply);
+        await sleep(120);
+        menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
+      }
       await closeOpenDropdown();
       // Confirm the value when Meesho echoes it in the selector. Some multi-select
       // catalogs hide the Free Size chip after Apply; for those, a verified checkbox
