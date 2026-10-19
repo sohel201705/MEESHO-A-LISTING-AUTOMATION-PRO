@@ -537,7 +537,9 @@ function updateScanSummary(scan){
  const blank=fields.filter(f=>!String(values[f.identifier||f.id]||'').trim()).length;
  const required=fields.filter(f=>f.mandatory&&!String(values[f.identifier||f.id]||'').trim()).length;
  const sizes=(scan.sections||[]).find(s=>s.id==='variations');
- host.textContent='Scanned '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
+ const detected=detectMeeshoCatalog(scan);
+ const confidence=detected.confidence==='low'?'form/photo confirmation may help':detected.confidence+' confidence';
+ host.textContent='Auto-detected from selected Meesho catalog: '+detected.name+' · '+confidence+' · '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
  renderAiVariationSizes(scan);
 }
 async function scanCurrentCatalog(showMessage){
@@ -1104,6 +1106,7 @@ async function generate(googleAllowed){
    sellingPrice:$('ai-product-price').value.trim(),productMrp:$('ai-product-mrp')?$('ai-product-mrp').value.trim():'',
    inventory:inventoryInput&&String(inventoryInput.value||'').trim()?String(Math.max(0,Math.floor(Number(inventoryInput.value)||0))):'100',
    productCategory:category,
+   productType:detectedCatalog.type,
    productFacts:$('ai-product-facts').value.trim()
   };
   if(inventoryInput)inventoryInput.value=p.inventory;
