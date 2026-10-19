@@ -254,6 +254,31 @@ function updateModelChoices(p){
  const list=$('ai-model-options');if(!list)return;list.replaceChildren();
  modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
 }
+function renderProviderPresetCards(selected=$('ai-provider-type')?.value||'gemini'){
+ const host=$('ai-provider-preset-cards');if(!host)return;
+ host.replaceChildren();
+ PROVIDER_CATALOG.forEach(meta=>{
+  const card=el('button','ai-provider-preset'+(meta.id===selected?' is-selected':''));card.type='button';card.setAttribute('aria-pressed',meta.id===selected?'true':'false');
+  card.dataset.providerPreset=meta.id;
+  const top=el('div','ai-provider-preset-top');
+  top.appendChild(el('span','ai-provider-glyph',meta.id==='gemini'?'✦':meta.id==='groq'?'ϟ':meta.id==='openrouter'?'◈':meta.id==='huggingface'?'H':meta.id==='together'?'T':meta.id==='deepinfra'?'D':meta.id==='fireworks'?'F':'X'));
+  top.appendChild(el('span','ai-provider-tier ai-provider-tier-'+meta.tierClass,meta.tier));
+  card.appendChild(top);
+  card.appendChild(el('strong','ai-provider-preset-name',meta.name));
+  card.appendChild(el('span','ai-provider-preset-note',meta.note));
+  card.appendChild(el('span','ai-provider-preset-desc',meta.desc));
+  card.addEventListener('click',()=>{
+   const select=$('ai-provider-type');if(!select)return;
+   select.value=meta.id;
+   $('ai-key-model').value=meta.model;$('ai-key-model').dataset.provider=meta.id;
+   $('ai-key-endpoint').value=meta.endpoint;$('ai-key-endpoint').dataset.provider=meta.id;
+   updateProviderForm();
+   say(meta.name+' selected. Add your own API key; actual quota depends on the provider account.','success');
+  });
+  host.appendChild(card);
+ });
+}
+
 function updateProviderForm(){
  const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint'),meta=providerMeta(p);
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
