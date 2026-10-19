@@ -666,6 +666,14 @@ async function generate(googleAllowed){
    productFacts:$('ai-product-facts').value.trim()
   };
   if(inventoryInput)inventoryInput.value=p.inventory;
+  if(p.sellingPrice){
+   const enteredSelling=parseMoney(p.sellingPrice);
+   if(enteredSelling===null||enteredSelling<=5)throw new Error('Meesho selling price must be greater than ₹5 so Wrong/Defective Returns Price can always be set to selling price minus ₹5.');
+  }
+  if(p.productMrp){
+   const enteredMrp=parseMoney(p.productMrp);
+   if(enteredMrp===null||enteredMrp<=0)throw new Error('Enter a valid positive MRP copied from the product/package; MRP will not be invented.');
+  }
   p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice);
   updatePricePreview();
   if(p.sellingPrice&&p.wrongReturnPrice)liveLog('PRICE RULE · Meesho Price ₹'+p.sellingPrice+' → Wrong/Defective Returns Price ₹'+p.wrongReturnPrice+' (₹5 less).','ok');
@@ -726,6 +734,7 @@ async function generate(googleAllowed){
   }
   p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice);
   if(p.sellingPrice&&!p.wrongReturnPrice)needs.push({identifier:'only_wrong_return_price',reason:'Enter a selling price greater than ₹5; the returns price is always calculated as selling price minus ₹5.'});
+  if(p.sellingPrice&&p.productMrp&&parseMoney(p.productMrp)<parseMoney(p.sellingPrice))needs.push({identifier:'product_mrp',reason:'Entered MRP is lower than the selling price. Verify the printed MRP and price before submitting.'});
   const codes=draftTitle?await productCodes(draftTitle,p):{styleCode:'',skuCode:''};
   liveLog('VALUE MAPPING · applying title-based SKU/Style Code, seller defaults and explicit pricing rules.','info');
   s.fields.forEach(f=>{
