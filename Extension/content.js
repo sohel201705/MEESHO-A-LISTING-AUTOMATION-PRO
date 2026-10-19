@@ -1056,6 +1056,53 @@
       }
     });
 
+    // Expose only small, non-sensitive catalog/page context so the popup can
+    // infer the already-selected Meesho catalog from its real form structure.
+    function readCatalogContextValue(source, depth = 0, out = {}) {
+      if (depth > 6 || source == null || typeof source !== 'object') return out;
+      const keys = Array.isArray(source) ? source.entries() : Object.entries(source);
+      for (const [rawKey, value] of keys) {
+        const key = String(rawKey).toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (typeof value === 'string' || typeof value === 'number') {
+          const text = String(value).trim();
+          if (text && text.length <= 100) {
+            if (['categoryname','catalogcategoryname','primarycategoryname'].includes(key) && !out.categoryName) out.categoryName = text;
+            if (['subcategoryname','subsubCategoryName'.toLowerCase(),'subsubcategoryname','sscatname','catalogsubcategoryname'].includes(key) && !out.subCategoryName) out.subCategoryName = text;
+            if (['catalogtype','producttype','productfamily'].includes(key) && !out.catalogType) out.catalogType = text;
+          }
+        } else if (value && typeof value === 'object') {
+          readCatalogContextValue(value, depth + 1, out);
+        }
+      }
+      return out;
+    }
+    const headingTexts = Array.from(document.querySelectorAll(
+      'h1, h2, h3, [class*="breadcrumb" i] a, [aria-label*="breadcrumb" i] a'
+    )).filter(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }).map(node => String(node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim())
+      .filter(text => text && text.length <= 100).filter((text, index, list) => list.indexOf(text) === index).slice(0, 12);
+    let locationIds = {};
+    try {
+      const params = new URLSearchParams(window.location.search);
+      locationIds = {
+        sscatId: params.get('sscat_id') || params.get('sscatId') || params.get('sub_sub_category_id') || '',
+        categoryId: params.get('category_id') || params.get('categoryId') || '',
+        catalogId: params.get('catalog_id') || params.get('catalogId') || ''
+      };
+    } catch (_) {}
+    result.catalogContext = Object.assign({
+      pageTitle: String(document.title || '').slice(0, 120),
+      pagePath: String(window.location.pathname || '').slice(0, 200),
+      headings: headingTexts,
+      categoryName: '',
+      subCategoryName: '',
+      catalogType: '',
+      ids: locationIds
+    }, readCatalogContextValue(__capturedProductFields));
+    result.catalogContext.ids = locationIds;
+
     return result;
   }
 
