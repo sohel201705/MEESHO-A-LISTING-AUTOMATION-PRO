@@ -294,12 +294,12 @@ jobs:
           const taxEnd = aiAssistant.indexOf('function hashText(text){', taxStart);
           assert.ok(taxStart >= 0 && taxEnd > taxStart);
           function URLStub(url) {
-            const match = String(url).match(/^https?:\\/\\/([^/:?#]+)/i);
+            const match = String(url).match(/^https?:\/\/([^/:?#]+)/i);
             if (!match) throw new Error('Invalid test URL');
             this.hostname = match[1];
           }
           const taxUtils = new Function('norm','URL',aiAssistant.slice(taxStart,taxEnd)+'; return {isTaxField,officialTaxEvidence,taxDropdownOption};')(
-            value => String(value||'').replace(/[＊*]/g,'').replace(/\\s+/g,' ').trim().toLowerCase(),URLStub
+            value => String(value||'').replace(/[＊*]/g,'').replace(/\s+/g,' ').trim().toLowerCase(),URLStub
           );
           const hsnField = {identifier:'hsn_code',label:'HSN Code',values:['Select'],inputType:'mui'};
           const gstField = {identifier:'gst',label:'GST',values:['0','5','12','18','28'],inputType:'mui'};
