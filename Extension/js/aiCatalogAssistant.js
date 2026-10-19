@@ -1358,8 +1358,14 @@ async function autofill(){
   setProgress(1,'Autofill · checking selected sizes and field values');
   const sizes=variationNames(scanNow),selected=selectedVariationSizes();
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
-  if(pending.length&&!confirm('Some fields need confirmation. Continue autofill? Unknown values will remain untouched.'))return;
   const payload=Object.assign({},draft);
+  const fields=(scanNow.sections||[]).flatMap(section=>section.fields||[]);
+  const unresolvedTax=fields.filter(field=>field.mandatory&&isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  if(unresolvedTax.length){
+   const names=unresolvedTax.map(field=>field.label||field.identifier).join(', ');
+   const proceed=confirm('MANDATORY HSN/GST CHECK: AI could not verify '+names+' from an official CBIC/GST source in this run. I will not invent a tax code/rate. You may continue autofilling the other fields, but these tax fields still need review in Meesho. Continue?');
+   if(!proceed)return;
+  }else if(pending.length&&!confirm('Some fields need confirmation. Continue autofill? Unknown values will remain untouched.'))return;
   // Values explicitly typed/selected in the existing Step 2 form override AI suggestions.
   document.querySelectorAll('#dynamic-sections-container [id^="f_"]').forEach(input=>{
    const identifier=input.id.slice(2),value=String(input.value||'').trim();
