@@ -2045,7 +2045,37 @@
     #onboard-save-continue{display:flex;justify-content:center;gap:8px;align-items:center}
     .onboarding-later{width:100%;background:transparent;border:1px solid #243f5d;color:#8fa8c8;padding:9px;border-radius:8px;margin-top:7px;cursor:pointer;font-size:10px}
     @media(max-width:420px){.ai-dashboard-nav{gap:6px}.ai-menu-card{padding:8px 7px}.ai-menu-text strong{font-size:9px}.ai-menu-text small{font-size:7px}.onboarding-grid{gap:8px}}
-    </style>
+     
+    /* Premium AI provider console: compact cards, luminous edges, readable tiers */
+    #ai-catalog-assistant .ai-provider-form{border:0!important;border-top:0!important;padding-top:2px!important;margin-top:4px!important;gap:10px!important}
+    .ai-provider-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid #294f73;border-radius:11px;background:radial-gradient(ellipse at 3% 0%,rgba(43,164,255,.14),transparent 50%),linear-gradient(145deg,#101f33,#091321);box-shadow:0 0 18px rgba(38,150,255,.06),inset 0 1px 0 rgba(255,255,255,.03)}
+    .ai-provider-picker-heading strong{display:block;font-size:12px;font-weight:950;color:#edf6ff;letter-spacing:.1px}
+    .ai-provider-picker-heading span{display:block;font-size:9px;line-height:1.45;color:#89a6c6;margin-top:4px}
+    .ai-provider-picker-heading i{flex-shrink:0;padding:5px 7px;border-radius:6px;border:1px solid #2b5c79;background:#0b2b35;color:#6ce8d0;font-style:normal;font-weight:950;font-size:8px;letter-spacing:.5px}
+    .ai-provider-preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .ai-provider-preset{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0;text-align:left;padding:10px 9px 9px;border-radius:11px;border:1px solid #263e5b;background:linear-gradient(150deg,#101e31,#0a1422);color:#d9e8fa;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease;overflow:hidden}
+    .ai-provider-preset:before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:linear-gradient(180deg,#5eb7ff,#56e4c3);opacity:.35}
+    .ai-provider-preset:hover{transform:translateY(-1px);border-color:#4aaaff;box-shadow:0 0 15px rgba(57,159,255,.16)}
+    .ai-provider-preset.is-selected{border-color:#45b6ff;background:radial-gradient(ellipse at 0 0,rgba(43,156,255,.16),transparent 70%),linear-gradient(150deg,#112c47,#0b1a2b);box-shadow:0 0 0 1px rgba(69,182,255,.11),0 0 17px rgba(51,154,255,.16),inset 0 0 16px rgba(50,160,255,.04)}
+    .ai-provider-preset-top{display:flex;justify-content:space-between;align-items:center;gap:5px}
+    .ai-provider-glyph{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;border:1px solid #2a4e6d;background:#0a1727;color:#71d4ff;font-size:15px;font-weight:900;box-shadow:0 0 10px rgba(63,170,255,.08)}
+    .ai-provider-tier{font-size:7px;line-height:1.2;letter-spacing:.3px;font-weight:950;padding:4px 5px;border-radius:5px;border:1px solid transparent;white-space:nowrap}
+    .ai-provider-tier-free{background:#0d3a35;border-color:#1e796b;color:#7bf2d8}
+    .ai-provider-tier-limited{background:#342915;border-color:#7c5c26;color:#ffd989}
+    .ai-provider-tier-credits{background:#222743;border-color:#4b588e;color:#b4bdff}
+    .ai-provider-tier-paid{background:#33212d;border-color:#754359;color:#ffb7d0}
+    .ai-provider-preset-name{font-size:10px;line-height:1.35;font-weight:950;color:#eaf4ff;overflow-wrap:anywhere}
+    .ai-provider-preset-note{font-size:8px;line-height:1.4;color:#a4c1dd;min-height:30px;overflow-wrap:anywhere}
+    .ai-provider-preset-desc{font-size:8px;line-height:1.35;color:#7994b3;overflow-wrap:anywhere}
+    .ai-provider-advanced-select{display:flex;flex-direction:column;gap:5px;border:1px solid #203b58;border-radius:8px;padding:8px;background:#091422;color:#93b1d0;font-size:9px}
+    .ai-key-entry-card{display:flex;flex-direction:column;gap:8px;padding:11px;border:1px solid #2c4f71;border-radius:11px;background:radial-gradient(ellipse at 100% 0%,rgba(47,205,187,.07),transparent 45%),linear-gradient(145deg,#101e30,#0a1423);box-shadow:0 0 16px rgba(44,152,255,.05)}
+    .ai-key-entry-head{display:flex;gap:9px;align-items:center;padding-bottom:7px;border-bottom:1px solid #213a54}
+    .ai-key-lock{display:grid;place-items:center;flex-shrink:0;width:30px;height:30px;border-radius:9px;background:#102e40;border:1px solid #286582;color:#7fe5d4;font-size:17px}
+    .ai-key-entry-head strong{display:block;color:#deefff;font-size:10px;font-weight:950}
+    .ai-key-entry-head small{display:block;color:#809cba;font-size:8px;line-height:1.45;margin-top:3px}
+    .ai-key-entry-card .ai-primary-btn{width:100%;justify-content:center;box-shadow:0 0 16px rgba(49,163,255,.12)}
+    @media(max-width:370px){.ai-provider-preset-grid{gap:6px}.ai-provider-preset{padding:8px 7px}.ai-provider-preset-name{font-size:9px}.ai-provider-tier{font-size:6px;padding:3px 4px}}
+</style>
 
 </head>
 
@@ -2667,14 +2697,29 @@
             <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
             <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
             <div class="ai-provider-form">
-              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
+              <div class="ai-provider-picker-heading"><div><strong>Choose an AI connection</strong><span>Pick a provider card, add your own key, then keep adding backups.</span></div><i>08 PROVIDERS</i></div>
+              <div id="ai-provider-preset-cards" class="ai-provider-preset-grid" aria-label="AI provider presets"></div>
+              <label class="ai-provider-advanced-select">Selected provider<select id="ai-provider-type">
+                <option value="gemini">Google Gemini</option>
+                <option value="groq">Groq Cloud</option>
+                <option value="openrouter">OpenRouter Free Router</option>
+                <option value="huggingface">Hugging Face Inference</option>
+                <option value="together">Together AI</option>
+                <option value="deepinfra">DeepInfra</option>
+                <option value="fireworks">Fireworks AI</option>
+                <option value="xai">xAI Grok</option>
+              </select></label>
               <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
               <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
               <datalist id="ai-model-options"></datalist>
-              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
+              <p class="ai-muted">Free options are prioritized, but no provider guarantees unlimited free vision requests. Gemini offers a free tier; Groq has strict rate limits; OpenRouter Free routes to currently available free models that support images. Other providers may require credits or payment.</p>
               <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
-              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
-              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
+              <div class="ai-key-entry-card">
+                <div class="ai-key-entry-head"><span class="ai-key-lock">⌑</span><div><strong>Connect your account</strong><small>API keys belong to the user; never paste them into product descriptions or seller details.</small></div></div>
+                <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Backup 1"></label>
+                <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste your provider API key"></label>
+                <button id="ai-add-key-btn" type="button" class="ai-primary-btn">＋ Add API Connection</button>
+              </div>
               <label>Bulk add API keys (one per line; optional format: Label | API key)
                 <textarea id="ai-key-bulk" rows="4" placeholder="Gemini Key 1 | paste-key-here&#10;Gemini Key 2 | paste-key-here&#10;paste another key on its own line"></textarea>
               </label>
