@@ -1011,6 +1011,7 @@ async function generate(googleAllowed){
    productHeight:$('ai-product-height').value.trim(),productCapacity:$('ai-product-capacity')?$('ai-product-capacity').value.trim():'',
    sellingPrice:$('ai-product-price').value.trim(),productMrp:$('ai-product-mrp')?$('ai-product-mrp').value.trim():'',
    inventory:inventoryInput&&String(inventoryInput.value||'').trim()?String(Math.max(0,Math.floor(Number(inventoryInput.value)||0))):'100',
+   productCategory:category,
    productFacts:$('ai-product-facts').value.trim()
   };
   if(inventoryInput)inventoryInput.value=p.inventory;
