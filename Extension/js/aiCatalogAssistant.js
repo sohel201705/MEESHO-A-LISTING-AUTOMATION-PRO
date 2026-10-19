@@ -140,6 +140,14 @@ function liveLog(message,level='info'){
 function clearLiveLog(){
  const host=$('ai-live-log');if(host)host.textContent='';
  const state=$('ai-live-state');if(state)state.textContent='READY';
+ setProgress(0,'Ready · waiting for input');
+}
+function setProgress(percent,label){
+ const n=Math.max(0,Math.min(100,Math.round(Number(percent)||0)));
+ const fill=$('ai-progress-fill'),num=$('ai-progress-percent'),stage=$('ai-progress-stage'),caption=$('ai-progress-caption');
+ if(fill)fill.style.width=n+'%';if(num)num.textContent=n+'%';
+ if(stage)stage.textContent=label||'Processing';
+ if(caption)caption.textContent=n===100?'Completed · review draft and confirm remaining fields.':('Stage '+(label||'Processing')+' · '+n+'% complete');
 }
 function say(m,t){
  if($('ai-status')){$('ai-status').textContent=m||'';$('ai-status').className='ai-status '+(t||'');}
@@ -595,9 +603,13 @@ function preset(f,p,d){
  if(/(seller name|seller legal name|merchant name|seller company)/.test(x)&&d.sellerName)return d.sellerName;
  if(/(seller address|seller registered address|merchant address)/.test(x)&&d.sellerAddress)return d.sellerAddress;
  if(/(manufacturer( name)?|manufactured by)/.test(x)&&!/(address|pincode|pin code|postal code|zip|date)/.test(x)&&d.manufacturerName)return d.manufacturerName;
- if(/(manufacturer address|manufacturing address)/.test(x)&&!/(pincode|pin code|postal code|zip)/.test(x)&&d.manufacturerAddress)return d.manufacturerAddress;
+ if(/manufacturer pincode|manufacturer pin code|manufacturer postal code/.test(x)&&d.manufacturerPincode)return d.manufacturerPincode;
  if(/(packer( name)?|packed by)/.test(x)&&!/(address|pincode|pin code|postal code|zip|date)/.test(x)&&d.packerName)return d.packerName;
  if(/(packer address|packing address)/.test(x)&&!/(pincode|pin code|postal code|zip)/.test(x)&&d.packerAddress)return d.packerAddress;
+ if(/packer pincode|packer pin code|packer postal code/.test(x)&&d.packerPincode)return d.packerPincode;
+ if(/importer( name)?/.test(x)&&!/(address|pincode|pin code|postal code|zip)/.test(x)&&d.importerName)return d.importerName;
+ if(/importer address/.test(x)&&d.importerAddress)return d.importerAddress;
+ if(/importer pincode|importer pin code|importer postal code/.test(x)&&d.importerPincode)return d.importerPincode;
  if(/(country of origin|origin country|made in)/.test(x)&&d.countryOfOrigin)return d.countryOfOrigin;
  if(/(customer care phone|support phone|customer care number|contact phone)/.test(x)&&d.supportPhone)return d.supportPhone;
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
