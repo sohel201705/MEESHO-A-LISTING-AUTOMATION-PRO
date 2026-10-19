@@ -1378,7 +1378,7 @@ async function generate(googleAllowed){
     else{needs.push({identifier:f.identifier,reason:'Generated Style Code/SKU does not match this field’s allowed options; check the field manually.'});bad++;}
     return;
    }
-   const v=proposed[f.identifier];if(v===undefined||v===null||!String(v).trim())return;
+   if(v===undefined||v===null||!String(v).trim())return;
    if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
    if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
     needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
