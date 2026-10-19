@@ -305,11 +305,22 @@ function makeProfileId(){return 'seller-'+Date.now().toString(36)+'-'+Math.rando
 function currentSellerIdentity(){
  return typeof sellerIdentity==='function'?sellerIdentity():'';
 }
+function scopedSellerKey(base){
+ const identity=currentSellerIdentity();
+ const token=(identity||'legacy').replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+ return base+'__'+token;
+}
+function profileDbKey(){return scopedSellerKey(PROFILE_DB);}
+function defaultsStoreKey(){return scopedSellerKey(DEFAULTS);}
 async function readProfileStore(){
- const r=await get([PROFILE_DB,PROFILE_OWNER]);
- const owner=String(r[PROFILE_OWNER]||''),identity=currentSellerIdentity();
- if(owner&&identity&&owner!==identity)return {activeId:'',profiles:[]};
- let db=r[PROFILE_DB];
+ const identity=currentSellerIdentity(),ownerKey=PROFILE_OWNER;
+ const dbKey=profileDbKey(),r=await get([dbKey,PROFILE_DB,ownerKey]);
+ let db=r[dbKey];
+ if(!db){
+  const owner=String(r[ownerKey]||'');
+  if(owner&&identity&&owner!==identity)db={activeId:'',profiles:[]};
+  else db=r[profileDbKey()];
+ }
  if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
  return db;
 }
@@ -337,7 +348,7 @@ async function loadSelectedProfile(){
  $('ai-profile-name').value=profile.name||'Seller Profile';
  fillMappedFields(DEFAULT_FIELD_MAP,profile.defaults||{});
  fillOverrideEditor(profile,$('ai-profile-category').value||'general');
- await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults||{},[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults||{},[PROFILE_OWNER]:currentSellerIdentity()});
  say('Loaded seller profile: '+(profile.name||'Seller Profile')+'.','success');
 }
 async function loadCategoryOverride(){
@@ -345,15 +356,12 @@ async function loadCategoryOverride(){
  fillOverrideEditor(profile,$('ai-profile-category').value||'general');
 }
 async function loadDefaults(){
- const r=await get([DEFAULTS,PROFILE_DB,PROFILE_OWNER]),identity=currentSellerIdentity(),owner=String(r[PROFILE_OWNER]||'');
- if(owner&&identity&&owner!==identity){
-  profileCache={activeId:'',profiles:[]};renderProfileSelector(profileCache);
-  $('ai-profile-name').value='Main Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,{});
-  fillOverrideEditor(null,$('ai-profile-category').value||'general');
-  return;
- }
- const legacy=r[DEFAULTS]||{};
- let db=r[PROFILE_DB];
+ const identity=currentSellerIdentity(),owner=String((await get(PROFILE_OWNER))[PROFILE_OWNER]||'');
+ const legacyAllowed=!(owner&&identity&&owner!==identity);
+ const keys=[defaultsStoreKey(),profileDbKey(),DEFAULTS,PROFILE_DB,PROFILE_OWNER];
+ const r=await get(keys);
+ const legacy=r[defaultsStoreKey()]||((legacyAllowed)?r[DEFAULTS]||{}:{});
+ let db=r[profileDbKey()]||((legacyAllowed)?r[PROFILE_DB]:null);
  if(!db||!Array.isArray(db.profiles)||!db.profiles.length){
   db={activeId:'profile-default',profiles:[{id:'profile-default',name:legacy.sellerName||'Default Seller Profile',defaults:legacy,categoryOverrides:{}}]};
  }else{
@@ -363,15 +371,16 @@ async function loadDefaults(){
  profileCache=db;renderProfileSelector(db);
  const active=selectedProfile(db);
  if(active){$('ai-profile-name').value=active.name||'Default Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,active.defaults||legacy);}
+ else{$('ai-profile-name').value='Main Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,{});}
  fillOverrideEditor(active,$('ai-profile-category').value||'general');
- await set({[PROFILE_DB]:db,[DEFAULTS]:(active&&active.defaults)||legacy,...(identity?{[PROFILE_OWNER]:identity}:{})});
+ if(identity)await set({[profileDbKey()]:db,[defaultsStoreKey()]:(active&&active.defaults)||legacy});
 }
 async function persistActiveProfileDefaults(d,successMessage){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
  if(!profile)throw new Error('Create a seller profile first.');
  profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
  profile.defaults=d;db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:d,[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:d,[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);if($('ai-profile-select'))$('ai-profile-select').value=profile.id;
  if(successMessage)say(successMessage,'success');
 }
@@ -385,7 +394,7 @@ async function saveProfile(){
  if(!profile){profile={id:makeProfileId(),name:'Seller Profile',defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
  profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
  profile.defaults=d;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:d,[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:d,[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;
  say('Profile "'+profile.name+'" saved locally with base seller/legal details.','success');
 }
@@ -393,7 +402,7 @@ async function createProfile(){
  const current=readMappedFields(DEFAULT_FIELD_MAP),db=profileCache||await readProfileStore();
  const profile={id:makeProfileId(),name:'New Seller Profile',defaults:current,categoryOverrides:{}};
  db.profiles.push(profile);db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:current,[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:current,[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
  fillMappedFields(DEFAULT_FIELD_MAP,current);fillOverrideEditor(profile,$('ai-profile-category').value||'general');
  say('New profile created. Edit the base details, then Save / Update Profile.','success');
@@ -404,7 +413,7 @@ async function deleteProfile(){
  const profile=db.profiles.find(p=>p.id===id);if(!profile)return;
  if(!confirm('Delete profile "'+(profile.name||'Seller Profile')+'" and its category overrides from this Chrome profile?'))return;
  db.profiles=db.profiles.filter(p=>p.id!==id);db.activeId=db.profiles[0].id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:db.profiles[0].defaults||{},[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:db.profiles[0].defaults||{},[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);$('ai-profile-select').value=db.activeId;await loadSelectedProfile();
  say('Seller profile deleted.','success');
 }
@@ -420,13 +429,13 @@ async function saveCategoryOverride(){
  if(Object.values(override).some(v=>String(v||'').trim()))profile.categoryOverrides[category]=override;
  else delete profile.categoryOverrides[category];
  db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults,[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults,[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
  say('Saved category-specific overrides for '+($('ai-profile-category').selectedOptions[0]?.textContent||category)+'. Blank override fields use the profile base details.','success');
 }
 async function getActiveDefaultsForCategory(category){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===((db.activeId)||$('ai-profile-select')?.value))||db.profiles[0];
- const stored=await get(DEFAULTS),base=Object.assign({},stored[DEFAULTS]||{},profile&&profile.defaults||{});
+ const stored=await get(DEFAULTS),base=Object.assign({},stored[defaultsStoreKey()]||{},profile&&profile.defaults||{});
  const override=(profile&&profile.categoryOverrides&&profile.categoryOverrides[category])||{};
  Object.entries(override).forEach(([key,value])=>{if(String(value||'').trim())base[key]=String(value).trim();});
  return base;
