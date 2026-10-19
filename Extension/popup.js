@@ -477,7 +477,7 @@ function renderMeasurementSection(container) {
 }
 
 function showView(viewId) {
-  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding';
+  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding' || viewId === 'onboarding';
   if (currentUser && isPremiumView && !hasAutofillAccess(currentUser)) {
     viewId = 'pricing';
   }
