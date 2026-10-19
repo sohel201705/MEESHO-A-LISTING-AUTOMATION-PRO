@@ -263,8 +263,11 @@
       await sleep(25);
       if (!callReactOnClick(applyBtn)) realClick(applyBtn);
       await sleep(120);
+      const menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
       await closeOpenDropdown();
-      // Confirm that Meesho committed the selected size into the field trigger after Apply.
+      // Confirm the value when Meesho echoes it in the selector. Some multi-select
+      // catalogs hide the Free Size chip after Apply; for those, a verified checkbox
+      // plus the Apply dialog actually closing is sufficient.
       let label='';
       for(let attempt=0;attempt<5;attempt++){
         label=norm(String(triggerEl?.textContent||'')+' '+String(triggerEl?.querySelector?.('input')?.value||''));
@@ -272,11 +275,10 @@
         await sleep(35);
       }
       const verified=clicked.every(target=>label.includes(norm(target)));
-      if(!verified){
-        failed.push('The size checkbox was selected and Apply was clicked, but Meesho did not display the committed size. Check the Size field before saving.');
-        return false;
-      }
-      return true;
+      if(verified)return true;
+      if(sizesStr.toLowerCase().includes('free size')&&!menuStillOpenAfterApply)return true;
+      failed.push('The size checkbox was selected and Apply was clicked, but Meesho did not confirm the committed size. Check the Size field before saving.');
+      return false;
     }
 
     const triggerText = norm(String(triggerEl?.textContent || '') + ' ' + String(triggerEl?.querySelector?.('input')?.value || ''));
@@ -286,8 +288,8 @@
     }
     const stillOpen = Boolean(findVisibleSizeMenu());
     const selectedVisible = clicked.every(target => triggerText.includes(norm(target)));
-    if (!stillOpen || selectedVisible) return true;
-    failed.push('Size options were clicked but the selection could not be verified. Please check the Meesho size field.');
+    if (selectedVisible) return true;
+    failed.push('Size options were clicked but the selection could not be verified'+(stillOpen?' while the menu is open':' after the menu closed')+'. Please check the Meesho size field.');
     await closeOpenDropdown();
     return false;
   }
