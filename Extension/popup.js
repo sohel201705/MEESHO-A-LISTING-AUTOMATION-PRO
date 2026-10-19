@@ -1426,6 +1426,47 @@ async function prefillOnboardingFromStorage() {
   fillOnboardingForm(Object.assign({},data.ai_seller_defaults_v1||{},profile?.defaults||{}),profile?.name||'');
 }
 
+async function saveInitialSellerProfile() {
+  const status=document.getElementById('onboard-status'),button=document.getElementById('onboard-save-continue');
+  const sellerName=String(document.getElementById('onboard-seller-name')?.value||'').trim();
+  const sellerAddress=String(document.getElementById('onboard-seller-address')?.value||'').trim();
+  if(!sellerName||!sellerAddress){
+    if(status)status.textContent='Please enter Seller / Business Name and Seller Address. Unknown manufacturer/importer/tax details may remain blank.';
+    if(!sellerName)document.getElementById('onboard-seller-name')?.focus();else document.getElementById('onboard-seller-address')?.focus();
+    return;
+  }
+  if(button){button.disabled=true;button.textContent='SAVING PROFILE…';}
+  try{
+    const defaults={};
+    Object.entries(ONBOARD_DEFAULTS_MAP).forEach(([id,key])=>{defaults[key]=String(document.getElementById(id)?.value||'').trim();});
+    if(document.getElementById('onboard-importer-na')?.checked){
+      defaults.importerName='Not Required';defaults.importerAddress='Not Required';defaults.importerPincode='Not Required';
+    }
+    const data=await localGet(['ai_seller_profiles_v1','ai_seller_defaults_v1']);
+    let db=data.ai_seller_profiles_v1;
+    if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
+    const name=String(document.getElementById('onboard-profile-name')?.value||'').trim()||'Main Seller Profile';
+    let profile=db.profiles.find(p=>p.id===db.activeId)||db.profiles[0];
+    if(!profile){profile={id:'seller-main-'+Date.now().toString(36),name,defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
+    profile.name=name;profile.defaults=defaults;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;
+    await localSet({'ai_seller_profiles_v1':db,'ai_seller_defaults_v1':defaults,[sellerSetupFlagKey()]:true});
+    if(status)status.textContent='Profile saved. Opening your workspace…';
+    showStatus('Seller profile saved locally.','success');
+    openLandingWorkspace();
+  }catch(error){
+    if(status)status.textContent='Could not save profile: '+(error?.message||'Unknown error');
+  }finally{
+    if(button){button.disabled=false;button.innerHTML='SAVE PROFILE &amp; CONTINUE <span>→</span>';}
+  }
+}
+function toggleOnboardingImporterFields(notApplicable) {
+  ['onboard-importer-name','onboard-importer-address','onboard-importer-pincode'].forEach(id=>{
+    const input=document.getElementById(id);if(!input)return;
+    input.disabled=!!notApplicable;input.style.opacity=notApplicable?'0.55':'1';
+    if(notApplicable)input.value='Not Required';else if(input.value==='Not Required')input.value='';
+  });
+}
+
 function openLandingWorkspace() {
   currentProfileName = null;
   currentProfileMode = null;
