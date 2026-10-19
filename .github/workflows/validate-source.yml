@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.8');
+          assert.equal(manifest.version, '3.17.9');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -261,8 +261,11 @@ jobs:
           // Free Size must target the real checkbox/label row and commit Apply faster.
           assert.ok(content.includes('function sizeOptionContainer(option, menu)'));
           assert.ok(content.includes('function clickSizeRow(row)'));
-          assert.ok(content.includes('setTimeout(() => done(null), 1400)'));
-          assert.ok(content.includes("await sleep(180)"));
+          assert.ok(content.includes('setTimeout(() => done(null), 750)'));
+          assert.ok(content.includes('HTMLElement.click() already emits the native click/input/change sequence'));
+          assert.ok(!content.includes("input.dispatchEvent(new Event('change', { bubbles: true }))"));
+          assert.ok(content.includes("await sleep(120)"));
+          assert.ok(content.includes('Meesho did not display the committed size'));
 
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
@@ -288,5 +291,26 @@ jobs:
           assert.ok(aiAssistant.includes('function syncProviderCards()'));
           assert.ok(aiAssistant.includes('qwen/qwen3.8-27b:free'));
           assert.ok(popupHtml.includes('.ai-provider-cards{display:grid'));
-          console.log('v3.17.8 checks passed: tax research, verified Free Size selection, current shipping image capture, and nine API provider cards.');
+          assert.ok(popupHtml.includes('id="ai-product-pack-quantity"'));
+          assert.ok(aiAssistant.includes("packQuantity:$('ai-product-pack-quantity')"));
+          assert.ok(aiAssistant.includes('function exactPackQuantityOption(field,count)'));
+          assert.ok(aiAssistant.includes('productInputs.packQuantity'));
+          assert.ok(aiAssistant.includes("raw+=' / Pack of '+packCount"));
+          assert.ok(aiAssistant.includes('function classifyProviderFailure(error)'));
+          assert.ok(aiAssistant.includes('quota/rate limit (429)'));
+          assert.ok(aiAssistant.includes("Provider quota exhausted."));
+          assert.ok(aiAssistant.includes('await set({[ROT]:(start+i+1)%list.length})'));
+          const classifierStart = aiAssistant.indexOf('function classifyProviderFailure(error){');
+          const classifierEnd = aiAssistant.indexOf('function explainProviderFailure', classifierStart);
+          assert.ok(classifierStart >= 0 && classifierEnd > classifierStart);
+          const classifyProviderFailure = new Function(aiAssistant.slice(classifierStart, classifierEnd) + '; return classifyProviderFailure;')();
+          assert.equal(classifyProviderFailure(new Error('Gemini 429: You exceeded your current quota')), 'quota');
+          assert.equal(classifyProviderFailure(new Error('HTTP 401: invalid API key')), 'auth');
+          const packStart = aiAssistant.indexOf('function exactPackQuantityOption(field,count){');
+          const packEnd = aiAssistant.indexOf('function exactCapacityOption', packStart);
+          const packOption = new Function('norm', aiAssistant.slice(packStart, packEnd) + '; return exactPackQuantityOption;')(value => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase());
+          assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2', 'Pack Of 4'] }, 2), 'Pack Of 2');
+          assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2'] }, 4), '');
+          assert.equal(packOption({ values: [] }, 3), 'Pack Of 3');
+          console.log('v3.17.9 checks passed: pack quantity, Gemini quota fallback diagnostics, verified Free Size selection, shipping photo capture, and nine provider cards.');
           NODE
