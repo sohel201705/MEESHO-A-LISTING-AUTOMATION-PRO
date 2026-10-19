@@ -1426,6 +1426,14 @@ async function prefillOnboardingFromStorage() {
   fillOnboardingForm(Object.assign({},data.ai_seller_defaults_v1||{},profile?.defaults||{}),profile?.name||'');
 }
 
+function openLandingWorkspace() {
+  currentProfileName = null;
+  currentProfileMode = null;
+  setProfileContextBar();
+  populateProfileDropdown();
+  showView('profilesLanding');
+  updateAccountUI();
+}
 function enterLandingView() {
   if (!currentUser || !hasAutofillAccess(currentUser)) {
     loadPlans();
@@ -1434,14 +1442,20 @@ function enterLandingView() {
     showView('pricing');
     return;
   }
-
-  currentProfileName = null;
-  currentProfileMode = null;
-  setProfileContextBar();
-  populateProfileDropdown();
-  showView('profilesLanding');
-  updateAccountUI();
-
+  const flagKey=sellerSetupFlagKey();
+  localGet([flagKey,'ai_seller_profiles_v1','ai_seller_defaults_v1']).then(data=>{
+    const db=data.ai_seller_profiles_v1||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+    const active=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
+    const defaults=Object.assign({},data.ai_seller_defaults_v1||{},active?.defaults||{});
+    const hasBasics=Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
+    if(data[flagKey]||hasBasics){
+      if(hasBasics&&!data[flagKey])localSet({[flagKey]:true}).catch(()=>{});
+      openLandingWorkspace();
+      return;
+    }
+    prefillOnboardingFromStorage().catch(()=>{});
+    showView('onboarding');
+  }).catch(()=>openLandingWorkspace());
 }
 
 function setProfileSelection(name) {
