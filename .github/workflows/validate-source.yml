@@ -227,7 +227,7 @@ jobs:
           assert.ok(popupHtml.includes('ai-category-override-details'));
           assert.equal((popupHtml.match(/id="ai-image-list"/g) || []).length, 1);
 
-          const detectorStart = aiAssistant.indexOf('function detectMeeshoCatalog(scan){');
+          const detectorStart = aiAssistant.indexOf('function safeMeeshoCatalogContext(context={})');
           const detectorEnd = aiAssistant.indexOf('function promptFor(scan,p,d,s,research)', detectorStart);
           assert.ok(detectorStart >= 0 && detectorEnd > detectorStart);
           const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
