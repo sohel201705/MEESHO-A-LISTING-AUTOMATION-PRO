@@ -775,6 +775,114 @@ function showPreview(fields,values,needs,stats,research){
  if(needs.length){const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs confirmation — '+needs.length));const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});box.appendChild(ul);root.appendChild(box);}
  root.appendChild(el('p','ai-muted','Review the draft. Unverified tax/legal values and actual measurements are not guessed. Search sources are shown above when Google access is available.'));
 }
+function isDescriptionField(f){
+ return /description/.test(norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||'')));
+}
+function cleanTitle(title){
+ return String(title||'').replace(/\s+/g,' ').replace(/^\s*\/+\s*|\s*\/+\s*$/g,'').trim().slice(0,250).trim();
+}
+function buildTitleChoices(raw,baseTitle,p,d){
+ const choices=[],seen=new Set();
+ const add=(title,reason,recommended)=>{
+  const clean=cleanTitle(title);if(!clean)return;
+  const key=norm(clean);if(seen.has(key))return;seen.add(key);
+  choices.push({title:clean,reason:String(reason||'Uses the known product details.'),recommended:Boolean(recommended)});
+ };
+ (Array.isArray(raw)?raw:[]).forEach(x=>{
+  if(typeof x==='string')add(x,'AI-generated title option.',false);
+  else if(x&&typeof x==='object')add(x.title||x.value||'',x.reason||x.rationale||'',x.recommended===true||String(x.recommended).toLowerCase()==='true');
+ });
+ const brand=String(d&&d.brand||'').trim(),capacity=String(p&&p.productCapacity||'').trim(),material=String(p&&p.material||'').trim(),color=String(p&&p.color||'').trim();
+ add(baseTitle,'Base searchable title from the product identification.',false);
+ add([brand,baseTitle,capacity,material,color].filter(Boolean).join(' / '),'Brand and product details, only where supplied or verified.',false);
+ add([baseTitle,capacity,material,color].filter(Boolean).join(' / '),'Product type followed by confirmed capacity/material/color.',false);
+ add([baseTitle,color,capacity].filter(Boolean).join(' / '),'Shorter title prioritizing core product and variant.',false);
+ add([baseTitle,'Product Details as Shown'].filter(Boolean).join(' / '),'Conservative option without adding unverified technical claims.',false);
+ while(choices.length<4){
+  const n=choices.length+1;
+  add(baseTitle+' / Option '+n,'Fallback title; review and edit before use.',false);
+ }
+ if(choices.length>4)choices.length=4;
+ let rec=choices.findIndex(x=>x.recommended);
+ if(rec<0)rec=0;
+ choices.forEach((x,i)=>x.recommended=i===rec);
+ return choices;
+}
+function renderTitleOptions(){
+ const root=$('ai-title-options');if(!root)return;root.replaceChildren();
+ if(!titleChoices.length){root.style.display='none';return;}
+ root.style.display='block';
+ root.appendChild(el('div','ai-title-options-heading','Choose a Product Title'));
+ root.appendChild(el('div','ai-title-options-subtitle','4 title options · each limited to 250 characters. The recommended option is pre-selected. Slash-separated structure: Product Type / Brand / Capacity or Size / Material / Color / Pack Quantity / Verified Feature.'));
+ titleChoices.forEach((choice,index)=>{
+  const label=el('label','ai-title-choice'),radio=el('input');
+  radio.type='radio';radio.name='ai-selected-title';radio.value=String(index);radio.checked=choice.recommended;
+  radio.addEventListener('change',()=>{if(radio.checked)applyTitleChoice(index);});
+  const body=el('div','ai-title-choice-body'),main=el('div','ai-title-choice-main',choice.title);
+  if(choice.recommended)main.appendChild(el('span','ai-recommended-tag','RECOMMENDED'));
+  body.appendChild(main);
+  body.appendChild(el('div','ai-title-choice-meta',choice.reason||''));
+  body.appendChild(el('div','ai-title-choice-count',choice.title.length+'/250 characters'));
+  label.appendChild(radio);label.appendChild(body);root.appendChild(label);
+ });
+}
+async function applyTitleChoice(index){
+ const choice=titleChoices[index];if(!choice||!draft)return;
+ setProgress(88,'Applying selected title and regenerating SKU / Style Code');
+ if(currentTitleProduct)currentTitleProduct.productName=choice.title;
+ if($('ai-product-name'))$('ai-product-name').value=choice.title;
+ if(activeTitleFieldId)draft[activeTitleFieldId]=choice.title;
+ try{
+  const codes=await productCodes(choice.title,currentTitleProduct||{});
+  currentTitleFields.forEach(f=>{
+   const value=generatedCodeForField(f,codes);
+   if(value&&allowed(value,f))draft[f.identifier]=value;
+  });
+  titleChoices.forEach((x,i)=>{x.recommended=i===index;});
+  renderTitleOptions();
+  showPreview(currentTitleFields,draft,currentTitleNeeds,currentTitleStats,researchNow);
+  setProgress(90,'Selected title applied · SKU / Style Code refreshed');
+  say('Selected title option '+(index+1)+': '+choice.title,'success');
+ }catch(e){
+  setProgress(88,'Title selected · code refresh needs review');
+  say('Title selected. Review SKU/Style Code manually: '+redactSecrets(e,null),'warning');
+ }
+}
+function normalizeDescription(text){
+ let value=String(text||'').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+ if(value.length>1000){
+  let cut=value.slice(0,1000),lastSpace=cut.lastIndexOf(' ');
+  if(lastSpace>920)cut=cut.slice(0,lastSpace);
+  value=cut.replace(/[.,;:\s]+$/,'').trim();
+ }
+ return value;
+}
+async function refineDescriptionToBudget(raw,title,p,imgs){
+ let value=normalizeDescription(raw);
+ if(value.length>=950)return value;
+ liveLog('DESCRIPTION · expanding to the requested 950–1000 character target using only verified facts.','info');
+ setProgress(80,'Refining the product description to 950–1000 characters');
+ const prompt=[
+  'Write a professional Indian e-commerce product description in JSON: {"description":"..."}. Aim for 950–1000 characters including spaces and never exceed 1000.',
+  'Keep the description natural, specific to the product title and only grounded in the provided draft, confirmed seller inputs, and research snippets. Do not invent certifications, material grades, leak proofing, hot/cold retention, included accessories, measurements, package contents, warranty, brand claims or origin.',
+  'Do not repeat filler. When technical facts are sparse, write useful neutral buying guidance and explain that shoppers should check the exact capacity/color/product images and supplied specifications.',
+  'Product title: '+String(title||''),
+  'Confirmed seller details: '+JSON.stringify({material:p.material||'',color:p.color||'',capacity:p.productCapacity||'',weight:p.productWeight||'',length:p.productLength||'',width:p.productWidth||'',height:p.productHeight||'',facts:p.productFacts||''}),
+  'Google research snippets: '+JSON.stringify((researchNow.results||[]).slice(0,6).map(r=>({title:r.title,domain:r.domain,snippet:r.snippet}))),
+  'Current description to improve: '+value,
+  'Return only JSON, no markdown.'
+ ].join('\n');
+ try{
+  const response=await callAI(prompt,(imgs||[]).slice(0,3),80,6),obj=parseJson(response.text);
+  const candidate=normalizeDescription(obj.description||(obj.values&&obj.values.description)||'');
+  if(candidate.length>value.length||value.length<950)value=candidate;
+ }catch(e){liveLog('DESCRIPTION · refinement request failed; keeping the current safe text.','warn');}
+ value=normalizeDescription(value);
+ if(value.length<950)liveLog('DESCRIPTION · '+value.length+'/1000 characters. The model could not safely expand further without inventing unsupported product facts.','warn');
+ else liveLog('DESCRIPTION · ready at '+value.length+'/1000 characters.','ok');
+ return value;
+}
+
 function isProductNameField(f){return /product_name/.test(String(f.identifier||''))||/^product name$/i.test(String(f.label||'').trim());}
 async function identifyProductFromPhotos(imgs,providedFacts){
  const seed=imgs.map(i=>cleanSearchSeed(i.name)).filter(Boolean).slice(0,6);
