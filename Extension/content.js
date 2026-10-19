@@ -166,7 +166,11 @@
     const wanted=norm(target);
     if(!wanted)return null;
     const selectors='input[type="checkbox"], [role="checkbox"], label, li, [role="option"], [role="menuitem"], button, p, span, div, [data-value]';
-    const elements=Array.from(document.querySelectorAll(selectors)).filter(elementIsVisible);
+    // Search the currently open Meesho dropdown first so a matching label elsewhere
+    // on the page is never mistaken for the real selectable option.
+    const openMenu=findVisibleSizeMenu();
+    const searchRoot=openMenu||document;
+    const elements=Array.from(searchRoot.querySelectorAll(selectors)).filter(elementIsVisible);
     // Prefer a real checkbox whose nearby row says exactly "Free Size".
     const checkboxes=elements.filter(el=>el.matches('input[type="checkbox"],[role="checkbox"]'));
     const checkboxRows=[];
