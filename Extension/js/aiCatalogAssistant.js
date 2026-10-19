@@ -158,21 +158,44 @@ function say(m,t){
  const level=t==='error'?'error':(t==='warning'?'warn':(t==='success'?'ok':'info'));
  if(m)liveLog(m,level);
 }
-function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
-function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
-function modelChoices(p){
- if(p==='gemini')return [
-  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · Free tier · vision'},
-  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · Free tier · vision'},
-  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · Free tier · vision'},
-  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · Free tier · vision'}
- ];
- if(p==='groq')return [
-  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · free-tier rate limits'}
- ];
- return [];
-}
-function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
+const PROVIDER_CONFIG={
+ gemini:{label:'Google Gemini',kind:'native',endpoint:'',model:'gemini-3.8-flash',tier:'FREE TIER · QUOTAS APPLY',description:'Google AI Studio · native image input',models:[
+  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · vision'},
+  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · vision'},
+  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},
+  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
+ ]},
+ groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'',model:'qwen/qwen3.8-27b',tier:'FREE PLAN · RATE LIMITS',description:'Fast vision inference on the free plan',models:[
+  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'},
+  {id:'qwen/qwen3.6-27b',label:'Qwen 3.6 27B · vision'}
+ ]},
+ openrouter:{label:'OpenRouter Free Router',kind:'compatible',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'FREE ROUTER · RATE LIMITS',description:'Routes to available free models that support images',models:[
+  {id:'openrouter/free',label:'OpenRouter Free Router · automatically routes free VLMs'}
+ ]},
+ huggingface:{label:'Hugging Face Inference',kind:'compatible',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'Qwen/Qwen2.5-VL-7B-Instruct',tier:'SMALL FREE CREDIT · LIMITS APPLY',description:'VLM support depends on the selected model/provider',models:[
+  {id:'Qwen/Qwen2.5-VL-7B-Instruct',label:'Qwen 2.5 VL 7B · vision'}
+ ]},
+ cloudflare:{label:'Cloudflare Workers AI',kind:'compatible',endpoint:'https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/ai/v1/chat/completions',model:'@cf/meta/llama-3.2-11b-vision-instruct',tier:'DAILY FREE ALLOCATION · MODEL LIMITS',description:'Replace YOUR_ACCOUNT_ID in the endpoint before saving',models:[
+  {id:'@cf/meta/llama-3.2-11b-vision-instruct',label:'Llama 3.2 11B Vision'}
+ ]},
+ together:{label:'Together AI',kind:'compatible',endpoint:'https://api.together.xyz/v1/chat/completions',model:'Qwen/Qwen2.5-VL-72B-Instruct',tier:'TRIAL/CREDITS · CHECK BILLING',description:'Use a currently enabled vision model from your account',models:[
+  {id:'Qwen/Qwen2.5-VL-72B-Instruct',label:'Qwen 2.5 VL 72B · vision'}
+ ]},
+ deepinfra:{label:'DeepInfra',kind:'compatible',endpoint:'https://api.deepinfra.com/v1/openai/chat/completions',model:'Qwen/Qwen2.5-VL-72B-Instruct',tier:'TRIAL/CREDITS · CHECK BILLING',description:'OpenAI-compatible endpoint; model access depends on account',models:[
+  {id:'Qwen/Qwen2.5-VL-72B-Instruct',label:'Qwen 2.5 VL 72B · vision'}
+ ]},
+ fireworks:{label:'Fireworks AI',kind:'compatible',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'accounts/fireworks/models/qwen2p5-vl-72b-instruct',tier:'TRIAL/CREDITS · CHECK BILLING',description:'OpenAI-compatible endpoint; model access depends on account',models:[
+  {id:'accounts/fireworks/models/qwen2p5-vl-72b-instruct',label:'Qwen 2.5 VL 72B · vision'}
+ ]},
+ compatible:{label:'OpenAI-compatible / xAI Grok',kind:'compatible',endpoint:'https://api.x.ai/v1/chat/completions',model:'',tier:'CUSTOM · PAID STATUS VARIES',description:'Enter a working multimodal model ID and HTTPS endpoint',models:[]}
+};
+function label(p){return (PROVIDER_CONFIG[p]||PROVIDER_CONFIG.compatible).label;}
+function modelDefault(p){return (PROVIDER_CONFIG[p]||PROVIDER_CONFIG.compatible).model||'';}
+function modelChoices(p){return (PROVIDER_CONFIG[p]||PROVIDER_CONFIG.compatible).models||[];}
+function endpointDefault(p){return (PROVIDER_CONFIG[p]||PROVIDER_CONFIG.compatible).endpoint||'';}
+function requiresCustomEndpoint(p){return !['gemini','groq'].includes(p);}
+function providerSupportsVision(p){return p!=='cerebras'&&p!=='text-only';}
+
 function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
  if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
@@ -226,12 +249,24 @@ function updateModelChoices(p){
  modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
 }
 function updateProviderForm(){
- const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
+ const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint'),config=PROVIDER_CONFIG[p]||PROVIDER_CONFIG.compatible;
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
- $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
- if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
+ $('ai-key-endpoint-wrap').style.display=requiresCustomEndpoint(p)?'block':'none';
+ if(requiresCustomEndpoint(p)&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);
+ ep.dataset.provider=p;
  updateModelChoices(p);
- $('ai-provider-hint').textContent=p==='gemini'?'Recommended free-tier vision models: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, and 3.1 Flash-Lite. Free-tier quotas and availability depend on your Google AI Studio project.':p==='groq'?'Recommended Groq vision model: qwen/qwen3.8-27b (up to 3 images/request). Groq free-tier rate limits apply.':'Custom OpenAI-compatible endpoints may be paid; xAI/Grok is not guaranteed free. Do not use a Groq model ID with an xAI endpoint.';
+ const hints={
+  gemini:'FREE TIER · Google AI Studio offers free API access for selected models; quotas and availability depend on the project.',
+  groq:'FREE PLAN · Qwen 3.8 27B accepts image+text. Free-plan limits apply and can change.',
+  openrouter:'FREE ROUTER · openrouter/free selects currently available free models that support image input. Shared/free-tier rate limits apply.',
+  huggingface:'SMALL FREE CREDIT · Hugging Face currently provides limited monthly free credits; availability depends on the routed vision model.',
+  cloudflare:'DAILY FREE ALLOCATION · Workers AI currently includes a daily free allocation. Replace YOUR_ACCOUNT_ID in the endpoint and use a model enabled on your account.',
+  together:'TRIAL/CREDITS · Vision API availability and cost depend on your Together AI account. Check current billing before use.',
+  deepinfra:'TRIAL/CREDITS · Vision model access and pricing depend on your DeepInfra account. Check current billing before use.',
+  fireworks:'TRIAL/CREDITS · Vision model access and pricing depend on your Fireworks account. Check current billing before use.',
+  compatible:'CUSTOM API · xAI/Grok and other OpenAI-compatible providers may be paid. Choose a model that accepts image_url inputs.'
+ };
+ $('ai-provider-hint').textContent=config.tier+' · '+config.description+' '+(hints[p]||'Confirm current model and billing status with the provider.');
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
@@ -241,7 +276,8 @@ function makeKey(p,model,endpoint,apiKey,name){
  return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:name||label(p)+' key',model,endpoint,apiKey,enabled:true};
 }
 async function checkProviderPermission(p,endpoint){
- if(p!=='compatible')return true;
+ if(!requiresCustomEndpoint(p))return true;
+ if(p==='cloudflare'&&/YOUR_ACCOUNT_ID/i.test(endpoint))throw new Error('Replace YOUR_ACCOUNT_ID in the Cloudflare endpoint with the account ID from your Cloudflare dashboard.');
  return await askPermission(endpoint);
 }
 async function addKey(){
@@ -250,7 +286,7 @@ async function addKey(){
  let p=selectedProvider;
  if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
  if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
- const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=requiresCustomEndpoint(p)?$('ai-key-endpoint').value.trim():endpointDefault(p);
  if(!model)return say('Enter the model ID.','error');
  let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
@@ -776,7 +812,7 @@ async function gemini(k,prompt,imgs=[]){
 async function compatible(k,prompt,imgs=[]){
  if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
- let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
+ let url=String(k.endpoint||endpointDefault(k.provider)).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
  if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
@@ -819,7 +855,7 @@ function mergeImageBatchResponses(texts){
 async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  if(!Array.isArray(imgs)||!imgs.length)throw new Error('Product photos are missing. Upload at least one photo and try again.');
  if(imgs.length>10)throw new Error('Too many photos. Select up to 10 photos of this one product.');
- const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
+ const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model&&providerSupportsVision(k.provider));if(!list.length)throw new Error('Add and enable at least one image-capable provider key (Gemini, Groq, OpenRouter, Hugging Face, Cloudflare, Together, DeepInfra, Fireworks or a compatible vision model).');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
   const k=order[i],batchSize=k.provider==='groq'?3:5,batches=[];
