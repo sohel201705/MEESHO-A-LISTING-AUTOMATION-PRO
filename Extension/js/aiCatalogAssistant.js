@@ -319,7 +319,7 @@ async function readProfileStore(){
  if(!db){
   const owner=String(r[ownerKey]||'');
   if(owner&&identity&&owner!==identity)db={activeId:'',profiles:[]};
-  else db=r[profileDbKey()];
+  else db=r[PROFILE_DB];
  }
  if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
  return db;
@@ -348,7 +348,7 @@ async function loadSelectedProfile(){
  $('ai-profile-name').value=profile.name||'Seller Profile';
  fillMappedFields(DEFAULT_FIELD_MAP,profile.defaults||{});
  fillOverrideEditor(profile,$('ai-profile-category').value||'general');
- await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults||{},[PROFILE_OWNER]:currentSellerIdentity()});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults||{}});
  say('Loaded seller profile: '+(profile.name||'Seller Profile')+'.','success');
 }
 async function loadCategoryOverride(){
@@ -373,7 +373,12 @@ async function loadDefaults(){
  if(active){$('ai-profile-name').value=active.name||'Default Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,active.defaults||legacy);}
  else{$('ai-profile-name').value='Main Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,{});}
  fillOverrideEditor(active,$('ai-profile-category').value||'general');
- if(identity)await set({[profileDbKey()]:db,[defaultsStoreKey()]:(active&&active.defaults)||legacy});
+ if(identity){
+  const migratedLegacy=!owner&&(Boolean(r[DEFAULTS])||Boolean(r[PROFILE_DB]));
+  const scopedValues={[profileDbKey()]:db,[defaultsStoreKey()]:(active&&active.defaults)||legacy};
+  if(migratedLegacy)scopedValues[PROFILE_OWNER]=identity;
+  await set(scopedValues);
+ }
 }
 async function persistActiveProfileDefaults(d,successMessage){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
@@ -435,7 +440,7 @@ async function saveCategoryOverride(){
 }
 async function getActiveDefaultsForCategory(category){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===((db.activeId)||$('ai-profile-select')?.value))||db.profiles[0];
- const stored=await get(DEFAULTS),base=Object.assign({},stored[defaultsStoreKey()]||{},profile&&profile.defaults||{});
+ const stored=await get(defaultsStoreKey()),base=Object.assign({},stored[defaultsStoreKey()]||{},profile&&profile.defaults||{});
  const override=(profile&&profile.categoryOverrides&&profile.categoryOverrides[category])||{};
  Object.entries(override).forEach(([key,value])=>{if(String(value||'').trim())base[key]=String(value).trim();});
  return base;
