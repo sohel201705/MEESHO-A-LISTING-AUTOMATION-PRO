@@ -502,48 +502,53 @@
     return String(text || '').trim().toLowerCase();
   }
 
+  function imageSourceUrl(img) {
+    if (!img) return '';
+    const srcset = String(img.getAttribute('srcset') || img.dataset?.srcset || '').trim();
+    const src = String(img.currentSrc || img.getAttribute('src') || img.dataset?.src || img.dataset?.original || '').trim();
+    if (src && !/^data:image\/gif/i.test(src)) return src;
+    if (srcset) {
+      const first = srcset.split(',').map(x => x.trim().split(/\s+/)[0]).filter(Boolean).pop();
+      if (first) return first;
+    }
+    return '';
+  }
+
   function findFrontImagePreviewUrl() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
+    const allImages = Array.from(document.querySelectorAll('img'));
+    let bestUrl = '';
+    let bestScore = -1000;
+    allImages.forEach(function(img) {
+      if (!img || !imageSourceUrl(img) || img.closest('#' + BOX_ID)) return;
       const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
-    });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
+      if (rect.width <= 20 || rect.height <= 20 || img.offsetParent === null) return;
+      const container = img.closest('div, section, article, aside, label');
+      const containerText = String(container ? container.textContent : '').toLowerCase();
+      const altText = String(img.alt || img.getAttribute('aria-label') || '').toLowerCase();
       let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0]?.img?.currentSrc || scored[0]?.img?.src || '';
+      if (containerText.indexOf('uploaded images') >= 0) score += 9;
+      if (containerText.indexOf('front image') >= 0) score += 13;
+      if (containerText.indexOf('change front image') >= 0) score += 12;
+      if (containerText.indexOf('uploaded') >= 0) score += 3;
+      if (/front image|uploaded image|catalog image/.test(altText)) score += 5;
+      if (rect.width >= 180 && rect.height >= 180) score += 4;
+      if (rect.width < 75 || rect.height < 75) score -= 8;
+      if (/similar products|top verified matches|best match|shipping optimizer results/.test(containerText)) score -= 15;
+      if (score > bestScore) { bestScore = score; bestUrl = imageSourceUrl(img); }
+    });
+    return bestUrl;
   }
 
   function findFrontImagePreviewElement() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
+    const url = findFrontImagePreviewUrl();
+    const candidates = Array.from(document.querySelectorAll('img')).filter(img => {
+      if (!imageSourceUrl(img) || img.closest(`#${BOX_ID}`)) return false;
       const rect = img.getBoundingClientRect();
       return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
     });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
-      let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0]?.img || null;
+    return candidates.find(img => imageSourceUrl(img) === url) ||
+      candidates.find(img => img === document.querySelector('#changeFrontImage')?.parentElement?.querySelector('img')) ||
+      null;
   }
 
   async function fileFromUrl(url, filenamePrefix = 'meesho-front') {
@@ -1685,6 +1690,8 @@
     });
   }
 
+  let catalogImageObserver = null;
+  let catalogImageRefreshTimer = null;
   function attachSourceListener() {
     const refresh = () => setTimeout(syncSourcePreview, 80);
     getPageFileInputs().forEach(input => {
@@ -1693,6 +1700,28 @@
       input.addEventListener('input', refresh);
       input.addEventListener('change', refresh);
     });
+    // Meesho updates the uploaded/front-image preview asynchronously after catalog load.
+    // Watch only image-related mutations outside this tool, then rescan the current photo.
+    if (!catalogImageObserver && document.body) {
+      catalogImageObserver = new MutationObserver(mutations => {
+        const relevant = mutations.some(mutation => {
+          const target = mutation.target && mutation.target.nodeType === 1 ? mutation.target : mutation.target?.parentElement;
+          if (target?.closest?.(`#${BOX_ID}`)) return false;
+          if (mutation.type === 'attributes') return ['src','srcset','data-src','data-original','class','style'].includes(mutation.attributeName);
+          return Array.from(mutation.addedNodes || []).some(node => {
+            if (node.nodeType !== 1) return false;
+            return node.matches?.('img,input[type="file"]') || Boolean(node.querySelector?.('img,input[type="file"]'));
+          });
+        });
+        if (!relevant) return;
+        clearTimeout(catalogImageRefreshTimer);
+        catalogImageRefreshTimer = setTimeout(() => {
+          attachSourceListener();
+          syncSourcePreview();
+        }, 260);
+      });
+      catalogImageObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src','srcset','data-src','data-original','class','style'] });
+    }
   }
 
   function inject() {

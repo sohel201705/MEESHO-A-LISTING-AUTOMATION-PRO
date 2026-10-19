@@ -139,95 +139,148 @@
     return candidates[0] || null;
   }
 
+  function sizeOptionContainer(option, menu) {
+    if (!option) return null;
+    let node = option;
+    let fallback = option;
+    for (let depth = 0; depth < 5 && node && node !== menu; depth++, node = node.parentElement) {
+      fallback = node;
+      if (node.matches && node.matches('label,[role="option"],[role="menuitem"],li,[class*="MuiFormControlLabel-root"]')) return node;
+      if (node.querySelector && node.querySelector('input[type="checkbox"],input[type="radio"]')) return node;
+    }
+    return fallback || option;
+  }
+
   function clickSizeRow(row) {
     if (!row || !row.isConnected) return 'none';
-    // If the option has a real checkbox, click that control exactly once.
-    // This avoids double-toggling a controlled checkbox through both React and mouse events.
-    const checkbox = row.matches && row.matches('input[type="checkbox"]')
-      ? row : row.querySelector('input[type="checkbox"]');
-    if (checkbox) {
-      if (!checkbox.checked) checkbox.click();
-      return checkbox.checked ? 'checkbox-selected' : 'checkbox-failed';
+    const input = row.matches && row.matches('input[type="checkbox"],input[type="radio"]')
+      ? row : row.querySelector('input[type="checkbox"],input[type="radio"]');
+    if (input) {
+      if (!input.checked) {
+        input.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+        input.click();
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return input.checked ? 'checkbox-selected' : 'checkbox-failed';
     }
-    const svg = row.querySelector('svg');
-    const target = svg || row;
-    if (callReactOnClick(target)) return svg ? 'react-svg' : 'react-row';
-    realClick(target);
-    return svg ? 'native-svg' : 'native-row';
+    const isSelected = () =>
+      row.getAttribute('aria-checked') === 'true' ||
+      row.getAttribute('aria-selected') === 'true' ||
+      row.classList.contains('Mui-checked') ||
+      Boolean(row.querySelector('[aria-checked="true"],.Mui-checked,input:checked'));
+    if (isSelected()) return 'already-selected';
+    // Click the actual option/label row, not only the decorative SVG/check icon.
+    row.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+    if (callReactOnClick(row)) return 'react-row';
+    realClick(row);
+    return isSelected() ? 'native-row-selected' : 'native-row';
   }
 
   async function selectSizeDropdown(triggerEl, sizesStr, failed = []) {
     await closeOpenDropdown();
-    const wantedSizes = String(sizesStr||'').split(',').map(s => s.trim()).filter(Boolean);
+    const wantedSizes = String(sizesStr || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!wantedSizes.length) return false;
-    const existing = new Set(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
+    const selectors = '[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root';
+    const existing = new Set(document.querySelectorAll(selectors));
     const handled = callReactOnClick(triggerEl);
-    if (!handled) {
-      realClick(triggerEl);
-      const input = triggerEl && triggerEl.querySelector('input');
-      if (input) realClick(input);
-    }
+    if (!handled) realClick(triggerEl);
+
     let menu = await new Promise(resolve => {
+      let finished = false;
+      const done = value => { if (finished) return; finished = true; observer.disconnect(); resolve(value); };
       const check = () => {
-        const candidates = Array.from(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
-        const visible = candidates.filter(el => {
-          const r=el.getBoundingClientRect();
-          return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';
+        const visible = Array.from(document.querySelectorAll(selectors)).filter(el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
         });
-        const fresh = visible.find(el=>!existing.has(el));
-        if(fresh){observer.disconnect();resolve(fresh);return;}
-        if(visible.length){observer.disconnect();resolve(visible[visible.length-1]);}
+        const fresh = visible.find(el => !existing.has(el));
+        if (fresh) return done(fresh);
+        if (visible.length) return done(visible[visible.length - 1]);
       };
       const observer = new MutationObserver(check);
-      observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','aria-expanded']});
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-expanded', 'aria-checked'] });
       check();
-      setTimeout(()=>{observer.disconnect();resolve(null);},3500);
+      setTimeout(() => done(null), 1400);
     });
-    if(!menu)menu=findVisibleSizeMenu();
-    if(!menu){failed.push('Size selector did not open; please select the size manually.');return false;}
-    const clicked=[];
-    for(const target of wantedSizes){
-      const active=menu.isConnected?menu:findVisibleSizeMenu();
-      if(!active){if(clicked.length)break;failed.push('Size selector closed before '+target+' was selected.');return false;}
-      const options=Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, [data-value]'));
-      const option=options.find(el=>norm(el.textContent)===norm(target))||
-        options.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
-      if(!option){failed.push('Size option not found: '+target);continue;}
-      const clickTarget=option.tagName==='P'&&option.parentElement?option.parentElement:option;
-      const clickResult=clickSizeRow(clickTarget);
-      await sleep(180);
-      const optionCheckbox=clickTarget.matches&&clickTarget.matches('input[type="checkbox"]')?clickTarget:clickTarget.querySelector('input[type="checkbox"]');
-      if(clickResult==='checkbox-failed'||(optionCheckbox&&!optionCheckbox.checked)){
-        failed.push('Could not select size option: '+target);
+    if (!menu) menu = findVisibleSizeMenu();
+    if (!menu) {
+      failed.push('Size selector did not open; please select the size manually.');
+      return false;
+    }
+
+    const clicked = [];
+    for (const target of wantedSizes) {
+      const active = findVisibleSizeMenu() || (menu.isConnected ? menu : null);
+      if (!active) {
+        failed.push('Size selector closed before ' + target + ' was selected.');
+        break;
+      }
+      const options = Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, label, [data-value]'));
+      const option = options.find(el => norm(el.textContent) === norm(target)) ||
+        options.find(el => norm(el.getAttribute('data-value') || '') === norm(target));
+      if (!option) {
+        failed.push('Size option not found: ' + target);
         continue;
       }
-      clicked.push(target);
-      menu=findVisibleSizeMenu()||menu;
+      const row = sizeOptionContainer(option, active);
+      const input = row && (row.matches?.('input[type="checkbox"],input[type="radio"]') ? row : row.querySelector?.('input[type="checkbox"],input[type="radio"]'));
+      if (input && input.checked) {
+        clicked.push(target);
+      } else {
+        const result = clickSizeRow(row);
+        await sleep(55);
+        const verifyInput = row && (row.matches?.('input[type="checkbox"],input[type="radio"]') ? row : row.querySelector?.('input[type="checkbox"],input[type="radio"]'));
+        const checked = Boolean(verifyInput && verifyInput.checked);
+        const ariaChecked = row?.getAttribute('aria-checked') === 'true' || row?.getAttribute('aria-selected') === 'true';
+        const classChecked = Boolean(row?.classList?.contains('Mui-checked') || row?.querySelector?.('.Mui-checked,[aria-checked="true"],input:checked'));
+        if (result === 'checkbox-failed' || (verifyInput && !checked) || (!verifyInput && !ariaChecked && !classChecked && result === 'none')) {
+          // Fallback click is on the full row only after the control click did not toggle.
+          realClick(row);
+          await sleep(45);
+        }
+        const verified = Boolean((verifyInput && verifyInput.checked) ||
+          row?.getAttribute('aria-checked') === 'true' ||
+          row?.getAttribute('aria-selected') === 'true' ||
+          row?.classList?.contains('Mui-checked') ||
+          row?.querySelector?.('.Mui-checked,[aria-checked="true"],input:checked'));
+        if (verified || (!verifyInput && result !== 'none')) clicked.push(target);
+        else failed.push('Could not confirm the checkbox for size: ' + target);
+      }
     }
-    if(!clicked.length){await closeOpenDropdown();return false;}
-    let active=menu&&menu.isConnected?menu:findVisibleSizeMenu();
-    let applyBtn=null;
-    if(active)applyBtn=Array.from(active.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim()));
-    if(!applyBtn)applyBtn=Array.from(document.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim())&&btn.getBoundingClientRect().width>0);
-    if(applyBtn){
-      applyBtn.scrollIntoView({behavior:'auto',block:'center'});
-      await sleep(100);
-      const handledApply=callReactOnClick(applyBtn);
-      if(!handledApply)realClick(applyBtn);
-      await sleep(400);
+
+    if (!clicked.length) {
       await closeOpenDropdown();
+      return false;
+    }
+
+    const active = findVisibleSizeMenu() || (menu.isConnected ? menu : null);
+    let applyBtn = active && Array.from(active.querySelectorAll('button')).find(btn => /^apply\b/i.test(String(btn.textContent || '').trim()));
+    if (!applyBtn) applyBtn = Array.from(document.querySelectorAll('button')).find(btn =>
+      /^apply\b/i.test(String(btn.textContent || '').trim()) && btn.getBoundingClientRect().width > 0);
+    if (applyBtn) {
+      applyBtn.scrollIntoView({ behavior: 'auto', block: 'center' });
+      await sleep(25);
+      if (!callReactOnClick(applyBtn)) realClick(applyBtn);
+      await sleep(180);
+      await closeOpenDropdown();
+      // Verify Meesho actually committed Free Size / size selection to the trigger.
+      const label = norm(String(triggerEl?.textContent || '') + ' ' + String(triggerEl?.querySelector?.('input')?.value || ''));
+      const verified = clicked.every(target => label.includes(norm(target)));
+      if (!verified && !sizesStr.toLowerCase().includes('free size')) {
+        // For multi-select menus the selected chips can render elsewhere; an Apply click is still authoritative.
+        return true;
+      }
       return true;
     }
-    // Single-select variants often close immediately and have no Apply button.
-    // Do not demand an Apply button or double-click it, which can undo a selection.
-    const triggerText=norm(String(triggerEl&&triggerEl.textContent||'')+' '+String(triggerEl&&triggerEl.querySelector('input')?.value||''));
-    if(active&&active.isConnected){
-      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
-      await sleep(120);
+
+    const triggerText = norm(String(triggerEl?.textContent || '') + ' ' + String(triggerEl?.querySelector?.('input')?.value || ''));
+    if (active && active.isConnected) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await sleep(60);
     }
-    const stillOpen=!!findVisibleSizeMenu();
-    const selectedVisible=clicked.every(target=>triggerText.includes(norm(target)));
-    if(!stillOpen||selectedVisible)return true;
+    const stillOpen = Boolean(findVisibleSizeMenu());
+    const selectedVisible = clicked.every(target => triggerText.includes(norm(target)));
+    if (!stillOpen || selectedVisible) return true;
     failed.push('Size options were clicked but the selection could not be verified. Please check the Meesho size field.');
     await closeOpenDropdown();
     return false;

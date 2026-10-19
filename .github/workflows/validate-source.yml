@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.7');
+          assert.equal(manifest.version, '3.17.8');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -128,7 +128,7 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-product-capacity"'));
           assert.ok(popupHtml.includes('id="ai-variation-sizes"'));
           assert.ok(popupHtml.includes('id="ai-research-sources"'));
-          assert.ok(content.includes("clickResult==='checkbox-failed'"));
+          assert.ok(content.includes('function sizeOptionContainer(option, menu)'));
           assert.ok(content.includes('Selected size(s) could not be matched'));
           assert.ok(content.includes("add_ons: ['add ons'"));
           assert.ok(content.includes('bis_isi_certification_number'));
@@ -138,7 +138,7 @@ jobs:
           assert.ok(aiAssistant.includes('function updatePricePreview'));
           assert.ok(aiAssistant.includes('function mergeImageBatchResponses'));
           assert.ok(aiAssistant.includes('imgs.length>10'));
-          assert.ok(aiAssistant.includes("k.provider==='groq'?3:5"));
+          assert.ok(aiAssistant.includes("k.provider==='groq'||(k.provider==='openrouter'"));
           assert.ok(aiAssistant.includes("inventory:inventoryInput"));
           assert.ok(aiAssistant.includes("p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice)"));
           assert.ok(aiAssistant.includes("Meesho selling price must be greater than ₹5"));
@@ -257,5 +257,36 @@ jobs:
             { identifier: 'seat_height', label: 'Seat Height' },
             { identifier: 'seating_capacity', label: 'Seating Capacity' }
           ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
-          console.log('Free-mode safeguards and v3.17.7 Meesho selected-catalog detection/autofill regressions passed.');
+
+          // Free Size must target the real checkbox/label row and commit Apply faster.
+          assert.ok(content.includes('function sizeOptionContainer(option, menu)'));
+          assert.ok(content.includes('function clickSizeRow(row)'));
+          assert.ok(content.includes('setTimeout(() => done(null), 1400)'));
+          assert.ok(content.includes("await sleep(180)"));
+
+          // Product taxes: search in parallel, never preserve Meesho's default GST 0,
+          // and require an official source before filling an HSN/GST candidate.
+          assert.ok(aiAssistant.includes('const outcomes=await Promise.all(queries.map'));
+          assert.ok(aiAssistant.includes('MANDATORY HSN/GST CHECK'));
+          assert.ok(aiAssistant.includes('function officialTaxEvidence'));
+          assert.ok(aiAssistant.includes('if(!OFFICIAL_TAX_HOST.test(host))return null'));
+          assert.ok(aiAssistant.includes("['0','0%','--','select','not selected'].includes(norm(oldTax))"));
+          assert.ok(aiAssistant.includes("const fixed=isTaxField(f)?'':preset(f,p,d)"));
+
+          // Current front-photo capture and manual-photo alternative in the shipping optimizer.
+          assert.ok(shipping.includes('function imageSourceUrl(img)'));
+          assert.ok(shipping.includes('let catalogImageObserver = null'));
+          assert.ok(shipping.includes('function findFrontImagePreviewUrl()'));
+          assert.ok(shipping.includes('mls-manual-image-input'));
+          assert.ok(!shipping.includes('candidates[0] || null'));
+
+          // Premium API provider cards and live selection wiring.
+          for (const provider of ['gemini','groq','openrouter','xai','together','fireworks','mistral','huggingface','custom']) {
+            assert.ok(popupHtml.includes('data-api-provider="' + provider + '"'));
+            assert.ok(aiAssistant.includes(provider + ':{') || provider === 'custom');
+          }
+          assert.ok(aiAssistant.includes('function syncProviderCards()'));
+          assert.ok(aiAssistant.includes('qwen/qwen3.8-27b:free'));
+          assert.ok(popupHtml.includes('.ai-provider-cards{display:grid'));
+          console.log('v3.17.8 checks passed: tax research, verified Free Size selection, current shipping image capture, and nine API provider cards.');
           NODE

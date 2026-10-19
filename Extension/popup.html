@@ -1996,6 +1996,22 @@
     .ai-page-intro p{font-size:10px;line-height:1.5;color:#8ea8c6;margin-top:4px}
     .ai-dashboard-shell .ai-head{display:none}
     .ai-dashboard-shell .ai-menu-card:focus-visible,.ai-dashboard-shell button:focus-visible{outline:2px solid #58bcff;outline-offset:2px}
+    .ai-provider-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 13px}
+    .ai-provider-card{position:relative;display:flex;align-items:center;gap:8px;min-width:0;text-align:left;padding:10px 9px;border:1px solid #263f5d;border-radius:10px;background:linear-gradient(145deg,#0d1b2e,#0a1422);color:#dcecff;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}
+    .ai-provider-card:hover{transform:translateY(-1px);border-color:#4daaff;box-shadow:0 0 16px rgba(60,164,255,.13)}
+    .ai-provider-card.active{background:linear-gradient(145deg,#133451,#10233a);border-color:#48b6ff;box-shadow:0 0 0 1px rgba(72,182,255,.12),0 0 18px rgba(46,159,255,.18),inset 0 0 18px rgba(36,146,255,.06)}
+    .ai-provider-brand{display:grid;place-items:center;flex:0 0 31px;height:31px;border-radius:9px;font-size:15px;font-weight:950;border:1px solid rgba(112,180,240,.23);background:#081524;color:#76d6ff;box-shadow:0 0 11px rgba(57,164,255,.09)}
+    .ai-brand-gemini{color:#b9a0ff}.ai-brand-groq{color:#85efc1}.ai-brand-router{color:#70e8d6}.ai-brand-xai{color:#f0f5ff}.ai-brand-together{color:#9cc6ff}.ai-brand-fireworks{color:#ffbb85}.ai-brand-mistral{color:#ffc985}.ai-brand-hf{color:#ffdc81}.ai-brand-custom{color:#82f0d2}
+    .ai-provider-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+    .ai-provider-copy strong{font-size:10px;font-weight:900;line-height:1.2}
+    .ai-provider-copy small{font-size:8px;color:#84a3c4;line-height:1.35}
+    .ai-provider-check{display:none;align-self:flex-start;color:#6ef1ce;font-size:10px;font-weight:900}
+    .ai-provider-card.active .ai-provider-check{display:block}
+    .ai-provider-card-wide{grid-column:1/-1}
+    #ai-provider-type{background:#081522!important;color:#dfeeff!important;border-color:#2c4b6a!important}
+    #ai-key-model,#ai-key-endpoint,#ai-key-name,#ai-key-value,#ai-key-bulk{background:#081522!important;color:#e7f2ff!important;border-color:#2c4b6a!important}
+    #ai-key-model:focus,#ai-key-endpoint:focus,#ai-key-name:focus,#ai-key-value:focus,#ai-key-bulk:focus{border-color:#48b8ff!important;box-shadow:0 0 0 2px rgba(72,184,255,.12),0 0 15px rgba(72,184,255,.08)}
+    #ai-provider-hint{padding:9px 10px;border:1px solid #21425e;border-radius:8px;background:rgba(22,73,112,.18);color:#9dc3e5}
     .ai-dashboard-shell .ai-settings-section{background:linear-gradient(140deg,#101e31,#0c1727)!important;border:1px solid #28415e!important;border-radius:11px!important;padding:12px!important;margin-bottom:10px}
     .ai-dashboard-shell .ai-settings-section h4{color:#cce8ff!important;font-size:12px!important}
     .ai-dashboard-shell .ai-security-note{border-radius:8px!important}
@@ -2664,14 +2680,36 @@
           <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
           <div class="ai-settings-section">
             <h4>AI API Providers</h4>
-            <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
+            <p class="ai-muted">Choose a provider card, enter your own API key, and add one or more keys. Enabled providers are rotated automatically after an error or rate limit. Free availability and quotas vary by account and model; paid providers are marked below.</p>
+            <div class="ai-provider-cards" id="ai-provider-cards">
+              <button type="button" class="ai-provider-card" data-api-provider="gemini"><span class="ai-provider-brand ai-brand-gemini">✦</span><span class="ai-provider-copy"><strong>Google Gemini</strong><small>Free tier · vision</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="groq"><span class="ai-provider-brand ai-brand-groq">⚡</span><span class="ai-provider-copy"><strong>Groq Cloud</strong><small>Fast · quota limits</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="openrouter"><span class="ai-provider-brand ai-brand-router">◈</span><span class="ai-provider-copy"><strong>OpenRouter</strong><small>Free vision route</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="xai"><span class="ai-provider-brand ai-brand-xai">𝕏</span><span class="ai-provider-copy"><strong>xAI Grok</strong><small>Usually paid</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="together"><span class="ai-provider-brand ai-brand-together">◉</span><span class="ai-provider-copy"><strong>Together AI</strong><small>Credits / paid</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="fireworks"><span class="ai-provider-brand ai-brand-fireworks">✹</span><span class="ai-provider-copy"><strong>Fireworks AI</strong><small>Credits / paid</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="mistral"><span class="ai-provider-brand ai-brand-mistral">M</span><span class="ai-provider-copy"><strong>Mistral AI</strong><small>Vision model required</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="huggingface"><span class="ai-provider-brand ai-brand-hf">🤗</span><span class="ai-provider-copy"><strong>Hugging Face</strong><small>Router · model access</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card ai-provider-card-wide" data-api-provider="custom"><span class="ai-provider-brand ai-brand-custom">＋</span><span class="ai-provider-copy"><strong>Custom API</strong><small>Any HTTPS OpenAI-compatible vision endpoint</small></span><span class="ai-provider-check">✓</span></button>
+            </div>
             <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
             <div class="ai-provider-form">
-              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
+              <label>Provider<select id="ai-provider-type">
+                <option value="gemini">Google Gemini API</option>
+                <option value="groq">Groq Cloud API</option>
+                <option value="openrouter">OpenRouter (free vision models)</option>
+                <option value="xai">xAI Grok</option>
+                <option value="together">Together AI</option>
+                <option value="fireworks">Fireworks AI</option>
+                <option value="mistral">Mistral AI</option>
+                <option value="huggingface">Hugging Face Router</option>
+                <option value="custom">Custom OpenAI-Compatible</option>
+                <option value="compatible">Legacy xAI/compatible endpoint</option>
+              </select></label>
               <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
-              <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
+              <label>Vision model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Suggested model or your provider’s supported vision model"></label>
               <datalist id="ai-model-options"></datalist>
-              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
+              <p class="ai-muted">Recommended vision presets: Gemini 3.8 Flash, Groq Qwen 3.8 27B, and OpenRouter Qwen 3.8 27B Free. The other platforms need an image-capable model ID enabled on your account. Always check the provider’s current price/quota before use.</p>
               <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
               <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
               <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
