@@ -1220,8 +1220,43 @@ async function autofill(){
   say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}
 }
+const AI_PAGE_META={
+ listing:{label:'LISTING STUDIO',counter:'01 / 05'},
+ profile:{label:'SELLER PROFILE',counter:'02 / 05'},
+ api:{label:'API CONNECTIONS',counter:'03 / 05'},
+ chat:{label:'AI LISTING CHAT',counter:'04 / 05'},
+ activity:{label:'ACTIVITY CENTER',counter:'05 / 05'}
+};
+function switchAiDashboardPage(page){
+ if(!AI_PAGE_META[page])page='listing';
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page]').forEach(button=>{
+  const active=button.getAttribute('data-ai-page')===page;
+  button.classList.toggle('active',active);
+  button.setAttribute('aria-current',active?'page':'false');
+ });
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page-panel]').forEach(panel=>{
+  panel.classList.toggle('active',panel.getAttribute('data-ai-page-panel')===page);
+ });
+ const label=$('ai-page-overline'),counter=$('ai-page-counter');
+ if(label)label.textContent=AI_PAGE_META[page].label;
+ if(counter)counter.textContent=AI_PAGE_META[page].counter;
+ // The legacy Meesho form lives outside the AI card; show it only in Listing Studio.
+ const root=$('tab-fill');
+ if(root){
+  const legacyScan=root.querySelector(':scope > .scan-section');
+  const step=root.querySelector(':scope > .step-label');
+  const fields=$('dynamic-sections-container'),footer=$('fill-footer');
+  [legacyScan,step,fields,footer].forEach(node=>{if(node)node.style.display=page==='listing'?'':'none';});
+ }
+ liveLog('WORKSPACE NAVIGATION · '+AI_PAGE_META[page].label+' opened.','info');
+}
+
 function init(){
  if(!$('ai-catalog-assistant'))return;
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page]').forEach(button=>{
+  button.addEventListener('click',()=>switchAiDashboardPage(button.getAttribute('data-ai-page')));
+ });
+ switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
  $('ai-add-key-btn').addEventListener('click',addKey);
