@@ -517,23 +517,29 @@ const readImage=async file=>{
   reader.onerror=()=>reject(new Error('Could not read image: '+file.name));
   reader.readAsDataURL(blob);
  });
- // Resize only the in-memory AI copy; the seller's original file is never modified.
+ // Optimize only the in-memory AI copy. The seller's original upload is never modified.
+ // Free/local vision routers may reject large image payloads (HTTP 413), so use a compact 1024px JPEG.
  try{
   if(typeof createImageBitmap==='function'){
-   const bitmap=await createImageBitmap(file),maxEdge=1600,scale=Math.min(1,maxEdge/Math.max(bitmap.width,bitmap.height));
-   if(scale<1||file.size>2*1024*1024){
-    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+   const bitmap=await createImageBitmap(file);
+   const maxEdge=1024,scale=Math.min(1,maxEdge/Math.max(bitmap.width,bitmap.height));
+   if(scale<1||file.size>180*1024){
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+    canvas.height=Math.max(1,Math.round(bitmap.height*scale));
     const ctx=canvas.getContext('2d');
-    if(!ctx)throw new Error('Canvas unavailable');
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.84));
-    if(blob&&blob.size<file.size){
-     liveLog('IMAGE OPTIMIZATION · '+file.name+' resized to '+canvas.width+'×'+canvas.height+' for API request size.','info');
+    if(!ctx){bitmap.close();throw new Error('Canvas unavailable');}
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    bitmap.close();
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.68));
+    if(blob&&(blob.size<file.size||scale<1)){
+     liveLog('IMAGE OPTIMIZATION · '+file.name+' → '+canvas.width+'×'+canvas.height+', '+Math.round(blob.size/1024)+' KB JPEG for the AI request.','info');
      return {name:file.name,mimeType:blob.type||'image/jpeg',dataUrl:await readAsDataUrl(blob)};
     }
    }else bitmap.close();
   }
- }catch(e){liveLog('IMAGE OPTIMIZATION · keeping original image copy for '+file.name+'.','warn');}
+ }catch(e){liveLog('IMAGE OPTIMIZATION · '+file.name+' could not be compressed; using the original for this attempt.','warn');}
  return {name:file.name,mimeType:file.type||'image/jpeg',dataUrl:await readAsDataUrl(file)};
 };
 async function images(){
@@ -903,7 +909,8 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
-  const k=order[i],batchSize=(k.provider==='groq'||(k.provider==='openrouter'&&/qwen\/qwen3\.8-27b/i.test(k.model)))?3:5,batches=[];
+   // Local routers can have strict per-candidate image/context limits; send one compact image per request.
+   const k=order[i],batchSize=k.provider==='freellmapi'?1:((k.provider==='groq'||(k.provider==='openrouter'&&/qwen\\/qwen3\\.8-27b/i.test(k.model)))?3:5),batches=[];
   for(let p=0;p<imgs.length;p+=batchSize)batches.push(imgs.slice(p,p+batchSize));
   try{
    const texts=[];
