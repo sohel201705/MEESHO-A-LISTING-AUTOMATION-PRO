@@ -563,16 +563,19 @@
       if (searchBox) {
         searchBox.focus();
         setReactInputValue(searchBox, value);
-        await sleep(150);
-        const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root');
-        if (portal) {
+        // Searchable HSN menus may fetch options asynchronously. Poll briefly,
+        // rather than sleeping a fixed long delay or falling back to a random item.
+        for (let attempt = 0; attempt < 10 && !opt; attempt++) {
+          await sleep(25);
+          const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root');
+          if (!portal) continue;
           const items = Array.from(portal.querySelectorAll('li, [role="option"]'));
           opt = items.find(el => norm(el.textContent) === targetText) ||
             items.find(el => norm(el.textContent).startsWith(targetText)) ||
             items.find(el => norm(el.textContent).includes(targetText));
-          // Never choose the first tax/dropdown option simply because search failed.
-          // A guessed dropdown pick can silently assign the wrong HSN/GST value.
         }
+        // Never choose the first tax/dropdown option simply because search failed.
+        // A guessed dropdown pick can silently assign the wrong HSN/GST value.
       }
     }
 
