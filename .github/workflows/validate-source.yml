@@ -320,12 +320,10 @@ jobs:
           const titleCode = aiAssistant.slice(titleStart, titleEnd);
           assert.ok(titleStart >= 0 && titleEnd > titleStart);
           assert.ok(titleCode.includes("raw+=' / Pack of '+packCount"));
-          const titleHelpersStart = aiAssistant.indexOf('function isDescriptionField(f){');
-          const titleBuilder = new Function('norm','el','
-          NODE
-,'setProgress','productCodes','allowed','showPreview','draft','titleChoices','currentTitleProduct','activeTitleFieldId','currentTitleFields','currentTitleNeeds','currentTitleStats','researchNow','say','redactSecrets', aiAssistant.slice(titleHelpersStart, titleStart) + titleCode + '; return buildTitleChoices;')(
-            value => String(value || '').replace(/[＊*]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase(),
-            () => ({}), () => null, () => {}, async () => ({}), () => true, () => {}, null, [], null, '', [], [], {}, () => {}, value => value
+          const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
+          assert.ok(titleHelpersStart >= 0);
+          const titleBuilder = new Function('norm', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
+            value => String(value || '').replace(/[＊*]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase()
           );
           const titleChoices = titleBuilder([
             { title: 'Bottle / Steel / Pack of 4', recommended: true },
