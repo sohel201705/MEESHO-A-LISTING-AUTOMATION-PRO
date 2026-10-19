@@ -229,6 +229,28 @@
     });
   }
 
+  function sizeControlIsChecked(control, row=null) {
+    if(!control)return false;
+    if(control.matches&&control.matches('input[type="checkbox"]'))return !!control.checked;
+    const aria=control.getAttribute&&control.getAttribute('aria-checked');
+    if(aria==='true')return true;
+    if(aria==='false')return false;
+    const state=control.getAttribute&&(control.getAttribute('data-state')||control.getAttribute('data-checked'));
+    if(state==='checked'||state==='true')return true;
+    if(state==='unchecked'||state==='false')return false;
+    const cls=String(control.className&&control.className.baseVal!==undefined?control.className.baseVal:control.className||'');
+    if(/\b(checked|selected|Mui-checked|Mui-selected)\b/i.test(cls))return true;
+    const parent=control.closest&&control.closest('[aria-checked],[data-state],[data-checked],label,li,[role="option"]');
+    if(parent&&parent!==control){
+      if(parent.getAttribute('aria-checked')==='true'||parent.getAttribute('data-state')==='checked')return true;
+      const parentClass=String(parent.className&&parent.className.baseVal!==undefined?parent.className.baseVal:parent.className||'');
+      if(/\b(checked|selected|Mui-checked|Mui-selected)\b/i.test(parentClass))return true;
+    }
+    const actualInput=row&&row.querySelector&&row.querySelector('input[type="checkbox"]');
+    if(actualInput)return !!actualInput.checked;
+    return false;
+  }
+
   function findSizeApplyButton(optionRow) {
     const visibleApply=()=>Array.from(document.querySelectorAll('button,[role="button"]')).filter(elementIsVisible)
       .filter(btn=>/^apply$/i.test(norm(btn.textContent)));
@@ -262,18 +284,18 @@
       }
       lastRow=found.row;
       if(found.checkbox){
-        if(!found.checkbox.checked)found.checkbox.click();
+        if(!sizeControlIsChecked(found.checkbox,found.row))found.checkbox.click();
         // Controlled React checkboxes may update on the next paint.
         const began=Date.now();
-        while(!found.checkbox.checked&&Date.now()-began<220)await sleep(20);
-        if(!found.checkbox.checked){
+        while(!sizeControlIsChecked(found.checkbox,found.row)&&Date.now()-began<220)await sleep(20);
+        if(!sizeControlIsChecked(found.checkbox,found.row)){
           // Try the associated label/row once only, then verify state.
           const label=found.checkbox.closest('label')||found.row;
           if(label&&label!==found.checkbox)realClick(label);
           const retryStart=Date.now();
-          while(!found.checkbox.checked&&Date.now()-retryStart<180)await sleep(20);
+          while(!sizeControlIsChecked(found.checkbox,found.row)&&Date.now()-retryStart<180)await sleep(20);
         }
-        if(!found.checkbox.checked){
+        if(!sizeControlIsChecked(found.checkbox,found.row)){
           failed.push('Meesho did not register the size checkbox: '+target);
           continue;
         }
