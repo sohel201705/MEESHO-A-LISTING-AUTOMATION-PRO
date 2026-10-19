@@ -101,7 +101,7 @@ jobs:
           assert.ok(aiAssistant.includes('gemini-3.1-flash-lite'));
           assert.ok(aiAssistant.includes('qwen/qwen3.8-27b'));
           assert.ok(aiAssistant.includes('Bulk add complete'));
-          assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs)'));
+          assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25)'));
           assert.ok(aiAssistant.includes('Array.isArray(imgs)'));
           assert.ok(aiAssistant.includes('redactSecrets(e,k)'));
           assert.ok(aiAssistant.includes('imgs.slice(0,3)'));
