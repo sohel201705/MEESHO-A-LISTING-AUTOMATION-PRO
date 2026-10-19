@@ -2693,6 +2693,7 @@
               <button type="button" class="ai-provider-card" data-api-provider="fireworks"><span class="ai-provider-brand ai-brand-fireworks">✹</span><span class="ai-provider-copy"><strong>Fireworks AI</strong><small>Credits / paid</small></span><span class="ai-provider-check">✓</span></button>
               <button type="button" class="ai-provider-card" data-api-provider="mistral"><span class="ai-provider-brand ai-brand-mistral">M</span><span class="ai-provider-copy"><strong>Mistral AI</strong><small>Vision model required</small></span><span class="ai-provider-check">✓</span></button>
               <button type="button" class="ai-provider-card" data-api-provider="huggingface"><span class="ai-provider-brand ai-brand-hf">🤗</span><span class="ai-provider-copy"><strong>Hugging Face</strong><small>Router · model access</small></span><span class="ai-provider-check">✓</span></button>
+              <button type="button" class="ai-provider-card" data-api-provider="freellmapi"><span class="ai-provider-brand ai-brand-custom">⌂</span><span class="ai-provider-copy"><strong>FreeLLMAPI Local Router</strong><small>Local · localhost:3001 · vision</small></span><span class="ai-provider-check">✓</span></button>
               <button type="button" class="ai-provider-card ai-provider-card-wide" data-api-provider="custom"><span class="ai-provider-brand ai-brand-custom">＋</span><span class="ai-provider-copy"><strong>Custom API</strong><small>Any HTTPS OpenAI-compatible vision endpoint</small></span><span class="ai-provider-check">✓</span></button>
             </div>
             <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
@@ -2706,6 +2707,7 @@
                 <option value="fireworks">Fireworks AI</option>
                 <option value="mistral">Mistral AI</option>
                 <option value="huggingface">Hugging Face Router</option>
+                <option value="freellmapi">FreeLLMAPI Local Router</option>
                 <option value="custom">Custom OpenAI-Compatible</option>
                 <option value="compatible">Legacy xAI/compatible endpoint</option>
               </select></label>
@@ -2713,7 +2715,7 @@
               <label>Vision model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Suggested model or your provider’s supported vision model"></label>
               <datalist id="ai-model-options"></datalist>
               <p class="ai-muted">Recommended vision presets: Gemini 3.8 Flash, Groq Qwen 3.8 27B, and OpenRouter Qwen 3.8 27B Free. The other platforms need an image-capable model ID enabled on your account. Always check the provider’s current price/quota before use.</p>
-              <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
+              <div id="ai-key-endpoint-wrap" style="display:none"><label>Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.example.com/v1/chat/completions or http://localhost:3001/v1/chat/completions"></label><small class="ai-muted">Remote APIs must use HTTPS. HTTP is allowed only for localhost/127.0.0.1.</small></div>
               <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
               <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
               <label>Bulk add API keys (one per line; optional format: Label | API key)
