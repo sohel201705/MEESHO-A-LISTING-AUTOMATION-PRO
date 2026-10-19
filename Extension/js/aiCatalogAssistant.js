@@ -137,8 +137,8 @@ function taxDropdownOption(field,candidate){
   if(option!==undefined)return String(option);
   // HSN selectors are often remote-search dropdowns whose full option list
   // is not present in the initial form schema. Let the content script search it.
-  if(!options.length||/mui|combobox|autocomplete/i.test(String(field.inputType||'')))return digits;
-  return '';
+  // HSN dropdowns are often server-searchable, so let the content script search this candidate even if the initial schema contains placeholder/partial options.
+  return digits;
  }
  const match=raw.match(/\d+(?:\.\d+)?/);if(!match)return '';
  const rate=Number(match[0]);
@@ -1278,8 +1278,43 @@ async function generate(googleAllowed){
   setProgress(45,'Analyzing product photos in batches');
   say('Analyzing all photos and matching values to the scanned field schema…');
   const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25);
-  const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
-  const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
+  let parsed=parseJson(answer.text);
+  let proposed=parsed&&parsed.values&&typeof parsed.values==='object'?Object.assign({},parsed.values):{};
+  let evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?Object.assign({},parsed.evidence):{};
+  const retryTaxNeeds=[];
+  const missingTaxFields=s.fields.filter(f=>{
+   if(!isTaxField(f)||!f.mandatory)return false;
+   const candidate=proposed[f.identifier];
+   if(candidate!==undefined&&candidate!==null&&!/^(0(?:\.\d+)?\s*%?|select|choose|--|—)$/i.test(String(candidate).trim()))return false;
+   const prior=captured(scan,f.identifier);
+   return !prior||/^(0(?:\.\d+)?\s*%?|select|choose|--|—)$/i.test(String(prior).trim());
+  });
+  if(missingTaxFields.length){
+   const taxFields=missingTaxFields.map(f=>({identifier:f.identifier,label:f.label,allowedValues:f.values,inputType:f.inputType}));
+   const taxPrompt=[
+    'You are an Indian product tax classification assistant. The user is building a Meesho catalog and does not know which tax values to enter.',
+    'From the attached product photos, auto-detected product family, confirmed inputs and official-source snippets, return best-effort candidates for every field below. Do not leave a candidate blank unless the product cannot be classified from the evidence.',
+    'For GST field, return the applicable rate as a number/rate that the form allows. For HSN, return a valid 4/6/8 digit candidate where feasible. If not fully verified, still provide the best provisional candidate and explain the uncertainty in needsConfirmation.',
+    'Do not invent an official URL. Any official URL in evidence must be copied exactly from the listed Google results. Do not claim provisional values are certain.',
+    'Return only JSON: {"values":{"existing_field_identifier":"candidate"},"evidence":{"existing_field_identifier":{"url":"exact official result URL"}},"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"..."}]}.',
+    'Required tax fields:',JSON.stringify(taxFields),
+    'Selected Meesho catalog family:',JSON.stringify(detectMeeshoCatalog(scan)),
+    'Product data:',JSON.stringify({title:p.productName||'',productType:p.productType||'',category:p.productCategory||'',material:p.material||'',color:p.color||'',capacity:p.productCapacity||'',facts:p.productFacts||''}),
+    'Official search results:',JSON.stringify((researchNow.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet}))),
+    'Initial AI candidates:',JSON.stringify(Object.fromEntries(s.fields.filter(isTaxField).map(f=>[f.identifier,proposed[f.identifier]||''])))
+   ].join('\n');
+   try{
+    setProgress(68,'Requesting mandatory HSN/GST candidates');
+    liveLog('TAX CLASSIFICATION · initial response omitted mandatory tax candidate(s); running a focused image+official-source pass.','warn');
+    const taxAnswer=await callAI(taxPrompt,imgs.slice(0,3),68,5);
+    const taxParsed=parseJson(taxAnswer.text);
+    if(taxParsed&&taxParsed.values)proposed=Object.assign({},proposed,taxParsed.values);
+    if(taxParsed&&taxParsed.evidence)evidence=Object.assign({},evidence,taxParsed.evidence);
+    if(Array.isArray(taxParsed&&taxParsed.needsConfirmation))retryTaxNeeds.push(...taxParsed.needsConfirmation);
+    liveLog('TAX CLASSIFICATION · focused pass returned candidates for '+missingTaxFields.filter(f=>proposed[f.identifier]!==undefined&&String(proposed[f.identifier]).trim()).length+'/'+missingTaxFields.length+' missing fields.','info');
+   }catch(e){liveLog('TAX CLASSIFICATION · focused pass failed: '+redactSecrets(e,null),'warn');}
+  }
+  const values=Object.assign({},scan.capturedValues||{}),needs=(Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[]).concat(retryTaxNeeds).slice(0,100);
   let ai=0,presetCount=0,bad=0,generated=0;
   const titleField=s.fields.find(isProductNameField);
   activeTitleFieldId=titleField?titleField.identifier:'';
