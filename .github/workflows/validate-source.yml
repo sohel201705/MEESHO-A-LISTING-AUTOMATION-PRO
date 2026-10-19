@@ -260,6 +260,11 @@ jobs:
           ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
           // v3.17.8 tax candidates, provider presets, Free Size apply and shipping image refresh.
           assert.ok(aiAssistant.includes('function taxDropdownOption(field,candidate)'));
+          const taxMappingStart = aiAssistant.indexOf('const v=proposed[f.identifier]');
+          const taxMappingEnd = aiAssistant.indexOf("setProgress(77,'Preparing", taxMappingStart);
+          assert.ok(taxMappingStart >= 0 && taxMappingEnd > taxMappingStart);
+          const taxMappingCode = aiAssistant.slice(taxMappingStart, taxMappingEnd);
+          assert.ok(taxMappingCode.indexOf('if(isTaxField(f))') < taxMappingCode.indexOf('if(!allowed(String(v),f))'));
           assert.ok(aiAssistant.includes('const missingTaxFields=s.fields.filter'));
           assert.ok(aiAssistant.includes('PROVISIONAL TAX CANDIDATE'));
           assert.ok(aiAssistant.includes('function officialTaxEvidence'));
