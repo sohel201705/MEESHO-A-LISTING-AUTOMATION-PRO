@@ -268,15 +268,143 @@ async function addBulkKeys(){
  $('ai-key-bulk').value='';
  say('Bulk add complete: '+added+' added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.',added?'success':'warning');
 }
+const DEFAULT_FIELD_MAP={
+ 'ai-default-brand':'brand','ai-default-seller-name':'sellerName','ai-default-seller-address':'sellerAddress',
+ 'ai-default-manufacturer-name':'manufacturerName','ai-default-manufacturer-address':'manufacturerAddress',
+ 'ai-default-manufacturer-pincode':'manufacturerPincode','ai-default-packer-name':'packerName',
+ 'ai-default-packer-address':'packerAddress','ai-default-packer-pincode':'packerPincode',
+ 'ai-default-country':'countryOfOrigin','ai-default-importer-name':'importerName',
+ 'ai-default-importer-address':'importerAddress','ai-default-importer-pincode':'importerPincode',
+ 'ai-default-support-phone':'supportPhone','ai-default-support-email':'supportEmail','ai-default-hsn':'hsn','ai-default-gst':'gst'
+};
+const OVERRIDE_FIELD_MAP={
+ 'ai-override-brand':'brand','ai-override-country':'countryOfOrigin',
+ 'ai-override-manufacturer-name':'manufacturerName','ai-override-manufacturer-address':'manufacturerAddress','ai-override-manufacturer-pincode':'manufacturerPincode',
+ 'ai-override-packer-name':'packerName','ai-override-packer-address':'packerAddress','ai-override-packer-pincode':'packerPincode',
+ 'ai-override-importer-name':'importerName','ai-override-importer-address':'importerAddress','ai-override-importer-pincode':'importerPincode'
+};
+function readMappedFields(map){
+ const obj={};Object.entries(map).forEach(([id,key])=>{if($(id))obj[key]=String($(id).value||'').trim();});return obj;
+}
+function fillMappedFields(map,obj){
+ Object.entries(map).forEach(([id,key])=>{if($(id))$(id).value=String((obj&&obj[key])||'');});
+}
+function makeProfileId(){return 'seller-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);}
+async function readProfileStore(){
+ const r=await get(PROFILE_DB);let db=r[PROFILE_DB];
+ if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
+ return db;
+}
+function selectedProfile(db=profileCache){
+ if(!db||!Array.isArray(db.profiles))return null;
+ return db.profiles.find(p=>p.id===((db&&db.activeId)||$('ai-profile-select')?.value))||db.profiles[0]||null;
+}
+function renderProfileSelector(db){
+ const select=$('ai-profile-select');if(!select)return;
+ select.replaceChildren();
+ (db.profiles||[]).forEach(p=>{const opt=el('option');opt.value=p.id;opt.textContent=p.name||'Seller Profile';select.appendChild(opt);});
+ const active=db.activeId||((db.profiles[0]||{}).id)||'';
+ if(active)select.value=active;
+}
+function fillOverrideEditor(profile,category){
+ const override=((profile||{}).categoryOverrides||{})[category]||{};
+ fillMappedFields(OVERRIDE_FIELD_MAP,override);
+}
+async function loadSelectedProfile(){
+ const db=await readProfileStore();profileCache=db;
+ const id=$('ai-profile-select')&&$('ai-profile-select').value;
+ const profile=db.profiles.find(p=>p.id===id)||db.profiles[0];
+ if(!profile)return;
+ db.activeId=profile.id;profileCache=db;
+ $('ai-profile-name').value=profile.name||'Seller Profile';
+ fillMappedFields(DEFAULT_FIELD_MAP,profile.defaults||{});
+ fillOverrideEditor(profile,$('ai-profile-category').value||'general');
+ await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults||{}});
+ say('Loaded seller profile: '+(profile.name||'Seller Profile')+'.','success');
+}
+async function loadCategoryOverride(){
+ const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
+ fillOverrideEditor(profile,$('ai-profile-category').value||'general');
+}
 async function loadDefaults(){
- const r=await get(DEFAULTS),d=r[DEFAULTS]||{},map={'ai-default-brand':'brand','ai-default-seller-name':'sellerName','ai-default-seller-address':'sellerAddress','ai-default-manufacturer-name':'manufacturerName','ai-default-manufacturer-address':'manufacturerAddress','ai-default-packer-name':'packerName','ai-default-packer-address':'packerAddress','ai-default-country':'countryOfOrigin','ai-default-support-phone':'supportPhone','ai-default-support-email':'supportEmail','ai-default-hsn':'hsn','ai-default-gst':'gst'};
- Object.keys(map).forEach(id=>{if($(id))$(id).value=d[map[id]]||'';});
+ const r=await get([DEFAULTS,PROFILE_DB]),legacy=r[DEFAULTS]||{};
+ let db=r[PROFILE_DB];
+ if(!db||!Array.isArray(db.profiles)||!db.profiles.length){
+  db={activeId:'profile-default',profiles:[{id:'profile-default',name:legacy.sellerName||'Default Seller Profile',defaults:legacy,categoryOverrides:{}}]};
+ }else{
+  db.profiles=db.profiles.map(p=>Object.assign({id:makeProfileId(),name:'Seller Profile',defaults:{},categoryOverrides:{}},p));
+  if(!db.profiles.some(p=>p.id===db.activeId))db.activeId=db.profiles[0].id;
+ }
+ profileCache=db;renderProfileSelector(db);
+ const active=selectedProfile(db);
+ if(active){$('ai-profile-name').value=active.name||'Default Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,active.defaults||legacy);}
+ fillOverrideEditor(active,$('ai-profile-category').value||'general');
+ await set({[PROFILE_DB]:db,[DEFAULTS]:(active&&active.defaults)||legacy});
+}
+async function persistActiveProfileDefaults(d,successMessage){
+ const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
+ if(!profile)throw new Error('Create a seller profile first.');
+ profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
+ profile.defaults=d;db.activeId=profile.id;profileCache=db;
+ await set({[PROFILE_DB]:db,[DEFAULTS]:d});
+ renderProfileSelector(db);if($('ai-profile-select'))$('ai-profile-select').value=profile.id;
+ if(successMessage)say(successMessage,'success');
 }
 async function saveDefaults(){
- const d={brand:$('ai-default-brand').value.trim(),sellerName:$('ai-default-seller-name').value.trim(),sellerAddress:$('ai-default-seller-address').value.trim(),manufacturerName:$('ai-default-manufacturer-name').value.trim(),manufacturerAddress:$('ai-default-manufacturer-address').value.trim(),packerName:$('ai-default-packer-name').value.trim(),packerAddress:$('ai-default-packer-address').value.trim(),countryOfOrigin:$('ai-default-country').value.trim(),supportPhone:$('ai-default-support-phone').value.trim(),supportEmail:$('ai-default-support-email').value.trim(),hsn:$('ai-default-hsn').value.trim(),gst:$('ai-default-gst').value.trim()};
- await set({[DEFAULTS]:d});say('Seller defaults saved in this Chrome profile.','success');
+ const d=readMappedFields(DEFAULT_FIELD_MAP);
+ await persistActiveProfileDefaults(d,'Seller defaults saved to the active local profile.');
 }
-
+async function saveProfile(){
+ const d=readMappedFields(DEFAULT_FIELD_MAP),db=profileCache||await readProfileStore();
+ let profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
+ if(!profile){profile={id:makeProfileId(),name:'Seller Profile',defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
+ profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
+ profile.defaults=d;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;profileCache=db;
+ await set({[PROFILE_DB]:db,[DEFAULTS]:d});
+ renderProfileSelector(db);$('ai-profile-select').value=profile.id;
+ say('Profile "'+profile.name+'" saved locally with base seller/legal details.','success');
+}
+async function createProfile(){
+ const current=readMappedFields(DEFAULT_FIELD_MAP),db=profileCache||await readProfileStore();
+ const profile={id:makeProfileId(),name:'New Seller Profile',defaults:current,categoryOverrides:{}};
+ db.profiles.push(profile);db.activeId=profile.id;profileCache=db;
+ await set({[PROFILE_DB]:db,[DEFAULTS]:current});
+ renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
+ fillMappedFields(DEFAULT_FIELD_MAP,current);fillOverrideEditor(profile,$('ai-profile-category').value||'general');
+ say('New profile created. Edit the base details, then Save / Update Profile.','success');
+}
+async function deleteProfile(){
+ const db=profileCache||await readProfileStore(),id=$('ai-profile-select').value;
+ if(db.profiles.length<=1){say('Keep at least one seller profile. You can clear or replace its details instead.','warning');return;}
+ const profile=db.profiles.find(p=>p.id===id);if(!profile)return;
+ if(!confirm('Delete profile "'+(profile.name||'Seller Profile')+'" and its category overrides from this Chrome profile?'))return;
+ db.profiles=db.profiles.filter(p=>p.id!==id);db.activeId=db.profiles[0].id;profileCache=db;
+ await set({[PROFILE_DB]:db,[DEFAULTS]:db.profiles[0].defaults||{}});
+ renderProfileSelector(db);$('ai-profile-select').value=db.activeId;await loadSelectedProfile();
+ say('Seller profile deleted.','success');
+}
+async function saveCategoryOverride(){
+ const category=$('ai-profile-category').value||'general',db=profileCache||await readProfileStore();
+ const profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
+ if(!profile)throw new Error('Create a seller profile first.');
+ // Save edited base fields alongside the override to prevent unsaved work being lost.
+ profile.name=String($('ai-profile-name').value||'').trim()||profile.name||'Seller Profile';
+ profile.defaults=readMappedFields(DEFAULT_FIELD_MAP);
+ profile.categoryOverrides=profile.categoryOverrides||{};
+ const override=readMappedFields(OVERRIDE_FIELD_MAP);
+ if(Object.values(override).some(v=>String(v||'').trim()))profile.categoryOverrides[category]=override;
+ else delete profile.categoryOverrides[category];
+ db.activeId=profile.id;profileCache=db;
+ await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults});
+ say('Saved category-specific overrides for '+($('ai-profile-category').selectedOptions[0]?.textContent||category)+'. Blank override fields use the profile base details.','success');
+}
+async function getActiveDefaultsForCategory(category){
+ const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===((db.activeId)||$('ai-profile-select')?.value))||db.profiles[0];
+ const stored=await get(DEFAULTS),base=Object.assign({},stored[DEFAULTS]||{},profile&&profile.defaults||{});
+ const override=(profile&&profile.categoryOverrides&&profile.categoryOverrides[category])||{};
+ Object.entries(override).forEach(([key,value])=>{if(String(value||'').trim())base[key]=String(value).trim();});
+ return base;
+}
 const readImage=async file=>{
  const readAsDataUrl=blob=>new Promise((resolve,reject)=>{
   const reader=new FileReader();
