@@ -1175,6 +1175,7 @@ async function autofill(){
   const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
   const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
   if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho catalog tab again.');
+  setProgress(1,'Autofill · checking selected sizes and field values');
   const sizes=variationNames(scanNow),selected=selectedVariationSizes();
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
   if(pending.length&&!confirm('Some fields need confirmation. Continue autofill? Unknown values will remain untouched.'))return;
@@ -1190,30 +1191,40 @@ async function autofill(){
   });
   if(selected.length)payload._variation_sizes=selected.join(',');
   await set({meesho_autofill_values:payload});
+  setProgress(3,'Autofill · sending values to the active Meesho tab');
   say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
   const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the Meesho page and retry.'));if(!r)return reject(new Error('Meesho did not return an autofill result.'));resolve(r);}));
   const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
   if(filled===0){
+   setProgress(0,'Autofill failed · no fields matched');
    say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.')+' Inspect the failed-field list in the message, then retry.','error');return;
   }
   if(result.stopped||failed.length){
+   setProgress(85,'Partial autofill · inspect failed fields');
    const shown=failed.slice(0,6).join(', ')+(failed.length>6?'… and '+(failed.length-6)+' more':'');
    say('Partial autofill: '+filled+' field(s). '+shown+'. '+(result.stopped?'Some fields could not be filled. ':'')+'Review the remaining fields before saving.','warning');return;
   }
+  setProgress(100,'Autofill complete · verify Meesho values before saving');
   say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}
 }
 function init(){
  if(!$('ai-catalog-assistant'))return;
- $('ai-scan-current-btn').addEventListener('click',async()=>{try{say('Scanning current catalog form…');await scanCurrentCatalog(true);}catch(e){say(e.message||'Scan failed.','error');}});
+ $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
  $('ai-add-key-btn').addEventListener('click',addKey);
  $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
+ $('ai-profile-select').addEventListener('change',async()=>{try{await loadSelectedProfile();}catch(e){say(e.message||'Could not load seller profile.','error');}});
+ $('ai-profile-new').addEventListener('click',async()=>{try{await createProfile();}catch(e){say(e.message||'Could not create profile.','error');}});
+ $('ai-profile-save').addEventListener('click',async()=>{try{await saveProfile();}catch(e){say(e.message||'Could not save profile.','error');}});
+ $('ai-profile-delete').addEventListener('click',async()=>{try{await deleteProfile();}catch(e){say(e.message||'Could not delete profile.','error');}});
+ $('ai-profile-category').addEventListener('change',loadCategoryOverride);
+ $('ai-profile-save-override').addEventListener('click',async()=>{try{await saveCategoryOverride();}catch(e){say(e.message||'Could not save category override.','error');}});
  $('ai-generate-btn').addEventListener('click',async()=>{
   const btn=$('ai-generate-btn');btn.disabled=true;
   try{
-   // Request only Google Search host access from the user's Analyze click.
+   setProgress(1,'Starting listing workflow');
    const googleAllowed=await requestGoogleSearchPermission();
    await generate(googleAllowed);
   }catch(e){say(e.message||'Catalog research failed.','error');}
@@ -1226,7 +1237,18 @@ function init(){
   files.forEach((f,i)=>host.appendChild(el('span','ai-image-chip',(i+1)+'. '+f.name)));
   say(files.length?files.length+' photo(s) selected for one product. Limit: 10.':'');
  });
- updatePricePreview();loadDefaults();renderKeys();updateProviderForm();
+ $('ai-chat-send').addEventListener('click',()=>sendChatMessage());
+ $('ai-chat-input').addEventListener('keydown',event=>{
+  if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();sendChatMessage();}
+ });
+ chrome.runtime.onMessage.addListener(message=>{
+  if(message&&message.type==='AUTOFILL_PROGRESS'){
+   const n=Number(message.percent);
+   setProgress(Number.isFinite(n)?Math.max(0,Math.min(99,n)):0,'Autofill · '+String(message.label||'Filling Meesho fields'));
+   liveLog('AUTOFILL · '+String(message.label||'Processing fields'),'info');
+  }
+ });
+ updatePricePreview();loadDefaults().catch(e=>say(e.message||'Could not load seller profile.','error'));renderKeys();updateProviderForm();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
