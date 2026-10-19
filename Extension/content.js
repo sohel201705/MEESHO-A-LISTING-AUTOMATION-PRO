@@ -181,7 +181,7 @@
       const observer = new MutationObserver(check);
       observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','aria-expanded']});
       check();
-      setTimeout(()=>{observer.disconnect();resolve(null);},3500);
+      setTimeout(()=>{observer.disconnect();resolve(null);},1400);
     });
     if(!menu)menu=findVisibleSizeMenu();
     if(!menu){failed.push('Size selector did not open; please select the size manually.');return false;}
@@ -189,13 +189,21 @@
     for(const target of wantedSizes){
       const active=menu.isConnected?menu:findVisibleSizeMenu();
       if(!active){if(clicked.length)break;failed.push('Size selector closed before '+target+' was selected.');return false;}
-      const options=Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, [data-value]'));
-      const option=options.find(el=>norm(el.textContent)===norm(target))||
-        options.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
+      const selectors='p, li, label, [role="option"], [role="menuitem"], [role="checkbox"], button, [data-value], .MuiFormControlLabel-root, [class*="checkbox" i]';
+      const options=Array.from(active.querySelectorAll(selectors));
+      const isVisible=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';};
+      const option=options.find(el=>isVisible(el)&&norm(el.textContent)===norm(target))||
+        options.find(el=>isVisible(el)&&norm(el.getAttribute('data-value')||'')===norm(target))||
+        Array.from(active.querySelectorAll('label, div, span')).filter(el=>
+          isVisible(el)&&el.querySelector('input[type="checkbox"]')&&norm(el.textContent)===norm(target)
+        ).sort((a,b)=>a.querySelectorAll('*').length-b.querySelectorAll('*').length)[0]||
+        Array.from(active.querySelectorAll('label, div, span')).filter(el=>
+          isVisible(el)&&el.querySelector('input[type="checkbox"]')&&norm(el.textContent).includes(norm(target))
+        ).sort((a,b)=>a.querySelectorAll('*').length-b.querySelectorAll('*').length)[0];
       if(!option){failed.push('Size option not found: '+target);continue;}
       const clickTarget=option.tagName==='P'&&option.parentElement?option.parentElement:option;
       const clickResult=clickSizeRow(clickTarget);
-      await sleep(180);
+      await sleep(80);
       const optionCheckbox=clickTarget.matches&&clickTarget.matches('input[type="checkbox"]')?clickTarget:clickTarget.querySelector('input[type="checkbox"]');
       if(clickResult==='checkbox-failed'||(optionCheckbox&&!optionCheckbox.checked)){
         failed.push('Could not select size option: '+target);
@@ -211,10 +219,10 @@
     if(!applyBtn)applyBtn=Array.from(document.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim())&&btn.getBoundingClientRect().width>0);
     if(applyBtn){
       applyBtn.scrollIntoView({behavior:'auto',block:'center'});
-      await sleep(100);
+      await sleep(35);
       const handledApply=callReactOnClick(applyBtn);
       if(!handledApply)realClick(applyBtn);
-      await sleep(400);
+      await sleep(180);
       await closeOpenDropdown();
       return true;
     }
