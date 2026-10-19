@@ -166,54 +166,56 @@
     const wanted=norm(target);
     if(!wanted)return null;
     const selectors='input[type="checkbox"], [role="checkbox"], label, li, [role="option"], [role="menuitem"], button, p, span, div, [data-value]';
-    // Search the currently open Meesho dropdown first so a matching label elsewhere
-    // on the page is never mistaken for the real selectable option.
-    const openMenu=findVisibleSizeMenu();
-    const searchRoot=openMenu||document;
-    const elements=Array.from(searchRoot.querySelectorAll(selectors)).filter(elementIsVisible);
-    // Prefer a real checkbox whose nearby row says exactly "Free Size".
-    const checkboxes=elements.filter(el=>el.matches('input[type="checkbox"],[role="checkbox"]'));
-    const checkboxRows=[];
-    checkboxes.forEach(box=>{
-      let parent=box;
-      for(let depth=0;depth<7&&parent;depth++,parent=parent.parentElement){
-        if(!elementIsVisible(parent))continue;
-        const txt=norm(parent.textContent);
-        if(txt===wanted||((txt.startsWith(wanted+' ')||txt.startsWith(wanted+'\\n'))&&txt.length<=wanted.length+24)){
-          checkboxRows.push({box,row:parent,exact:txt===wanted,area:parent.getBoundingClientRect().width*parent.getBoundingClientRect().height,textLength:txt.length});
-          break;
+    const menuSelectors='[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root';
+    const roots=Array.from(document.querySelectorAll(menuSelectors)).filter(elementIsVisible);
+    // Meesho may leave other attribute dropdowns open. Search every visible popup
+    // and accept only the popup containing the exact requested size.
+    const searchRoots=roots.length?roots:[document];
+    for(const searchRoot of searchRoots){
+      const elements=Array.from(searchRoot.querySelectorAll(selectors)).filter(elementIsVisible);
+      const checkboxes=elements.filter(el=>el.matches('input[type="checkbox"],[role="checkbox"]'));
+      const checkboxRows=[];
+      checkboxes.forEach(box=>{
+        let parent=box;
+        for(let depth=0;depth<7&&parent;depth++,parent=parent.parentElement){
+          if(!elementIsVisible(parent))continue;
+          const txt=norm(parent.textContent);
+          if(txt===wanted||((txt.startsWith(wanted+' ')||txt.startsWith(wanted+'\n'))&&txt.length<=wanted.length+24)){
+            checkboxRows.push({box,row:parent,exact:txt===wanted,area:parent.getBoundingClientRect().width*parent.getBoundingClientRect().height,textLength:txt.length,menu:searchRoot});
+            break;
+          }
         }
+      });
+      checkboxRows.sort((a,b)=>(Number(b.exact)-Number(a.exact))||a.textLength-b.textLength||a.area-b.area);
+      if(checkboxRows.length)return {row:checkboxRows[0].row,checkbox:checkboxRows[0].box,menu:searchRoot};
+      // Some Meesho versions render checkbox controls without a useful label ancestor.
+      const exact=elements.filter(el=>{
+        if(el.matches('input[type="checkbox"]'))return false;
+        const txt=norm(el.textContent);
+        return txt===wanted||norm(el.getAttribute('data-value')||'')===wanted;
+      }).sort((a,b)=>{
+        const childCount=a.querySelectorAll('*').length-b.querySelectorAll('*').length;
+        if(childCount)return childCount;
+        const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
+        return ar.width*ar.height-br.width*br.height;
+      });
+      for(const item of exact){
+        let parent=item;
+        for(let depth=0;depth<5&&parent;depth++,parent=parent.parentElement){
+          const box=parent.matches&&parent.matches('input[type="checkbox"],[role="checkbox"]')?parent:parent.querySelector&&parent.querySelector('input[type="checkbox"],[role="checkbox"]');
+          if(box&&elementIsVisible(box))return {row:parent,checkbox:box,menu:searchRoot};
+          if(parent.matches&&parent.matches('[role="option"],[role="menuitem"],label,li,button'))break;
+        }
+        return {row:item,checkbox:null,menu:searchRoot};
       }
-    });
-    checkboxRows.sort((a,b)=>(Number(b.exact)-Number(a.exact))||a.textLength-b.textLength||a.area-b.area);
-    if(checkboxRows.length)return {row:checkboxRows[0].row,checkbox:checkboxRows[0].box};
-    // Some Meesho versions render checkbox controls without a useful label ancestor.
-    const exact=elements.filter(el=>{
-      if(el.matches('input[type="checkbox"]'))return false;
-      const txt=norm(el.textContent);
-      return txt===wanted||norm(el.getAttribute('data-value')||'')===wanted;
-    }).sort((a,b)=>{
-      const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
-      const childCount=a.querySelectorAll('*').length-b.querySelectorAll('*').length;
-      if(childCount)return childCount;
-      return ar.width*ar.height-br.width*br.height;
-    });
-    for(const item of exact){
-      let parent=item;
-      for(let depth=0;depth<5&&parent;depth++,parent=parent.parentElement){
-        const box=parent.matches&&parent.matches('input[type="checkbox"]')?parent:parent.querySelector&&parent.querySelector('input[type="checkbox"],[role="checkbox"]');
-        if(box&&elementIsVisible(box))return {row:parent,checkbox:box};
-        if(parent.matches&&parent.matches('[role="option"],[role="menuitem"],label,li,button'))break;
-      }
-      return {row:item,checkbox:null};
+      const contains=elements.filter(el=>{
+        if(el.querySelectorAll('*').length>4)return false;
+        const t=norm(el.textContent);
+        return t===wanted||t.startsWith(wanted+' ');
+      }).sort((a,b)=>a.textContent.length-b.textContent.length);
+      if(contains.length)return {row:contains[0],checkbox:null,menu:searchRoot};
     }
-    // Last-resort contains match is allowed only if the text is a close match, never a random first option.
-    const contains=elements.filter(el=>{
-      if(el.querySelectorAll('*').length>4)return false;
-      const t=norm(el.textContent);
-      return t===wanted||t.startsWith(wanted+' ');
-    }).sort((a,b)=>a.textContent.length-b.textContent.length);
-    return contains.length?{row:contains[0],checkbox:null}:null;
+    return null;
   }
 
   function waitForSizeOption(target,timeoutMs=950) {
