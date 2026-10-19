@@ -300,7 +300,7 @@ jobs:
           assert.ok(aiAssistant.includes("packQuantity:$('ai-product-pack-quantity')"));
           assert.ok(aiAssistant.includes('function exactPackQuantityOption(field,count)'));
           assert.ok(aiAssistant.includes('productInputs.packQuantity'));
-          assert.ok(aiAssistant.includes("raw+=' / Pack of '+packCount"));
+          assert.ok(aiAssistant.includes("const packSegment=' / Pack of '+packCount") && aiAssistant.includes('raw+=packSegment'));
           assert.ok(aiAssistant.includes('function classifyProviderFailure(error)'));
           assert.ok(aiAssistant.includes('quota/rate limit (429)'));
           assert.ok(aiAssistant.includes("Provider quota exhausted."));
@@ -321,7 +321,7 @@ jobs:
           const titleEnd = aiAssistant.indexOf('function renderTitleOptions()', titleStart);
           const titleCode = aiAssistant.slice(titleStart, titleEnd);
           assert.ok(titleStart >= 0 && titleEnd > titleStart);
-          assert.ok(titleCode.includes("raw+=' / Pack of '+packCount"));
+          assert.ok(titleCode.includes("const packSegment=' / Pack of '+packCount") && titleCode.includes('raw+=packSegment'));
           const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
           assert.ok(titleHelpersStart >= 0);
           const titleBuilder = new Function('norm', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
