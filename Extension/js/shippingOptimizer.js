@@ -1792,19 +1792,52 @@
     }
   });
 
+  let sourceRefreshTimer=null;
+  function scheduleCurrentImageRefresh() {
+    if(running)return;
+    clearTimeout(sourceRefreshTimer);
+    sourceRefreshTimer=setTimeout(()=>{
+      if(!running&&document.getElementById(BOX_ID))syncSourcePreview();
+    },180);
+  }
+
+  function nodeHasMeeshoImage(node) {
+    if(!node||node.nodeType!==Node.ELEMENT_NODE)return false;
+    if(node.closest&&node.closest('#'+BOX_ID))return false;
+    if(node.matches&&node.matches('img,input[type="file"]'))return true;
+    return !!(node.querySelector&&node.querySelector('img,input[type="file"]'));
+  }
+
   const start = () => {
     inject();
     let injectTimer = null;
-    new MutationObserver(() => {
+    new MutationObserver(records => {
       const box = document.getElementById(BOX_ID);
-      if (box && document.body.contains(box)) return;
-
-      clearTimeout(injectTimer);
-      injectTimer = setTimeout(inject, 120);
+      if (!box || !document.body.contains(box)) {
+        clearTimeout(injectTimer);
+        injectTimer = setTimeout(inject, 120);
+      }
+      const imageChanged=records.some(record=>{
+        const target=record.target&&record.target.nodeType===Node.ELEMENT_NODE?record.target:record.target?.parentElement;
+        if(target&&target.closest&&target.closest('#'+BOX_ID))return false;
+        if(record.type==='attributes')return ['src','srcset','class','style'].includes(record.attributeName)&&nodeHasMeeshoImage(target);
+        return Array.from(record.addedNodes||[]).some(nodeHasMeeshoImage);
+      });
+      if(imageChanged)scheduleCurrentImageRefresh();
     }).observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes:true,
+      attributeFilter:['src','srcset','class','style']
     });
+    // Meesho occasionally keeps the same DOM node but swaps its FileList after
+    // the front-image selector changes; detect that without reopening the picker.
+    document.addEventListener('change',event=>{
+      const target=event.target;
+      if(target&&target.matches&&target.matches('input[type="file"]')&&!(target.closest&&target.closest('#'+BOX_ID))){
+        scheduleCurrentImageRefresh();
+      }
+    },true);
   };
 
   if (document.readyState === 'loading') {
