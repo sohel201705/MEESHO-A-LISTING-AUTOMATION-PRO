@@ -2010,6 +2010,7 @@
     .ai-dashboard-shell .ai-essential-inputs label{font-size:10px}
     .ai-dashboard-shell .ai-photo-label{margin-top:10px}
     .ai-dashboard-shell .ai-scan-summary{border-left:3px solid #4bcbf0;background:linear-gradient(90deg,rgba(38,133,229,.12),rgba(10,24,41,.2));color:#b7d6f3}
+    .ai-provider-hidden-control{display:none!important}
     .ai-provider-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 13px}
     .ai-provider-card{display:flex;align-items:center;gap:8px;min-width:0;position:relative;text-align:left;padding:9px 8px;border-radius:11px;border:1px solid #263f5d;background:linear-gradient(145deg,#101e31,#0a1422);color:#e3f0ff;cursor:pointer;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
     .ai-provider-card:hover{transform:translateY(-1px);border-color:#4d9fe7;box-shadow:0 0 15px rgba(62,161,255,.12)}
@@ -2190,8 +2191,6 @@
         <div class="onboarding-grid">
           <label>Customer support phone<input id="onboard-support-phone" type="tel" placeholder="Support number"></label>
           <label>Customer support email<input id="onboard-support-email" type="email" placeholder="Support email"></label>
-          <label>HSN code (verified)<input id="onboard-hsn" type="text" placeholder="Leave blank if unsure"></label>
-          <label>GST rate (verified)<input id="onboard-gst" type="text" placeholder="Leave blank if unsure"></label>
         </div>
         <p class="onboarding-privacy-note">These profile values are stored in Chrome local storage on this device. Do not enter a guessed manufacturer, packer, importer, HSN, GST or country-of-origin value. You can edit this profile later.</p>
         <div id="onboard-status" role="status" aria-live="polite"></div>
@@ -2654,6 +2653,8 @@
               <label>Importer name<input id="ai-override-importer-name" type="text" placeholder="If applicable"></label>
               <label>Importer pincode<input id="ai-override-importer-pincode" type="text" placeholder="If applicable"></label>
               <label class="span-2">Importer address<textarea id="ai-override-importer-address" rows="2"></textarea></label>
+              <label>Product HSN code<input id="ai-override-hsn" type="text" placeholder="Verified for this category only"></label>
+              <label>Product GST rate<input id="ai-override-gst" type="text" placeholder="Verified rate for this category"></label>
             </div>
             <button id="ai-profile-save-override" type="button" class="ai-secondary-btn" style="width:100%;margin-top:8px">Save Override for This Category</button>
             </details>
@@ -2678,8 +2679,6 @@
               <label class="span-2">Importer address<textarea id="ai-default-importer-address" rows="2"></textarea></label>
               <label>Customer support phone<input id="ai-default-support-phone" type="text"></label>
               <label>Customer support email<input id="ai-default-support-email" type="email"></label>
-              <label>HSN code<input id="ai-default-hsn" type="text" placeholder="Only if confirmed"></label>
-              <label>GST rate<input id="ai-default-gst" type="text" placeholder="Only if confirmed"></label>
             </div>
             <button id="ai-save-defaults-btn" type="button" class="ai-secondary-btn">Save Seller Defaults</button>
           </div>
@@ -2703,7 +2702,7 @@
             </div>
             <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
             <div class="ai-provider-form">
-              <label>Selected provider<select id="ai-provider-type">
+              <label class="ai-provider-hidden-control">Selected provider<select id="ai-provider-type">
                 <option value="gemini">Google Gemini</option>
                 <option value="groq">Groq Cloud</option>
                 <option value="openrouter">OpenRouter</option>
