@@ -120,7 +120,7 @@ jobs:
           assert.ok(aiAssistant.includes('function generatedCodeForField'));
           assert.ok(aiAssistant.includes('function exactCapacityOption'));
           assert.ok(aiAssistant.includes('Google Research Sources'));
-          assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs)'));
+          assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25)'));
           assert.ok(aiAssistant.includes("payload._variation_sizes=selected.join(',')"));
           assert.ok(aiAssistant.includes('#dynamic-sections-container [id^="f_"]'));
           assert.ok(popupHtml.includes('id="ai-product-capacity"'));
