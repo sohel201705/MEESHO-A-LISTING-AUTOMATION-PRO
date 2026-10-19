@@ -2034,7 +2034,7 @@
     #onboard-save-continue{display:flex;justify-content:center;gap:8px;align-items:center}
     .onboarding-later{width:100%;background:transparent;border:1px solid #243f5d;color:#8fa8c8;padding:9px;border-radius:8px;margin-top:7px;cursor:pointer;font-size:10px}
     @media(max-width:420px){.ai-dashboard-nav{gap:6px}.ai-menu-card{padding:8px 7px}.ai-menu-text strong{font-size:9px}.ai-menu-text small{font-size:7px}.onboarding-grid{gap:8px}}
-  </style>
+    </style>
 
 </head>
 
@@ -2508,8 +2508,7 @@
 
 
       <!-- AI Catalog Assistant: image analysis + saved seller defaults -->
-      <section id="ai-catalog-assistant" class="ai-catalog-card ai-dashboard-shell">
-<section id="ai-catalog-assistant" class="ai-catalog-card">
+      <section id="ai-catalog-assistant" class="ai-catalog-card">
         <div class="ai-head">
           <div><div class="ai-kicker">AI WORKFLOW</div><h3>AI Catalog Autofill</h3><p>Scan the selected catalog, upload photos, generate a draft and autofill.</p></div>
           <span class="ai-status-pill">MULTI-API</span>
@@ -2536,10 +2535,7 @@
           <button type="button" class="ai-menu-card" data-ai-page="chat"><span class="ai-menu-icon">✧</span><span class="ai-menu-text"><strong>AI Listing Chat</strong><small>Ask about the current draft</small></span><span class="ai-menu-arrow">›</span></button>
           <button type="button" class="ai-menu-card" data-ai-page="activity"><span class="ai-menu-icon">◴</span><span class="ai-menu-text"><strong>Activity Center</strong><small>Sources · live process log</small></span><span class="ai-menu-arrow">›</span></button>
         </nav>
-        <div class="ai-page-switcher">
-          <span class="ai-page-overline" id="ai-page-overline">LISTING STUDIO</span>
-          <span class="ai-page-counter" id="ai-page-counter">01 / 05</span>
-        </div>
+        <div class="ai-page-switcher"><span class="ai-page-overline" id="ai-page-overline">LISTING STUDIO</span><span class="ai-page-counter" id="ai-page-counter">01 / 05</span></div>
         <section class="ai-page active" id="ai-page-listing" data-ai-page-panel="listing">
           <div class="ai-page-intro"><h4>Listing Studio</h4><p>Scan Meesho, upload the product photos, prepare the draft and autofill when ready.</p></div>
           <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
@@ -2573,20 +2569,52 @@
         </section>
         <section class="ai-page" id="ai-page-profile" data-ai-page-panel="profile">
           <div class="ai-page-intro"><h4>Seller Profile</h4><p>Set these basics once. The active profile is reused across catalog drafts; category overrides can change only the details that differ.</p></div>
-          <div class="ai-profile-completion-card">
-            <div class="ai-profile-completion-icon">✓</div><div><strong>Saved defaults</strong><p>Unknown legal fields remain blank. Seller details are never substituted for manufacturer or packer details unless you explicitly enter the same value.</p></div>
+          <div class="ai-profile-completion-card"><div class="ai-profile-completion-icon">✓</div><div><strong>Saved defaults</strong><p>Unknown legal fields remain blank. Seller details are never substituted for manufacturer or packer details unless you explicitly enter the same value.</p></div></div>
+          <div class="ai-settings-section ai-profile-manager">
+            <h4>Seller Profiles &amp; Category Overrides</h4>
+            <p class="ai-muted">Create local seller profiles once. Each profile can store manufacturer/packer details and per-category overrides. The active profile is applied when the next product draft is generated.</p>
+            <div class="ai-profile-grid">
+              <label>Saved profile<select id="ai-profile-select"></select></label>
+              <label>Profile name<input id="ai-profile-name" type="text" placeholder="e.g. Sohel Enterprise — Main"></label>
+            </div>
+            <div class="ai-profile-actions">
+              <button id="ai-profile-new" type="button" class="ai-secondary-btn">＋ New Profile</button>
+              <button id="ai-profile-save" type="button" class="ai-primary-btn">Save / Update Profile</button>
+              <button id="ai-profile-delete" type="button" class="ai-small-btn ai-danger">Delete</button>
+            </div>
+            <div class="ai-profile-divider"></div>
+            <label>Product category for defaults
+              <select id="ai-profile-category">
+                <option value="general">General / Other</option>
+                <option value="bottles">Bottles &amp; Drinkware</option>
+                <option value="apparel">Apparel / Clothing</option>
+                <option value="kitchen">Kitchen / Lunch Boxes</option>
+                <option value="furniture">Furniture / Chairs &amp; Tables</option>
+                <option value="baby">Baby &amp; Kids</option>
+                <option value="electronics">Electronics / Accessories</option>
+                <option value="home">Home &amp; Household</option>
+              </select>
+            </label>
+            <p class="ai-muted">The fields below override only this category. Leave a field blank to use the profile's main default.</p>
+            <div class="ai-default-grid">
+              <label>Category Brand<input id="ai-override-brand" type="text"></label>
+              <label>Country of origin<input id="ai-override-country" type="text" placeholder="Only if confirmed"></label>
+              <label>Manufacturer name<input id="ai-override-manufacturer-name" type="text"></label>
+              <label>Manufacturer pincode<input id="ai-override-manufacturer-pincode" type="text"></label>
+              <label class="span-2">Manufacturer address<textarea id="ai-override-manufacturer-address" rows="2"></textarea></label>
+              <label>Packer name<input id="ai-override-packer-name" type="text"></label>
+              <label>Packer pincode<input id="ai-override-packer-pincode" type="text"></label>
+              <label class="span-2">Packer address<textarea id="ai-override-packer-address" rows="2"></textarea></label>
+              <label>Importer name<input id="ai-override-importer-name" type="text" placeholder="If applicable"></label>
+              <label>Importer pincode<input id="ai-override-importer-pincode" type="text" placeholder="If applicable"></label>
+              <label class="span-2">Importer address<textarea id="ai-override-importer-address" rows="2"></textarea></label>
+            </div>
+            <button id="ai-profile-save-override" type="button" class="ai-secondary-btn" style="width:100%;margin-top:8px">Save Override for This Category</button>
           </div>
           
-          
-        </section>
-        <section class="ai-page" id="ai-page-api" data-ai-page-panel="api">
-          <div class="ai-page-intro"><h4>API Connections</h4><p>Connect multiple providers and choose model IDs. Keys are stored locally in this Chrome profile.</p></div>
-          h:100%;margin-top:8px">Save Override for This Category</button>
-          </div>
           <div class="ai-settings-section">
             <h4>Saved Seller Defaults</h4>
-            <p class="ai-muted">Add your confirmed business details here. They are used only whe
-           field clearly matches. Product weight and dimensions stay per-product above.</p>
+            <p class="ai-muted">Add your confirmed business details here. They are used only when a scanned field clearly matches. Product weight and dimensions stay per-product above.</p>
             <div class="ai-default-grid">
               <label>Brand<input id="ai-default-brand" type="text"></label>
               <label>Seller / business name<input id="ai-default-seller-name" type="text"></label>
@@ -2609,6 +2637,32 @@
             <button id="ai-save-defaults-btn" type="button" class="ai-secondary-btn">Save Seller Defaults</button>
           </div>
         
+        </section>
+        <section class="ai-page" id="ai-page-api" data-ai-page-panel="api">
+          <div class="ai-page-intro"><h4>API Connections</h4><p>Connect multiple providers and choose model IDs. Keys are stored locally in this Chrome profile.</p></div>
+          <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
+          <div class="ai-settings-section">
+            <h4>AI API Providers</h4>
+            <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
+            <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
+            <div class="ai-provider-form">
+              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
+              <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
+              <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
+              <datalist id="ai-model-options"></datalist>
+              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
+              <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
+              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
+              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
+              <label>Bulk add API keys (one per line; optional format: Label | API key)
+                <textarea id="ai-key-bulk" rows="4" placeholder="Gemini Key 1 | paste-key-here&#10;Gemini Key 2 | paste-key-here&#10;paste another key on its own line"></textarea>
+              </label>
+              <p class="ai-muted">All lines use the selected provider and model. Lines beginning with # are ignored. Duplicate keys for the same provider are skipped.</p>
+              <button id="ai-add-bulk-keys-btn" type="button" class="ai-secondary-btn">Add All Keys in List</button>
+              <p id="ai-provider-hint" class="ai-muted"></p>
+            </div>
+          </div>
+          
         </section>
         <section class="ai-page" id="ai-page-chat" data-ai-page-panel="chat">
           <div class="ai-page-intro"><h4>AI Listing Chat</h4><p>Discuss the active draft, improve titles, and ask why a field needs confirmation.</p></div>
