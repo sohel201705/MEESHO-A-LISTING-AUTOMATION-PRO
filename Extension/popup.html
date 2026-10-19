@@ -2548,13 +2548,13 @@
         <div class="ai-page-switcher"><span class="ai-page-overline" id="ai-page-overline">LISTING STUDIO</span><span class="ai-page-counter" id="ai-page-counter">01 / 05</span></div>
         <section class="ai-page active" id="ai-page-listing" data-ai-page-panel="listing">
           <div class="ai-page-intro"><h4>Listing Studio</h4><p>Scan Meesho, upload the product photos, prepare the draft and autofill when ready.</p></div>
-          <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
+          <div id="ai-scan-summary" class="ai-scan-summary">Open the catalog/category in Meesho first. The extension will detect its product type and form automatically.</div>
         <div class="ai-size-picker">
           <div class="ai-size-picker-title">Meesho size variants</div>
           <p class="ai-muted">Choose the sizes to select on Meesho. If Free Size is the only option, it is selected automatically.</p>
           <div id="ai-variation-sizes" class="ai-size-options"><span class="ai-muted">Scan the catalog to load size options.</span></div>
         </div>
-        <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Scan Current Meesho Catalog</button>
+        <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Refresh Selected Catalog Detection</button>
         <div class="ai-product-grid ai-essential-inputs">
           <label>Meesho selling price (₹)<input id="ai-product-price" type="number" min="5.01" step="0.01" placeholder="Enter selling price (optional if already set)"></label>
           <label>Wrong/Defective Returns Price (₹)<input id="ai-product-return-price" type="number" readonly placeholder="Calculated: selling price − ₹5"></label>
@@ -2578,7 +2578,6 @@
           </div>
           <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Only if you have confirmed capacity, set count, package contents or model details"></textarea></label>
         </details>
-        <div id="ai-image-list" class="ai-chip-list"></div>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
         
@@ -2604,7 +2603,7 @@
             <details class="ai-category-override-details">
               <summary>Advanced category-specific defaults <span>· normally detected from the selected Meesho catalog</span></summary>
             <div class="ai-profile-divider"></div>
-            <label>Product category for defaults
+            <label>Override category (advanced only)
               <select id="ai-profile-category">
                 <option value="general">General / Other</option>
                 <option value="bottles">Bottles &amp; Drinkware</option>
@@ -2616,7 +2615,7 @@
                 <option value="home">Home &amp; Household</option>
               </select>
             </label>
-            <p class="ai-muted">The fields below override only this category. Leave a field blank to use the profile's main default.</p>
+            <p class="ai-muted">Usually you do not need to choose a category. Analyze reads the selected Meesho catalog automatically. Use these overrides only when this profile needs different details for a specific product type.</p>
             <div class="ai-default-grid">
               <label>Category Brand<input id="ai-override-brand" type="text"></label>
               <label>Country of origin<input id="ai-override-country" type="text" placeholder="Only if confirmed"></label>
