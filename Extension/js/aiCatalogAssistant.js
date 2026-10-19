@@ -208,7 +208,7 @@ const PROVIDER_CONFIG={
   {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},
   {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
  ]},
- groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'',model:'qwen/qwen3.8-27b',tier:'MODEL PRICING · ACCOUNT QUOTAS VARY',description:'Fast vision inference; check the current Groq console pricing/trial for your account',models:[
+ groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'https://api.groq.com/openai/v1/chat/completions',model:'qwen/qwen3.8-27b',tier:'MODEL PRICING · ACCOUNT QUOTAS VARY',description:'Fast vision inference; check the current Groq console pricing/trial for your account',models:[
   {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'}
  ]},
  openrouter:{label:'OpenRouter Free Router',kind:'compatible',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'FREE ROUTER · RATE LIMITS',description:'Routes to available free models that support images',models:[
