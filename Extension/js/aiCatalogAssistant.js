@@ -310,6 +310,11 @@ function updateProviderForm(){
   compatible:'CUSTOM API · xAI/Grok and other OpenAI-compatible providers may be paid. Choose a model that accepts image_url inputs.'
  };
  $('ai-provider-hint').textContent=config.tier+' · '+config.description+' '+(hints[p]||'Confirm current model and billing status with the provider.');
+ document.querySelectorAll('#ai-provider-cards [data-provider-card]').forEach(card=>{
+  const active=card.getAttribute('data-provider-card')===p;
+  card.classList.toggle('active',active);
+  card.setAttribute('aria-pressed',active?'true':'false');
+ });
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
@@ -1503,6 +1508,15 @@ function init(){
  switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
+ document.querySelectorAll('#ai-provider-cards [data-provider-card]').forEach(card=>{
+  card.addEventListener('click',()=>{
+   const provider=card.getAttribute('data-provider-card');
+   if(!PROVIDER_CONFIG[provider])return;
+   $('ai-provider-type').value=provider;
+   updateProviderForm();
+   liveLog('API CONNECTIONS · '+label(provider)+' selected.','info');
+  });
+ });
  $('ai-add-key-btn').addEventListener('click',addKey);
  $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
