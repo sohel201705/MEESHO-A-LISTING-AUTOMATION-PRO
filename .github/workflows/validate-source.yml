@@ -263,9 +263,12 @@ jobs:
           assert.ok(content.includes('function clickSizeRow(row)'));
           assert.ok(content.includes('setTimeout(() => done(null), 750)'));
           assert.ok(content.includes('HTMLElement.click() already emits the native click/input/change sequence'));
-          assert.ok(!content.includes("input.dispatchEvent(new Event('change', { bubbles: true }))"));
+          const sizeClickStart = content.indexOf('function clickSizeRow(row)');
+          const sizeClickEnd = content.indexOf('async function selectSizeDropdown', sizeClickStart);
+          assert.ok(sizeClickStart >= 0 && sizeClickEnd > sizeClickStart);
+          assert.ok(!content.slice(sizeClickStart, sizeClickEnd).includes("input.dispatchEvent(new Event('change', { bubbles: true }))"));
           assert.ok(content.includes("await sleep(120)"));
-          assert.ok(content.includes('Meesho did not display the committed size'));
+          assert.ok(content.includes('Meesho did not confirm the committed size'));
 
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
@@ -312,5 +315,26 @@ jobs:
           assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2', 'Pack Of 4'] }, 2), 'Pack Of 2');
           assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2'] }, 4), '');
           assert.equal(packOption({ values: [] }, 3), 'Pack Of 3');
+          const titleStart = aiAssistant.indexOf('function buildTitleChoices(raw,baseTitle,p,d){');
+          const titleEnd = aiAssistant.indexOf('function renderTitleOptions()', titleStart);
+          const titleCode = aiAssistant.slice(titleStart, titleEnd);
+          assert.ok(titleStart >= 0 && titleEnd > titleStart);
+          assert.ok(titleCode.includes("raw+=' / Pack of '+packCount"));
+          const titleHelpersStart = aiAssistant.indexOf('function isDescriptionField(f){');
+          const titleBuilder = new Function('norm','el','
+          NODE
+,'setProgress','productCodes','allowed','showPreview','draft','titleChoices','currentTitleProduct','activeTitleFieldId','currentTitleFields','currentTitleNeeds','currentTitleStats','researchNow','say','redactSecrets', aiAssistant.slice(titleHelpersStart, titleStart) + titleCode + '; return buildTitleChoices;')(
+            value => String(value || '').replace(/[＊*]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase(),
+            () => ({}), () => null, () => {}, async () => ({}), () => true, () => {}, null, [], null, '', [], [], {}, () => {}, value => value
+          );
+          const titleChoices = titleBuilder([
+            { title: 'Bottle / Steel / Pack of 4', recommended: true },
+            { title: 'Water Bottle / Silver', recommended: false },
+            { title: 'Silver Flask', recommended: false },
+            { title: 'Travel Bottle / Metal', recommended: false }
+          ], 'Water Bottle', { packQuantity: '2', productCapacity: '750 ml', material: 'Steel', color: 'Silver' }, { brand: 'Eagle' });
+          assert.equal(titleChoices.length, 4);
+          assert.ok(titleChoices.every(x => x.title.length <= 250 && /pack of 2/i.test(x.title)));
+          assert.equal(titleChoices.filter(x => x.recommended).length, 1);
           console.log('v3.17.9 checks passed: pack quantity, Gemini quota fallback diagnostics, verified Free Size selection, shipping photo capture, and nine provider cards.');
           NODE
