@@ -158,24 +158,59 @@ function say(m,t){
  const level=t==='error'?'error':(t==='warning'?'warn':(t==='success'?'ok':'info'));
  if(m)liveLog(m,level);
 }
-function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
-function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
-function modelChoices(p){
- if(p==='gemini')return [
-  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · Free tier · vision'},
-  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · Free tier · vision'},
-  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · Free tier · vision'},
-  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · Free tier · vision'}
- ];
- if(p==='groq')return [
-  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · free-tier rate limits'}
- ];
- return [];
+const PROVIDER_PRESETS={
+ gemini:{id:'gemini',label:'Google Gemini',group:'gemini',endpoint:'',model:'gemini-3.8-flash',tier:'Free tier · quota varies',kind:'free',maxImages:5,
+  note:'Native vision API. Google AI Studio free-tier quotas and model availability depend on your project.',
+  models:[{id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · vision'},{id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · vision'},{id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},{id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}]},
+ groq:{id:'groq',label:'Groq Cloud',group:'groq',endpoint:'https://api.groq.com/openai/v1/chat/completions',model:'qwen/qwen3.8-27b',tier:'Free plan · rate limits',kind:'free',maxImages:3,
+  note:'Fast vision inference. Free-plan limits apply; current supported models and quotas can change.',
+  models:[{id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'},{id:'qwen/qwen3.6-27b',label:'Qwen 3.6 27B · vision'}]},
+ openrouter:{id:'openrouter',label:'OpenRouter',group:'compatible',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'Free models · availability varies',kind:'free',maxImages:4,
+  note:'The free router selects an available free model. Vision support/quota can change; if a model rejects images, select a vision-capable model ID from OpenRouter.',
+  models:[{id:'openrouter/free',label:'OpenRouter Free Router'},{id:'google/gemma-3-27b-it:free',label:'Gemma 3 27B · free vision (if available)'},{id:'qwen/qwen2.5-vl-72b-instruct:free',label:'Qwen VL 72B · free vision (if available)'}]},
+ cloudflare:{id:'cloudflare',label:'Cloudflare Workers AI',group:'compatible',endpoint:'https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1/chat/completions',model:'@cf/meta/llama-3.2-11b-vision-instruct',tier:'Daily free allocation · varies by model',kind:'free',maxImages:1,
+  note:'Replace ACCOUNT_ID in the endpoint with your Cloudflare account ID. Daily free neurons apply, but model/licence access can vary.',
+  models:[{id:'@cf/meta/llama-3.2-11b-vision-instruct',label:'Llama 3.2 11B Vision' }]},
+ mistral:{id:'mistral',label:'Mistral AI',group:'compatible',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'pixtral-12b-2409',tier:'Evaluation/account tier varies',kind:'limited',maxImages:4,
+  note:'Pixtral is a vision-capable preset. Check your Mistral account limits and availability before use.',
+  models:[{id:'pixtral-12b-2409',label:'Pixtral 12B · vision'},{id:'mistral-small-latest',label:'Mistral Small (verify vision/model access)'}]},
+ nvidia:{id:'nvidia',label:'NVIDIA NIM',group:'compatible',endpoint:'https://integrate.api.nvidia.com/v1/chat/completions',model:'meta/llama-3.2-11b-vision-instruct',tier:'Free credits · availability varies',kind:'limited',maxImages:1,
+  note:'Vision preset through the OpenAI-compatible API. Free credits, model access and request limits depend on your NVIDIA account.',
+  models:[{id:'meta/llama-3.2-11b-vision-instruct',label:'Llama 3.2 11B Vision'}]},
+ xai:{id:'xai',label:'xAI Grok',group:'compatible',endpoint:'https://api.x.ai/v1/chat/completions',model:'grok-4.7',tier:'Usage may be paid',kind:'paid',maxImages:5,
+  note:'Vision-capable API. Check current xAI pricing before enabling this key.',
+  models:[{id:'grok-4.7',label:'Grok 4.7 · vision'}]},
+ openai:{id:'openai',label:'OpenAI',group:'compatible',endpoint:'https://api.openai.com/v1/chat/completions',model:'gpt-4.1-mini',tier:'Paid API · usage billed',kind:'paid',maxImages:5,
+  note:'Vision-capable API. Usage is billed according to your OpenAI API account.',
+  models:[{id:'gpt-4.1-mini',label:'GPT-4.1 mini · vision'},{id:'gpt-4.1',label:'GPT-4.1 · vision'}]}
+};
+function providerPreset(id){return PROVIDER_PRESETS[id]||PROVIDER_PRESETS.gemini;}
+function inferPlatform(k){
+ if(k&&PROVIDER_PRESETS[k.platform])return k.platform;
+ if(k&&k.provider==='gemini')return 'gemini';
+ if(k&&k.provider==='groq')return 'groq';
+ const ep=String(k&&k.endpoint||'').toLowerCase();
+ if(ep.includes('openrouter.ai'))return 'openrouter';
+ if(ep.includes('cloudflare.com'))return 'cloudflare';
+ if(ep.includes('mistral.ai'))return 'mistral';
+ if(ep.includes('nvidia.com'))return 'nvidia';
+ if(ep.includes('openai.com'))return 'openai';
+ return 'xai';
 }
-function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
+function platformLabel(kOrId){
+ const id=typeof kOrId==='string'?kOrId:inferPlatform(kOrId);
+ return providerPreset(id).label;
+}
+function label(p,platform){
+ if(platform&&PROVIDER_PRESETS[platform])return PROVIDER_PRESETS[platform].label;
+ return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';
+}
+function modelDefault(p){return PROVIDER_PRESETS[p]?PROVIDER_PRESETS[p].model:(p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'');}
+function modelChoices(p){return (providerPreset(p).models||[]).slice();}
+function endpointDefault(p){return providerPreset(p).endpoint||'';}
 function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
- if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
+ if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider,k&&k.platform)+' key';
  return name;
 }
 function redactSecrets(message,k){
@@ -185,21 +220,19 @@ function redactSecrets(message,k){
 }
 async function keys(){
  const r=await get(KEY);let list=Array.isArray(r[KEY])?r[KEY]:[],changed=false;
- // Recover common provider-selection mistakes from earlier extension versions:
- // Groq keys start with gsk_; Google AI Studio keys commonly start with AIzaSy.
  list=list.map(k=>{
   if(!k||typeof k!=='object')return k;
-  const apiKey=String(k.apiKey||''),endpoint=String(k.endpoint||'');
-  if(k.provider!=='groq'&&/^gsk_/i.test(apiKey)){
-   changed=true;
-   return Object.assign({},k,{provider:'groq',model:String(k.model||'').startsWith('qwen/')?'qwen/qwen3.8-27b':modelDefault('groq'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Groq Cloud key':k.name});
+  const apiKey=String(k.apiKey||''),oldEndpoint=String(k.endpoint||'');
+  let platform=PROVIDER_PRESETS[k.platform]?k.platform:inferPlatform(k);
+  let provider=k.provider||providerPreset(platform).group;
+  if(/^gsk_/i.test(apiKey)){platform='groq';provider='groq';}
+  else if(/^AIzaSy/i.test(apiKey)){platform='gemini';provider='gemini';}
+  const preset=providerPreset(platform);
+  const model=String(k.model||'').trim()||preset.model;
+  const endpoint=platform==='gemini'?'':(oldEndpoint||preset.endpoint);
+  if(k.platform!==platform||k.provider!==provider||k.model!==model||k.endpoint!==endpoint){
+   changed=true;return Object.assign({},k,{platform,provider,model,endpoint,name:(k.name===apiKey||String(k.name||'').length>42)?preset.label+' key':k.name});
   }
-  if(k.provider!=='gemini'&&/^AIzaSy/i.test(apiKey)){
-   changed=true;
-   return Object.assign({},k,{provider:'gemini',model:modelDefault('gemini'),endpoint:'',name:(k.name===apiKey||String(k.name||'').length>42)?'Google Gemini key':k.name});
-  }
-  if(k.provider==='groq'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('groq'),endpoint:''});}
-  if(k.provider==='gemini'&&!k.model){changed=true;return Object.assign({},k,{model:modelDefault('gemini'),endpoint:''});}
   return k;
  });
  if(changed)await set({[KEY]:list});
@@ -208,77 +241,100 @@ async function keys(){
 async function persistKeys(v){await set({[KEY]:v});await renderKeys();}
 async function renderKeys(){
  const host=$('ai-provider-key-list');if(!host)return;host.replaceChildren();const all=await keys();
- if(!all.length){host.appendChild(el('div','ai-empty','No API keys added. Add one or more keys below.'));return;}
+ if(!all.length){host.appendChild(el('div','ai-empty','No API keys added yet. Choose a provider card and add a key.'));return;}
  all.forEach(k=>{
-  const row=el('div','ai-key-row'),meta=el('div','ai-key-meta'),controls=el('div','ai-key-controls');
+  const row=el('div','ai-key-row ai-key-card'),meta=el('div','ai-key-meta'),controls=el('div','ai-key-controls');
   meta.appendChild(el('strong','',safeKeyName(k)));
-  meta.appendChild(el('span','ai-muted',label(k.provider)+' · '+k.model));
-  if(k.endpoint)meta.appendChild(el('span','ai-muted',k.endpoint));
+  meta.appendChild(el('span','ai-muted',platformLabel(k)+' · '+k.model));
+  meta.appendChild(el('span','ai-provider-tier ai-tier-'+providerPreset(inferPlatform(k)).kind,providerPreset(inferPlatform(k)).tier));
+  if(k.endpoint)meta.appendChild(el('span','ai-muted ai-key-endpoint',k.endpoint));
   meta.appendChild(el('span','ai-muted','Saved key: ••••'+String(k.apiKey||'').slice(-4)));
   const lab=el('label','ai-toggle-label'),enabled=el('input');enabled.type='checkbox';enabled.checked=k.enabled!==false;enabled.setAttribute('aria-label','Enable '+safeKeyName(k));lab.appendChild(enabled);lab.appendChild(document.createTextNode(' Enabled'));controls.appendChild(lab);
   enabled.addEventListener('change',async()=>{const a=await keys();await persistKeys(a.map(x=>x.id===k.id?Object.assign({},x,{enabled:enabled.checked}):x));});
-  const del=el('button','ai-small-btn ai-danger','Remove');del.type='button';del.addEventListener('click',async()=>{await persistKeys((await keys()).filter(x=>x.id!==k.id));say('API key removed.','success');});
+  const del=el('button','ai-small-btn ai-danger','Remove');del.type='button';del.addEventListener('click',async()=>{await persistKeys((await keys()).filter(x=>x.id!==k.id));say(platformLabel(k)+' API key removed.','success');});
   controls.appendChild(del);row.appendChild(meta);row.appendChild(controls);host.appendChild(row);
  });
 }
-function updateModelChoices(p){
+function updateModelChoices(platform){
  const list=$('ai-model-options');if(!list)return;list.replaceChildren();
- modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
+ modelChoices(platform).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
+}
+function renderProviderCards(selected){
+ const host=$('ai-provider-cards');if(!host)return;
+ host.querySelectorAll('[data-provider-card]').forEach(card=>{
+  const active=card.getAttribute('data-provider-card')===selected;
+  card.classList.toggle('active',active);card.setAttribute('aria-pressed',active?'true':'false');
+ });
 }
 function updateProviderForm(){
- const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
- if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
- $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
- if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
- updateModelChoices(p);
- $('ai-provider-hint').textContent=p==='gemini'?'Recommended free-tier vision models: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, and 3.1 Flash-Lite. Free-tier quotas and availability depend on your Google AI Studio project.':p==='groq'?'Recommended Groq vision model: qwen/qwen3.8-27b (up to 3 images/request). Groq free-tier rate limits apply.':'Custom OpenAI-compatible endpoints may be paid; xAI/Grok is not guaranteed free. Do not use a Groq model ID with an xAI endpoint.';
+ const platform=$('ai-provider-type').value,preset=providerPreset(platform),m=$('ai-key-model'),ep=$('ai-key-endpoint');
+ if(!m.value.trim()||m.dataset.platform!==platform)m.value=preset.model;
+ m.dataset.platform=platform;
+ $('ai-key-endpoint-wrap').style.display=preset.group==='gemini'?'none':'block';
+ if(ep&&preset.group!=='gemini'&&(!ep.value.trim()||ep.dataset.platform!==platform))ep.value=preset.endpoint;
+ if(ep)ep.dataset.platform=platform;
+ updateModelChoices(platform);renderProviderCards(platform);
+ const hint=$('ai-provider-hint');
+ if(hint){hint.textContent=preset.note;hint.className='ai-provider-hint ai-tier-'+preset.kind;}
+ const endpointLabel=document.querySelector('#ai-key-endpoint-wrap label');
+ if(endpointLabel)endpointLabel.firstChild.textContent='HTTPS endpoint · '+preset.label+' ';
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
  return await new Promise(resolve=>chrome.permissions.request({origins:[pattern]},resolve));
 }
-function makeKey(p,model,endpoint,apiKey,name){
- return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:name||label(p)+' key',model,endpoint,apiKey,enabled:true};
+function makeKey(p,platform,model,endpoint,apiKey,name){
+ const preset=providerPreset(platform);
+ return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,platform,name:name||preset.label+' key',model,endpoint,apiKey,enabled:true};
 }
 async function checkProviderPermission(p,endpoint){
- if(p!=='compatible')return true;
+ if(p==='gemini')return true;
  return await askPermission(endpoint);
 }
+function providerSelection(){
+ const platform=$('ai-provider-type').value,preset=providerPreset(platform);
+ const endpoint=preset.group==='gemini'?'':String($('ai-key-endpoint').value||'').trim()||preset.endpoint;
+ return {platform,preset,provider:preset.group,model:String($('ai-key-model').value||'').trim()||preset.model,endpoint};
+}
 async function addKey(){
- const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
+ const selected=providerSelection(),apiKey=$('ai-key-value').value.trim();
  if(!apiKey)return say('Enter an API key first.','error');
- let p=selectedProvider;
- if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
- if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
- const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
- if(!model)return say('Enter the model ID.','error');
- let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
+ let platform=selected.platform;
+ if(/^gsk_/i.test(apiKey))platform='groq';else if(/^AIzaSy/i.test(apiKey))platform='gemini';
+ const preset=providerPreset(platform),provider=preset.group;
+ if(platform!==selected.platform){$('ai-provider-type').value=platform;updateProviderForm();say('Detected key format; provider switched to '+preset.label+'.','warning');}
+ const model=String($('ai-key-model').value||'').trim()||preset.model;
+ const endpoint=provider==='gemini'?'':String($('ai-key-endpoint').value||'').trim()||preset.endpoint;
+ if(!model)return say('Enter a model ID.','error');
+ if(platform==='cloudflare'&&/ACCOUNT_ID/.test(endpoint))return say('Replace ACCOUNT_ID in the Cloudflare endpoint with your real Cloudflare Account ID before saving the key.','error');
+ let ok=false;try{ok=await checkProviderPermission(provider,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
- const item=makeKey(p,model,endpoint,apiKey,$('ai-key-name').value.trim()||label(p)+' key');
- const all=await keys();if(all.some(k=>k.provider===p&&k.apiKey===apiKey))return say('This provider key is already saved.','warning');
- all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
+ const item=makeKey(provider,platform,model,endpoint,apiKey,$('ai-key-name').value.trim()||preset.label+' key');
+ const all=await keys();if(all.some(k=>k.provider===provider&&inferPlatform(k)===platform&&k.apiKey===apiKey))return say('This provider key is already saved.','warning');
+ all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say(preset.label+' API key added.','success');
 }
 async function addBulkKeys(){
- const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const selected=providerSelection(),platform=selected.platform,preset=selected.preset,provider=selected.provider,model=selected.model,endpoint=selected.endpoint;
  const raw=$('ai-key-bulk').value;
- const entries=raw.split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('#')).map((line,index)=>{
+ const entries=raw.split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('#')).map(line=>{
   const split=line.indexOf('|');
   if(split<0)return {name:'',apiKey:line};
   return {name:line.slice(0,split).trim(),apiKey:line.slice(split+1).trim()};
  }).filter(item=>item.apiKey);
  if(!entries.length)return say('Paste one API key per line in the bulk box first.','error');
  if(!model)return say('Enter the model ID for this provider.','error');
- let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
+ if(platform==='cloudflare'&&/ACCOUNT_ID/.test(endpoint))return say('Replace ACCOUNT_ID in the Cloudflare endpoint before adding keys.','error');
+ let ok=false;try{ok=await checkProviderPermission(provider,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; no keys were added.','error');
  const all=await keys();let added=0,duplicates=0;
- entries.forEach((entry,index)=>{
-  if(all.some(k=>k.provider===p&&k.apiKey===entry.apiKey)){duplicates++;return;}
-  const name=entry.name||((label(p))+' key '+(all.filter(k=>k.provider===p).length+1));
-  all.push(makeKey(p,model,endpoint,entry.apiKey,name));added++;
+ entries.forEach(entry=>{
+  if(all.some(k=>k.provider===provider&&inferPlatform(k)===platform&&k.apiKey===entry.apiKey)){duplicates++;return;}
+  const name=entry.name||(preset.label+' key '+(all.filter(k=>inferPlatform(k)===platform).length+1));
+  all.push(makeKey(provider,platform,model,endpoint,entry.apiKey,name));added++;
  });
  if(added)await persistKeys(all);
  $('ai-key-bulk').value='';
- say('Bulk add complete: '+added+' added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.',added?'success':'warning');
+ say('Bulk add complete: '+added+' '+preset.label+' key(s) added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.',added?'success':'warning');
 }
 const DEFAULT_FIELD_MAP={
  'ai-default-brand':'brand','ai-default-seller-name':'sellerName','ai-default-seller-address':'sellerAddress',
@@ -822,12 +878,12 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
-  const k=order[i],batchSize=k.provider==='groq'?3:5,batches=[];
+  const k=order[i],batchSize=providerPreset(inferPlatform(k)).maxImages||5,batches=[];
   for(let p=0;p<imgs.length;p+=batchSize)batches.push(imgs.slice(p,p+batchSize));
   try{
    const texts=[];
    for(let b=0;b<batches.length;b++){
-    const message='Analyzing photo batch '+(b+1)+'/'+batches.length+' via '+label(k.provider)+' ('+batches[b].length+' photo(s)).';
+    const message='Analyzing photo batch '+(b+1)+'/'+batches.length+' via '+label(k.provider,k.platform)+' ('+batches[b].length+' photo(s)).';
     say(message);
     setProgress(progressBase+Math.round(progressSpan*(b/batches.length)),message);
     const text=k.provider==='gemini'?await gemini(k,prompt,batches[b]):await compatible(k,prompt,batches[b]);
@@ -836,10 +892,10 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
    }
    const resultText=texts.length===1?texts[0]:mergeImageBatchResponses(texts);
    await set({[ROT]:(start+i+1)%list.length});
-   liveLog('All '+imgs.length+' photos were sent in '+batches.length+' batch(es) using '+label(k.provider)+'.','ok');
+   liveLog('All '+imgs.length+' photos were sent in '+batches.length+' batch(es) using '+label(k.provider,k.platform)+'.','ok');
    return {text:resultText,name:safeKeyName(k),provider:k.provider,imagesUsed:imgs.length,imageBatches:batches.length};
   }
-  catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));liveLog(label(k.provider)+' failed; trying next enabled key if available.','warn');}
+  catch(e){errors.push(label(k.provider,k.platform)+' '+safeKeyName(k)+': '+redactSecrets(e,k));liveLog(label(k.provider,k.platform)+' failed; trying next enabled key if available.','warn');}
  }
  throw new Error('All enabled API keys failed. '+errors.join(' | '));
 }
@@ -849,14 +905,14 @@ async function callTextAI(prompt){
  if(!list.length)throw new Error('Add and enable an API key in Settings before using AI Listing Chat.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
-  const k=order[i];say('AI Listing Chat · trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
+  const k=order[i];say('AI Listing Chat · trying '+label(k.provider,k.platform)+' ('+(i+1)+'/'+order.length+')…');
   try{
    const text=k.provider==='gemini'?await gemini(k,prompt,[]):await compatible(k,prompt,[]);
    await set({[ROT]:(start+i+1)%list.length});
    return {text,name:safeKeyName(k),provider:k.provider};
   }catch(e){
-   errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));
-   liveLog('CHAT · '+label(k.provider)+' failed; trying the next enabled key.','warn');
+   errors.push(label(k.provider,k.platform)+' '+safeKeyName(k)+': '+redactSecrets(e,k));
+   liveLog('CHAT · '+label(k.provider,k.platform)+' failed; trying the next enabled key.','warn');
   }
  }
  throw new Error('AI Listing Chat providers failed. '+errors.join(' | '));
