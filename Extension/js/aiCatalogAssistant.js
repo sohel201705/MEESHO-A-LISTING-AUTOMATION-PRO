@@ -304,7 +304,7 @@ const readImage=async file=>{
 };
 async function images(){
  const files=Array.from($('ai-product-images').files||[]);if(!files.length)throw new Error('Upload at least one product photo.');if(files.length>10)throw new Error('Upload no more than 10 photos of the same product at once.');
- for(const f of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(f.type))throw new Error('Use JPG, PNG, WEBP or GIF: '+f.name);if(f.size>8*1024*1024)throw new Error(f.name+' is over 8 MB.');}
+ for(const f of files){if(!['image/jpeg','image/png','image/webp'].includes(f.type))throw new Error('Use JPG, PNG, WEBP or GIF: '+f.name);if(f.size>8*1024*1024)throw new Error(f.name+' is over 8 MB.');}
  liveLog('Loading '+files.length+' photos for one product.','info');
  const all=await Promise.all(files.map(readImage));const host=$('ai-image-list');host.replaceChildren();all.forEach((i,n)=>host.appendChild(el('span','ai-image-chip',(n+1)+'. '+i.name)));
  liveLog('Image set ready: '+all.length+' photo(s).','ok');return all;
