@@ -65,9 +65,13 @@ async function researchProduct(p,imgs,allowed){
  ];
  research.queries=queries;
  const all=[];
- for(const q of queries){
-  try{const rows=await searchGoogle(q);rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:q},row));});}
-  catch(e){research.error=research.error?research.error+' | '+String(e.message||e):String(e.message||e);}
+ for(let i=0;i<queries.length;i++){
+  const q=queries[i];
+  setProgress(32+Math.round(12*(i/queries.length)),'Google Search · query '+(i+1)+'/'+queries.length);
+  liveLog('GOOGLE SEARCH · query '+(i+1)+'/'+queries.length+': '+q,'info');
+  try{const rows=await searchGoogle(q);rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:q},row));});liveLog('GOOGLE SEARCH · '+rows.length+' result(s) for query '+(i+1)+'.','ok');}
+  catch(e){research.error=research.error?research.error+' | '+String(e.message||e):String(e.message||e);liveLog('GOOGLE SEARCH · query '+(i+1)+' failed: '+redactSecrets(e,null),'warn');}
+  setProgress(32+Math.round(12*((i+1)/queries.length)),'Google Search · query '+(i+1)+' complete');
  }
  research.results=all.slice(0,10);
  if(!research.results.length&&!research.error)research.error='No usable Google results were found.';
@@ -980,10 +984,12 @@ async function generate(googleAllowed){
  try{
   clearLiveLog();
   liveLog('PIPELINE START · product research + catalog draft','info');
+  setProgress(2,'Scanning Meesho catalog fields');
   say('Scanning the selected Meesho catalog…');
   const scan=await scanCurrentCatalog(false),s=schema(scan);
   if(!s.fields.length)throw new Error('No form fields found. Select the catalog and scan again.');
   liveLog('CATALOG SCAN · '+s.fields.length+' mapped fields; '+s.measurements.length+' per-size measurement fields.','ok');
+  setProgress(9,'Catalog schema scanned');
 
   const inventoryInput=$('ai-product-inventory');
   if(inventoryInput&&!String(inventoryInput.value||'').trim())inventoryInput.value='100';
@@ -1014,6 +1020,7 @@ async function generate(googleAllowed){
   if(p.productMrp)liveLog('MRP · Using the seller-entered MRP ₹'+p.productMrp+'.','info');
   else liveLog('MRP · No verified MRP entered; will not invent one.','warn');
 
+  setProgress(13,'Loading seller profile and category overrides');
   const category=$('ai-profile-category')?$('ai-profile-category').value:'general';
   const d=await getActiveDefaultsForCategory(category);
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · category override: '+category+'.','ok');
@@ -1021,6 +1028,7 @@ async function generate(googleAllowed){
   setProgress(18,'Photos ready · identify product and title');
   if(!p.productName){
    try{
+    setProgress(19,'Identifying product title from photos');
     say('Identifying product title from the photos before Google Search…');
     liveLog('VISION IDENTIFICATION · inferring a cautious searchable title from the first 3 photos.','info');
     const identified=await identifyProductFromPhotos(imgs,p.productFacts);
@@ -1049,14 +1057,16 @@ async function generate(googleAllowed){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
   }
+  setProgress(31,'Searching product specifications and official tax sources');
   say('Searching Google for product specifications, category clues and official tax sources…');
   liveLog('GOOGLE RESEARCH · query based on the identified/seller-provided product title.','info');
   researchNow=await researchProduct(p,imgs,googleAllowed);
   renderResearchSources(researchNow);
   liveLog('GOOGLE RESEARCH · '+researchNow.results.length+' result(s) captured from '+new Set(researchNow.results.map(r=>r.domain)).size+' domain(s).','ok');
   if(researchNow.error)liveLog('GOOGLE RESEARCH · '+researchNow.error,'warn');
+  setProgress(45,'Analyzing product photos in batches');
   say('Analyzing all photos and matching values to the scanned field schema…');
-  const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs);
+  const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25);
   const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   let ai=0,presetCount=0,bad=0,generated=0;
@@ -1077,6 +1087,7 @@ async function generate(googleAllowed){
   if(p.sellingPrice&&!p.wrongReturnPrice)needs.push({identifier:'only_wrong_return_price',reason:'Enter a selling price greater than ₹5; the returns price is always calculated as selling price minus ₹5.'});
   if(p.sellingPrice&&p.productMrp&&parseMoney(p.productMrp)<parseMoney(p.sellingPrice))needs.push({identifier:'product_mrp',reason:'Entered MRP is lower than the selling price. Verify the printed MRP and price before submitting.'});
   const codes=draftTitle?await productCodes(draftTitle,p):{styleCode:'',skuCode:''};
+  setProgress(73,'Mapping verified facts, pricing, profile details and generated codes');
   liveLog('VALUE MAPPING · applying title-based SKU/Style Code, seller defaults and explicit pricing rules.','info');
   s.fields.forEach(f=>{
    const old=captured(scan,f.identifier);
@@ -1117,6 +1128,7 @@ async function generate(googleAllowed){
    }
    values[f.identifier]=String(v).trim();ai++;
   });
+  setProgress(77,'Preparing a 950–1000 character description');
   const descriptionField=s.fields.find(isDescriptionField);
   if(descriptionField){
    const before=String(values[descriptionField.identifier]||proposed[descriptionField.identifier]||captured(scan,descriptionField.identifier)||'');
@@ -1139,6 +1151,7 @@ async function generate(googleAllowed){
     else if(f.values.length&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no semantically exact matching dropdown option. Select the correct option manually; none was guessed.'});
    });
   }
+  setProgress(90,'Checking mandatory fields, dropdown options and size variants');
   s.measurements.forEach(f=>{if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
   s.fields.forEach(f=>{
    if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))
