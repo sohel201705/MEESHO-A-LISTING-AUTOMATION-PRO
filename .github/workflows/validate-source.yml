@@ -68,11 +68,12 @@ jobs:
           const popup = fs.readFileSync('Extension/popup.js', 'utf8');
           const content = fs.readFileSync('Extension/content.js', 'utf8');
           const shipping = fs.readFileSync('Extension/js/shippingOptimizer.js', 'utf8');
+          const styles = fs.readFileSync('Extension/styles.css', 'utf8');
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.7');
+          assert.equal(manifest.version, '3.17.8');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -257,5 +258,53 @@ jobs:
             { identifier: 'seat_height', label: 'Seat Height' },
             { identifier: 'seating_capacity', label: 'Seating Capacity' }
           ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
-          console.log('Free-mode safeguards and v3.17.7 Meesho selected-catalog detection/autofill regressions passed.');
+          // v3.17.8 tax candidates, provider presets, Free Size apply and shipping image refresh.
+          assert.ok(aiAssistant.includes('function taxDropdownOption(field,candidate)'));
+          assert.ok(aiAssistant.includes('const missingTaxFields=s.fields.filter'));
+          assert.ok(aiAssistant.includes('PROVISIONAL TAX CANDIDATE'));
+          assert.ok(aiAssistant.includes('function officialTaxEvidence'));
+          assert.ok(aiAssistant.includes('https://openrouter.ai/api/v1/chat/completions'));
+          assert.ok(aiAssistant.includes('https://router.huggingface.co/v1/chat/completions'));
+          assert.ok(aiAssistant.includes('https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/ai/v1/chat/completions'));
+          assert.ok(aiAssistant.includes('https://api.together.xyz/v1/chat/completions'));
+          assert.ok(aiAssistant.includes('https://api.deepinfra.com/v1/openai/chat/completions'));
+          assert.ok(aiAssistant.includes('https://api.fireworks.ai/inference/v1/chat/completions'));
+          assert.ok(aiAssistant.includes('does not support JSON mode; retrying without response_format'));
+          assert.equal((popupHtml.match(/data-provider-card=/g) || []).length, 9);
+          assert.ok(popupHtml.includes('ai-provider-section-label'));
+          assert.ok(popupHtml.includes('ai-provider-card__status--free'));
+          assert.ok(content.includes('function findVisibleSizeOption(target)'));
+          assert.ok(content.includes('function findSizeApplyButton(optionRow)'));
+          assert.ok(content.includes('findVisibleSizeOption(wantedSizes[0])'));
+          assert.ok(content.includes('Size checkbox selected, but Meesho did not apply'));
+          assert.ok(!content.includes('items[0]'));
+          assert.ok(shipping.includes('function scoreFrontImage(img)'));
+          assert.ok(shipping.includes('function scoreMeeshoImageInput(input)'));
+          assert.ok(shipping.includes('function scheduleCurrentImageRefresh()'));
+          assert.ok(shipping.includes('data-source-mode="manual"'));
+          assert.ok(shipping.includes('mls-manual-image-input'));
+          assert.ok(styles.includes('#mls-lower-shipping-box .mls-source-switch__btn--active'));
+
+          const taxStart = aiAssistant.indexOf('const OFFICIAL_TAX_HOST=');
+          const taxEnd = aiAssistant.indexOf('function hashText(text){', taxStart);
+          assert.ok(taxStart >= 0 && taxEnd > taxStart);
+          function URLStub(url) {
+            const match = String(url).match(/^https?:\\/\\/([^/:?#]+)/i);
+            if (!match) throw new Error('Invalid test URL');
+            this.hostname = match[1];
+          }
+          const taxUtils = new Function('norm','URL',aiAssistant.slice(taxStart,taxEnd)+'; return {isTaxField,officialTaxEvidence,taxDropdownOption};')(
+            value => String(value||'').replace(/[＊*]/g,'').replace(/\\s+/g,' ').trim().toLowerCase(),URLStub
+          );
+          const hsnField = {identifier:'hsn_code',label:'HSN Code',values:['Select'],inputType:'mui'};
+          const gstField = {identifier:'gst',label:'GST',values:['0','5','12','18','28'],inputType:'mui'};
+          const officialTaxResults = {results:[{title:'CBIC GST tariff and HSN classification',url:'https://cbic-gst.gov.in/official-hsn-rate.html',domain:'cbic-gst.gov.in',snippet:'HSN 96170011 vacuum flasks and other vacuum vessels tariff classification. GST rate 18% applicable.'}]};
+          assert.equal(taxUtils.isTaxField(hsnField),true);
+          assert.equal(taxUtils.isTaxField(gstField),true);
+          assert.equal(taxUtils.taxDropdownOption(hsnField,'96170011'),'96170011');
+          assert.equal(taxUtils.taxDropdownOption(gstField,'18%'),'18');
+          assert.ok(taxUtils.officialTaxEvidence(hsnField,'96170011',{url:officialTaxResults.results[0].url},officialTaxResults));
+          assert.ok(taxUtils.officialTaxEvidence(gstField,'18%',{url:officialTaxResults.results[0].url},officialTaxResults));
+          assert.equal(taxUtils.officialTaxEvidence(hsnField,'96170011',{url:'https://example.com/96170011'},{results:[{url:'https://example.com/96170011',title:'HSN 96170011',snippet:'classification'}]}),null);
+          console.log('Free-mode safeguards and v3.17.8 tax, nine provider cards, Free Size Apply, and current shipping image regressions passed.');
           NODE
