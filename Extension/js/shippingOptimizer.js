@@ -643,12 +643,18 @@
 
   function getMeeshoImageInput() {
     const exact=document.querySelector('#changeFrontImage');
-    if(exact&&!exact.closest('#'+BOX_ID))return exact;
     const inputs=Array.from(document.querySelectorAll('input[type="file"]')).filter(input=>!input.closest('#'+BOX_ID));
-    if(!inputs.length)return null;
+    if(!inputs.length)return exact&&!exact.closest('#'+BOX_ID)?exact:null;
     const scored=inputs.map(input=>({input,score:scoreMeeshoImageInput(input)})).sort((a,b)=>b.score-a.score);
-    const best=scored[0];
-    return best&&best.score>0?best.input:null;
+    // Some catalog pages keep an empty #changeFrontImage input mounted while the
+    // actual selected front photo is stored in a different upload input.
+    // Prefer a real selected FileList; only prefer the exact ID when it has a file
+    // or no other file input has a selection.
+    const selected=scored.filter(x=>x.input.files&&x.input.files.length&&x.score>-50);
+    if(selected.length)return selected[0].input;
+    if(exact&&!exact.closest('#'+BOX_ID))return exact;
+    const best=scored.find(x=>x.score>0);
+    return best?best.input:null;
   }
 
   function currentSourceFile() {
