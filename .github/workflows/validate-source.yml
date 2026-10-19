@@ -230,10 +230,8 @@ jobs:
           const detectorStart = aiAssistant.indexOf('function detectMeeshoCatalog(scan){');
           const detectorEnd = aiAssistant.indexOf('function promptFor(scan,p,d,s,research)', detectorStart);
           assert.ok(detectorStart >= 0 && detectorEnd > detectorStart);
-          const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();
-          const detectCatalog = new Function('
-          NODE
-, 'norm', aiAssistant.slice(detectorStart, detectorEnd) + '; return detectMeeshoCatalog;')(() => null, normalise);
+          const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const detectCatalog = new Function("$", "norm", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise);
           const fixture = (fields, capturedValues = {}, catalogContext = {}) => ({
             sections: [{ id: 'product_data', fields }],
             capturedValues,
