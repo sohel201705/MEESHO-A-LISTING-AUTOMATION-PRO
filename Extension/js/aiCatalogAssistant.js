@@ -179,7 +179,7 @@ const PROVIDERS={
  fireworks:{label:'Fireworks AI',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a supported vision model ID; free credits/promotions vary.'},
  mistral:{label:'Mistral AI',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a vision-capable model ID supported by your Mistral account; availability/pricing vary.'},
  huggingface:{label:'Hugging Face Router',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'',kind:'compatible',hint:'Use a compatible vision model and provider token available to your account; free credits/rates vary.'},
- freellmapi:{label:'FreeLLMAPI Local Router',endpoint:'http://localhost:3001/v1/chat/completions',model:'auto',kind:'compatible',hint:'Uses your local FreeLLMAPI server at localhost:3001. Ensure a vision-capable model is enabled in the router fallback chain.'},
+ freellmapi:{label:'FreeLLMAPI Local Router',endpoint:'http://127.0.0.1:31415/v1/chat/completions',model:'auto',kind:'compatible',hint:'Uses your local FreeLLMAPI server at 127.0.0.1:31415. Ensure a vision-capable model is enabled in the router fallback chain.'},
  custom:{label:'Custom OpenAI-Compatible',endpoint:'',model:'',kind:'compatible',hint:'Enter an HTTPS endpoint, or HTTP only for localhost/127.0.0.1, and a compatible vision model ID.'}
 };
 function label(p){return (PROVIDERS[p]&&PROVIDERS[p].label)||'OpenAI-compatible API';}
