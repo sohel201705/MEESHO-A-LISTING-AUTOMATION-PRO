@@ -1304,6 +1304,7 @@ async function generate(googleAllowed){
   const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   let ai=0,presetCount=0,bad=0,generated=0;
+  const populatedTaxCandidates=new Set();
   const titleField=s.fields.find(isProductNameField);
   activeTitleFieldId=titleField?titleField.identifier:'';
   const baseSuggestedTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
@@ -1328,7 +1329,7 @@ async function generate(googleAllowed){
    const fixed=preset(f,p,d);
    const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
-   if(old&&!isPriceOrInventory&&!isDescriptionField(f)){values[f.identifier]=old;return;}
+   if(old&&!isPriceOrInventory&&!isDescriptionField(f)&&!isTaxField(f)){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
    if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    if(isPriceOrInventory){
@@ -1339,6 +1340,38 @@ async function generate(googleAllowed){
     }
     return;
    }
+   const v=proposed[f.identifier];
+   if(isTaxField(f)){
+    if(v===undefined||v===null||!String(v).trim()){
+     if(old)values[f.identifier]=old;
+     if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier)){
+      needs.push({identifier:f.identifier,reason:(old?'Current value '+old+' was preserved, but the AI could not confidently reclassify this product tax field.':'AI could not find a defensible HSN/GST candidate for this product.')+' Check official CBIC/GST classification/rate before submitting.'});
+     }
+     return;
+    }
+    const taxValue=normalizeTaxCandidate(f,v);
+    if(!taxValue){
+     if(old)values[f.identifier]=old;
+     needs.push({identifier:f.identifier,reason:'AI suggested tax candidate "'+String(v)+'", but it could not be mapped to a valid '+(isHsnField(f)?'4/6/8-digit HSN':'GST rate')+' value in the selected Meesho field options. '+(old?'The existing value '+old+' was preserved. ':'')+'Review the official source and available dropdown choices.'});
+     return;
+    }
+    if(!allowed(taxValue,f)){
+     if(old)values[f.identifier]=old;
+     needs.push({identifier:f.identifier,reason:'AI tax candidate "'+taxValue+'" is not an exact allowed Meesho option. '+(old?'Existing value '+old+' was preserved. ':'')+'Select the valid official HSN/GST option.'});
+     bad++;return;
+    }
+    const src=officialTaxEvidence(f,taxValue,evidence[f.identifier],researchNow);
+    values[f.identifier]=taxValue;ai++;populatedTaxCandidates.add(f.identifier);
+    if(src){
+     liveLog('TAX LOOKUP · '+f.label+' candidate '+taxValue+' matched official result '+src.url+'.','ok');
+     needs.push({identifier:f.identifier,reason:'Official source candidate: '+src.url+'. Confirm it applies to this exact product/category before final submission.'});
+    }else{
+     liveLog('TAX LOOKUP · '+f.label+' candidate '+taxValue+' populated from AI product classification, but the official snippet did not prove the exact value.','warn');
+     needs.push({identifier:f.identifier,reason:'Provisional AI candidate: '+taxValue+'. The field was filled to avoid leaving a mandatory field blank, but an exact official CBIC/GST match was not verified in the returned snippets. Verify the classification before submitting.'});
+    }
+    return;
+   }
+   if(v===undefined||v===null||!String(v).trim())return;
    const generatedValue=generatedCodeForField(f,codes);
    if(generatedValue){
     if(allowed(generatedValue,f)){values[f.identifier]=generatedValue;generated++;}
@@ -1349,16 +1382,6 @@ async function generate(googleAllowed){
    if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
    if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
     needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
-   }
-   if(isTaxField(f)){
-    const src=officialTaxEvidence(f,String(v),evidence[f.identifier],researchNow);
-    if(!src){
-     needs.push({identifier:f.identifier,reason:'AI suggested candidate "'+String(v)+'", but Google results did not contain a directly matching official CBIC/GST source for this exact code/rate. It was not filled. Verify the product classification before use.'});
-     return;
-    }
-    values[f.identifier]=String(v).trim();ai++;
-    needs.push({identifier:f.identifier,reason:'Official result matched this candidate: '+src.url+'. Confirm the exact classification applies to this product before submitting.'});
-    return;
    }
    values[f.identifier]=String(v).trim();ai++;
   });
@@ -1384,6 +1407,12 @@ async function generate(googleAllowed){
     if(candidate&&allowed(candidate,f))values[f.identifier]=candidate;
     else if(f.values.length&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Product capacity '+(ml>=1000?(ml/1000)+' L':ml+' ml')+' has no semantically exact matching dropdown option. Select the correct option manually; none was guessed.'});
    });
+  }
+  // Drop generic "field blank" notes for tax candidates we have now populated;
+  // retain the more informative official-source / provisional verification note.
+  for(let i=needs.length-1;i>=0;i--){
+   const item=needs[i];
+   if(item&&populatedTaxCandidates.has(item.identifier)&&/(required field is blank|not specified|required and not specified|value was not found|candidate.*not filled)/i.test(String(item.reason||'')))needs.splice(i,1);
   }
   setProgress(90,'Checking mandatory fields, dropdown options and size variants');
   s.measurements.forEach(f=>{if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Actual per-size measurement is required; do not estimate from a photo.'});});
