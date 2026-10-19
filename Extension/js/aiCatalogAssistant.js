@@ -105,29 +105,99 @@ function isTaxField(field){
  const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label);
  return /\bhsn\b/.test(x)||(/\bgst\b/.test(x)&&!/(gstin|gst number|registration)/.test(x));
 }
-function officialTaxEvidence(field,candidate,evidence,research){
- const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label),isHsn=/\bhsn\b/.test(x);
- let sourceUrl='';
- if(typeof evidence==='string')sourceUrl=evidence;
- else if(evidence&&typeof evidence==='object')sourceUrl=String(evidence.url||evidence.sourceUrl||'');
- const row=(research.results||[]).find(r=>r.url===sourceUrl);
- if(!row)return null;
- let host='';try{host=new URL(row.url).hostname;}catch(e){}
- if(!OFFICIAL_TAX_HOST.test(host))return null;
- const sourceText=String(row.title+' '+row.snippet),lower=sourceText.toLowerCase();
+function taxNumber(value){
+ const m=String(value??'').replace(/,/g,'').match(/\d+(?:\.\d+)?/);
+ return m?Number(m[0]):null;
+}
+function taxCodeDigits(value){return String(value??'').replace(/\D/g,'');}
+function taxDropdownValue(field,candidate,isHsn){
+ const options=Array.isArray(field.values)?field.values:[];
+ const wanted=String(candidate??'').trim();
+ if(!wanted)return '';
+ const exact=options.find(o=>norm(o)===norm(wanted));
+ if(exact!==undefined)return String(exact);
  if(isHsn){
-  const digits=String(candidate||'').replace(/\D/g,'');
-  if(!/^\d{4}(?:\d{2})?(?:\d{2})?$/.test(digits))return null;
-  const keyword=lower.search(/hsn|tariff|classification|commodity|heading/);
-  if(keyword<0)return null;
-  const nearby=sourceText.slice(Math.max(0,keyword-70),Math.min(sourceText.length,keyword+150)).replace(/\D/g,'');
-  if(!nearby.includes(digits))return null;
- }else{
-  const n=String(candidate||'').match(/\d+(?:\.\d+)?/);if(!n)return null;
-  const compact=lower.replace(/[\s,]/g,'');
-  if(!/(gst|tax|rate|slab)/i.test(lower)||!compact.includes(String(Number(n[0]))+'%'))return null;
+  const digits=taxCodeDigits(wanted);
+  const match=options.find(o=>taxCodeDigits(o)===digits&&digits.length>=4);
+  return match!==undefined?String(match):options.length?'':wanted;
  }
- return row;
+ const n=taxNumber(wanted);
+ if(n!==null){
+  const match=options.find(o=>{
+   const rate=taxNumber(o);
+   return rate!==null&&Math.abs(rate-n)<0.0001;
+  });
+  if(match!==undefined)return String(match);
+ }
+ return options.length?'':wanted;
+}
+function officialTaxEvidence(field,candidate,evidence,research,context={}){
+ const fieldLabel=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label);
+ const isHsn=/\bhsn\b/.test(fieldLabel),rawCandidate=String(candidate??'').trim();
+ if(!rawCandidate)return null;
+ const dropdownCandidate=taxDropdownValue(field,rawCandidate,isHsn);
+ if(!dropdownCandidate||!allowed(dropdownCandidate,field))return null;
+ const evidenceUrl=typeof evidence==='string'?evidence:
+  evidence&&typeof evidence==='object'?String(evidence.url||evidence.sourceUrl||''):'';
+ const exactRow=evidenceUrl?(research.results||[]).find(r=>r.url===evidenceUrl):null;
+ const officialRows=(research.taxResults&&research.taxResults.length?research.taxResults:(research.results||[]).filter(r=>{
+  try{return OFFICIAL_TAX_HOST.test(new URL(r.url).hostname);}catch(e){return false;}
+ }));
+ const rows=exactRow?[exactRow,...officialRows.filter(r=>r.url!==exactRow.url)]:officialRows;
+ const compactDigits=source=>String(source||'').replace(/\D/g,'');
+ const hsnContext=Object.entries(context.values||{}).find(([key])=>/\bhsn\b|hsn_code/i.test(String(key)));
+ const hsnCandidate=hsnContext?taxCodeDigits(hsnContext[1]):'';
+ const relatedTerms=[context.productName,context.productType,context.productCategory,context.material,context.productFacts]
+  .filter(Boolean).join(' ').toLowerCase().split(/[^a-z0-9]+/).filter(token=>token.length>=4&&!/water|steel|product|bottle|generic|india|made|with|from|the|this|that|pack|piece|pieces/.includes(token));
+ const isRelevantRow=sourceText=>{
+  const lower=String(sourceText||'').toLowerCase();
+  const compact=lower.replace(/[^a-z0-9]/g,'');
+  if(hsnCandidate&&compact.includes(hsnCandidate))return true;
+  if(hsnCandidate&&hsnCandidate.length>4&&compact.includes(hsnCandidate.slice(0,4))&&
+     /hsn|tariff|heading|classification|gst|rate/.test(lower))return true;
+  return relatedTerms.some(token=>lower.includes(token));
+ };
+ for(const row of rows){
+  let host='';try{host=new URL(row.url).hostname;}catch(e){}
+  if(!OFFICIAL_TAX_HOST.test(host))continue;
+  const sourceText=String((row.title||'')+' '+(row.snippet||''));
+  const lower=sourceText.toLowerCase();
+  if(isHsn){
+   const digits=taxCodeDigits(rawCandidate);
+   if(!/^(\d{4}|\d{6}|\d{8})$/.test(digits))continue;
+   const compact=lower.replace(/[^a-z0-9]/g,'');
+   const classKeywords=/hsn|tariff|classification|commodity|heading/.test(lower);
+   if(!classKeywords)continue;
+   // Exact tariff-code support is preferred. Do not treat a related heading
+   // as proof of an unverified 6/8 digit Indian tariff item.
+   if(compact.includes(digits)){
+    if(!isRelevantRow(sourceText)&&relatedTerms.length)continue;
+    return {row,value:dropdownCandidate,level:'exact',candidate:rawCandidate};
+   }
+   // A 4-digit heading can be used only when that exact heading is an allowed
+   // Meesho option and the government source describes that heading. This does
+   // not claim that the unverified lower-level tariff item is exact.
+   if(digits.length>4){
+    const heading=digits.slice(0,4);
+    const headingOption=taxDropdownValue(field,heading,true);
+    if(headingOption&&allowed(headingOption,field)&&compact.includes(heading)&&isRelevantRow(sourceText)){
+     return {row,value:headingOption,level:'heading',candidate:rawCandidate};
+    }
+   }
+  }else{
+   const rate=taxNumber(rawCandidate);
+   if(rate===null||!/(gst|tax|rate|slab|igst|cgst|sgst)/.test(lower))continue;
+   const rateMatches=new RegExp('(?:^|\\D)'+String(rate).replace('.','\\.')+'\\s*%','i').test(sourceText);
+   if(!rateMatches)continue;
+   // Tie the GST rate to the proposed HSN/classification or category, rather
+   // than accepting any official page that happens to mention the same rate.
+   const relatedByHsn=hsnCandidate&&compactDigits(sourceText).includes(hsnCandidate);
+   const relatedByHeading=hsnCandidate&&hsnCandidate.length>4&&compactDigits(sourceText).includes(hsnCandidate.slice(0,4))&&/hsn|heading|tariff|classification/.test(lower);
+   if(!(relatedByHsn||relatedByHeading||isRelevantRow(sourceText)))continue;
+   return {row,value:dropdownCandidate,level:(relatedByHsn||relatedByHeading)?'classification-linked':'official-rate',candidate:rawCandidate};
+  }
+ }
+ return null;
 }
 function hashText(text){
  let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}
