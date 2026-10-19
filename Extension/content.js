@@ -23,7 +23,7 @@
   window.addEventListener('mls:catalog-image', e => {
     const detail = e && e.detail && typeof e.detail === 'object' ? e.detail : {};
     const next = Object.assign({}, __capturedCatalogContext);
-    ['sscatId','supplierId','catalogId','categoryId','categoryName','subCategoryName','catalogType','imageUrl','fileRefId'].forEach(key => {
+    ['sscatId','catalogId','categoryId','categoryName','subCategoryName','catalogType'].forEach(key => {
       const value = detail[key];
       if (value !== undefined && value !== null && String(value).trim()) next[key] = String(value).slice(0, 500);
     });
@@ -1117,8 +1117,7 @@
       ids: locationIds
     }, readCatalogContextValue(__capturedProductFields), __capturedCatalogContext);
     result.catalogContext.ids = Object.assign({}, locationIds, {
-      sscatId: __capturedCatalogContext.sscatId || locationIds.sscatId || '',
-      supplierId: __capturedCatalogContext.supplierId || ''
+      sscatId: __capturedCatalogContext.sscatId || locationIds.sscatId || ''
     });
 
     return result;
