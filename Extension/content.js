@@ -12,11 +12,23 @@
   }, 2000);
 
   let __capturedProductFields = null;
+  let __capturedCatalogContext = {};
   let __fieldSourceMap = {};
   let __fieldSectionMap = {};
   let __labelCache = new Map();
   let __apiAllowedValues = {};
   window.addEventListener('__mfpd', e => { __capturedProductFields = e.detail; });
+  // The main-world interceptor already observes the catalog/draft APIs. Capture
+  // the selected catalog IDs/context from its event instead of asking the user.
+  window.addEventListener('mls:catalog-image', e => {
+    const detail = e && e.detail && typeof e.detail === 'object' ? e.detail : {};
+    const next = Object.assign({}, __capturedCatalogContext);
+    ['sscatId','supplierId','catalogId','categoryId','categoryName','subCategoryName','catalogType','imageUrl','fileRefId'].forEach(key => {
+      const value = detail[key];
+      if (value !== undefined && value !== null && String(value).trim()) next[key] = String(value).slice(0, 500);
+    });
+    __capturedCatalogContext = next;
+  });
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1083,6 +1095,9 @@
       return rect.width > 0 && rect.height > 0;
     }).map(node => String(node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim())
       .filter(text => text && text.length <= 100).filter((text, index, list) => list.indexOf(text) === index).slice(0, 12);
+    try {
+      window.dispatchEvent(new CustomEvent('mls:request-catalog-context'));
+    } catch (_) {}
     let locationIds = {};
     try {
       const params = new URLSearchParams(window.location.search);
@@ -1100,8 +1115,11 @@
       subCategoryName: '',
       catalogType: '',
       ids: locationIds
-    }, readCatalogContextValue(__capturedProductFields));
-    result.catalogContext.ids = locationIds;
+    }, readCatalogContextValue(__capturedProductFields), __capturedCatalogContext);
+    result.catalogContext.ids = Object.assign({}, locationIds, {
+      sscatId: __capturedCatalogContext.sscatId || locationIds.sscatId || '',
+      supplierId: __capturedCatalogContext.supplierId || ''
+    });
 
     return result;
   }
