@@ -1054,7 +1054,12 @@ function cleanTitle(title){
 function buildTitleChoices(raw,baseTitle,p,d){
  const choices=[],seen=new Set();
  const add=(title,reason,recommended)=>{
-  let clean=cleanTitle(title);if(!clean)return;
+  let raw=String(title||'').replace(/\s+/g,' ').trim();if(!raw)return;
+  const packCount=Math.max(1,Math.floor(Number(p&&p.packQuantity)||1));
+  raw=raw.replace(/(?:\s*\/\s*)?(?:pack|set)\s+of\s+\d+(?:\s+(?:pieces?|pcs?))?/ig,' ');
+  raw=raw.replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').trim();
+  if(packCount)raw+=' / Pack of '+packCount;
+  let clean=cleanTitle(raw);if(!clean)return;
   if(!clean.includes(' / ')){
    const hyphenParts=clean.split(/\s+-\s+/).map(x=>x.trim()).filter(Boolean);
    if(hyphenParts.length>1)clean=hyphenParts.join(' / ');
