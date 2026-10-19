@@ -1407,7 +1407,10 @@ async function generate(googleAllowed){
    }
    if(isTaxField(f)){
     const relatedAssessment=taxAssessment.find(item=>item&&String(item.identifier||'')===String(f.identifier))||taxAssessment.find(item=>item&&((/\bhsn\b/.test(String(item.identifier||''))&&/\bhsn\b/.test(fieldText(f)))||(/\bgst\b/.test(String(item.identifier||''))&&/\bgst\b/.test(fieldText(f)))));
-    const taxContext={values:proposed,productName:draftTitle,productType:p.productType,productCategory:p.productCategory,material:p.material,productFacts:p.productFacts,classificationReason:relatedAssessment&&relatedAssessment.classificationReason||''};
+    const taxValues=Object.assign({},proposed);
+    const hsnAssessment=taxAssessment.find(item=>item&&/\bhsn\b|hsn_code/i.test(String(item.identifier||''))&&item.candidate);
+    if(hsnAssessment&&!taxValues[hsnAssessment.identifier])taxValues[hsnAssessment.identifier]=hsnAssessment.candidate;
+    const taxContext={values:taxValues,productName:researchNow.classificationSeed||researchNow.seed||p.productName,productType:p.productType,productCategory:p.productCategory,material:p.material,productFacts:p.productFacts,classificationReason:relatedAssessment&&relatedAssessment.classificationReason||''};
     let taxCandidate=String(v);
     let src=officialTaxEvidence(f,taxCandidate,taxEvidence,researchNow,taxContext);
     if(!src&&taxAssessment.length){
@@ -1431,6 +1434,7 @@ async function generate(googleAllowed){
      return;
     }
     values[f.identifier]=String(src.value||taxCandidate||v).trim();ai++;verifiedTaxFields.add(f.identifier);
+    for(let n=needs.length-1;n>=0;n--)if(needs[n]&&needs[n].identifier===f.identifier)needs.splice(n,1);
     liveLog('TAX VERIFIED · '+f.label+' = '+values[f.identifier]+' against '+src.row.url+' ('+src.level+').','ok');
     if(src.level==='heading'){
      needs.push({identifier:f.identifier,reason:'Official CBIC source supports 4-digit HSN heading '+values[f.identifier]+' but not the lower-level tariff item. Verify whether this heading is acceptable for the exact product before submitting.'});
