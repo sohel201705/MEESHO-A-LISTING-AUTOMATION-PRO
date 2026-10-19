@@ -1406,7 +1406,8 @@ async function generate(googleAllowed){
     needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
    }
    if(isTaxField(f)){
-    const relatedAssessment=taxAssessment.find(item=>item&&String(item.identifier||'')===String(f.identifier))||taxAssessment.find(item=>item&&((/\bhsn\b/.test(String(item.identifier||''))&&/\bhsn\b/.test(fieldText(f)))||(/\bgst\b/.test(String(item.identifier||''))&&/\bgst\b/.test(fieldText(f)))));\n    const taxContext={values:proposed,productName:draftTitle,productType:p.productType,productCategory:p.productCategory,material:p.material,productFacts:p.productFacts,classificationReason:relatedAssessment&&relatedAssessment.classificationReason||''};
+    const relatedAssessment=taxAssessment.find(item=>item&&String(item.identifier||'')===String(f.identifier))||taxAssessment.find(item=>item&&((/\bhsn\b/.test(String(item.identifier||''))&&/\bhsn\b/.test(fieldText(f)))||(/\bgst\b/.test(String(item.identifier||''))&&/\bgst\b/.test(fieldText(f)))));
+    const taxContext={values:proposed,productName:draftTitle,productType:p.productType,productCategory:p.productCategory,material:p.material,productFacts:p.productFacts,classificationReason:relatedAssessment&&relatedAssessment.classificationReason||''};
     let taxCandidate=String(v);
     let src=officialTaxEvidence(f,taxCandidate,taxEvidence,researchNow,taxContext);
     if(!src&&taxAssessment.length){
