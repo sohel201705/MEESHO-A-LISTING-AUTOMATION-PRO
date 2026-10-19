@@ -194,9 +194,22 @@ function modelChoices(p){
  if(p==='openrouter')return [{id:'qwen/qwen3.8-27b:free',label:'Qwen 3.8 27B · free vision model'}];
  return [];
 }
-function endpointDefault(p){return (PROVIDERS[p]&&PROVIDERS[p].endpoint)||'';}
+function endpointDefault(p){return (PROVIDERS[p]&&PROVIDERS[p].endpoint)||(p==='compatible'?'https://api.x.ai/v1/chat/completions':'');}
 function isNativeProvider(p){return p==='gemini';}
 function usesEndpoint(p){return !isNativeProvider(p);}
+function syncProviderCards(){
+ const active=$('ai-provider-type')?.value||'gemini';
+ document.querySelectorAll('#ai-provider-cards [data-api-provider]').forEach(card=>{
+  const selected=card.getAttribute('data-api-provider')===active;
+  card.classList.toggle('active',selected);card.setAttribute('aria-pressed',selected?'true':'false');
+ });
+}
+function chooseApiProvider(provider){
+ if(!PROVIDERS[provider])return;
+ const select=$('ai-provider-type');if(!select)return;
+ select.value=provider;updateProviderForm();syncProviderCards();
+ const form=$('ai-key-model');if(form)form.focus({preventScroll:true});
+}
 
 function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
@@ -1413,7 +1426,10 @@ function init(){
  });
  switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
- $('ai-provider-type').addEventListener('change',updateProviderForm);
+ $('ai-provider-type').addEventListener('change',()=>{updateProviderForm();syncProviderCards();});
+ document.querySelectorAll('#ai-provider-cards [data-api-provider]').forEach(card=>{
+  card.addEventListener('click',()=>chooseApiProvider(card.getAttribute('data-api-provider')));
+ });
  $('ai-add-key-btn').addEventListener('click',addKey);
  $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
@@ -1451,7 +1467,7 @@ function init(){
   }
  });
  window.addEventListener('seller-profile-saved',()=>loadDefaults().then(()=>liveLog('SELLER PROFILE · saved profile loaded into the workspace.','ok')).catch(e=>say(e.message||'Could not refresh seller profile.','error')));
- updatePricePreview();loadDefaults().catch(e=>say(e.message||'Could not load seller profile.','error'));renderKeys();updateProviderForm();
+ updatePricePreview();loadDefaults().catch(e=>say(e.message||'Could not load seller profile.','error'));renderKeys();updateProviderForm();syncProviderCards();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
