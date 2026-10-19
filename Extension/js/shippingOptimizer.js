@@ -1526,18 +1526,20 @@
 
           <div class="mls-controls">
             <div class="mls-source-switch" role="tablist" aria-label="Front image source">
-              <button id="mls-source-current" type="button" class="mls-source-switch__btn" data-source-mode="current">Current image</button>
-              <button id="mls-source-manual" type="button" class="mls-source-switch__btn" data-source-mode="manual">Upload own image</button>
+              <button id="mls-source-current" type="button" class="mls-source-switch__btn" data-source-mode="current">Current Catalog Photo</button>
+              <button id="mls-source-manual" type="button" class="mls-source-switch__btn" data-source-mode="manual">Upload / Replace Photo</button>
             </div>
             <div class="mls-source-row">
               <span class="mls-source-row__icon">IMG</span>
               <div>
-                <strong>Front image</strong>
-                <span id="mls-file-name">Waiting for Meesho image</span>
+                <strong>Current front product photo</strong>
+                <span id="mls-file-name">Detecting selected Meesho catalog image…</span>
               </div>
               <span id="mls-source-state" class="mls-source-row__state">AUTO</span>
             </div>
-            <input id="mls-manual-image-input" type="file" accept="image/*" hidden>
+            <button id="mls-refresh-current-image" type="button" class="mls-btn mls-btn--ghost mls-photo-refresh">↻ Refresh current catalog photo</button>
+            <p class="mls-photo-help">Auto mode uses the latest Meesho draft image when available. Choose Upload / Replace Photo to use your own file instead.</p>
+            <input id="mls-manual-image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
             <div class="mls-control-grid">
               <label>
                 <span>Target shipping</span>
@@ -1578,6 +1580,25 @@
       manualImageInput.addEventListener('change', event => {
         const file = event.target.files?.[0] || null;
         setManualSourceFile(file);
+      });
+    }
+
+    const refreshPhotoButton=box.querySelector('#mls-refresh-current-image');
+    if(refreshPhotoButton){
+      refreshPhotoButton.addEventListener('click',()=>{
+        setSourceMode(SOURCE_MODE_CURRENT);
+        requestCatalogContext();
+        const fileName=document.getElementById('mls-file-name');
+        const sourceState=document.getElementById('mls-source-state');
+        if(fileName)fileName.textContent='Refreshing selected Meesho catalog image…';
+        if(sourceState)sourceState.textContent='CHECKING';
+        setStatus('Refreshing the current catalog photo…');
+        setTimeout(()=>{
+          syncSourcePreview();
+          const current=currentSourceFile();
+          const saved=String(draftInfo?.imageUrl||'').trim();
+          setStatus(current||saved?'Current catalog photo detected. Review the preview, then optimize.':'No active catalog photo was detected. Use Upload / Replace Photo or refresh the Meesho catalog page.');
+        },180);
       });
     }
 
