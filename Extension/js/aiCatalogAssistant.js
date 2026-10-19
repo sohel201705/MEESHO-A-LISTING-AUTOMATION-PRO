@@ -910,7 +910,7 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
    // Local routers can have strict per-candidate image/context limits; send one compact image per request.
-   const k=order[i],batchSize=k.provider==='freellmapi'?1:((k.provider==='groq'||(k.provider==='openrouter'&&/qwen\\/qwen3\\.8-27b/i.test(k.model)))?3:5),batches=[];
+   const k=order[i],batchSize=k.provider==='freellmapi'?1:((k.provider==='groq'||(k.provider==='openrouter'&&/qwen\/qwen3\.8-27b/i.test(k.model)))?3:5),batches=[];
   for(let p=0;p<imgs.length;p+=batchSize)batches.push(imgs.slice(p,p+batchSize));
   try{
    const texts=[];
