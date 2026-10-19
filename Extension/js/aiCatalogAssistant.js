@@ -883,9 +883,14 @@ async function compatible(k,prompt,imgs=[]){
  if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
  let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
- const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
+ const requestBody={model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500};
+ // Cloudflare's compatible endpoint accepts the same message format but not all
+ // model configurations accept OpenAI JSON-mode flags; the JSON-only prompt and
+ // parser remain the fallback for that provider.
+ if(inferPlatform(k)!=='cloudflare')requestBody.response_format={type:'json_object'};
+ const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify(requestBody)});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
- if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
+ if(!r.ok)throw new Error(platformLabel(k)+' '+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
  const message=((((data.choices||[])[0]||{}).message||{}).content);
  const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
 }
@@ -1335,7 +1340,7 @@ async function generate(googleAllowed){
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
    if(old&&!isPriceOrInventory&&!isDescriptionField(f)&&!isTaxField(f)){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
-   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
+   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;if(isTaxField(f))populatedTaxCandidates.add(f.identifier);}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    if(isPriceOrInventory){
     if(old){values[f.identifier]=old;return;}
     if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier)){
