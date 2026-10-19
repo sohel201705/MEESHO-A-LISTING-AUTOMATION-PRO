@@ -1,7 +1,8 @@
 (function(){
 'use strict';
-const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1';
+const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1';
 let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''};
+let profileCache=null, titleChoices=[], activeTitleFieldId='', currentTitleProduct=null, currentTitleFields=[], currentTitleStats=null, currentTitleNeeds=[], chatHistory=[];
 const $=id=>document.getElementById(id);
 const get=k=>new Promise(r=>chrome.storage.local.get(k,r));
 const set=o=>new Promise(r=>chrome.storage.local.set(o,r));
