@@ -537,7 +537,9 @@ function updateScanSummary(scan){
  const blank=fields.filter(f=>!String(values[f.identifier||f.id]||'').trim()).length;
  const required=fields.filter(f=>f.mandatory&&!String(values[f.identifier||f.id]||'').trim()).length;
  const sizes=(scan.sections||[]).find(s=>s.id==='variations');
- host.textContent='Scanned '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
+ const detected=detectMeeshoCatalog(scan);
+ const confidence=detected.confidence==='low'?'form/photo confirmation may help':detected.confidence+' confidence';
+ host.textContent='Auto-detected from selected Meesho catalog: '+detected.name+' · '+confidence+' · '+fields.length+' fields · '+blank+' blank · '+required+' mandatory blank'+(sizes&&sizes.data&&sizes.data.length?' · '+sizes.data.length+' size options':'')+'.';
  renderAiVariationSizes(scan);
 }
 async function scanCurrentCatalog(showMessage){
@@ -663,11 +665,85 @@ function preset(f,p,d){
  return '';
 }
 function captured(scan,id){const v=(scan.capturedValues||{})[id];return v===undefined||v===null?'':String(v).trim();}
+function safeMeeshoCatalogContext(context={}){
+ return {
+  pageTitle:String(context.pageTitle||'').slice(0,120),
+  headings:Array.isArray(context.headings)?context.headings.map(x=>String(x||'').slice(0,100)).slice(0,12):[],
+  breadcrumb:String(context.breadcrumb||'').slice(0,180),
+  categoryName:String(context.categoryName||'').slice(0,100),
+  subCategoryName:String(context.subCategoryName||'').slice(0,100),
+  catalogType:String(context.catalogType||'').slice(0,100),
+  detectedCategory:String(context.detectedCategory||'').slice(0,100),
+  productType:String(context.productType||'').slice(0,100),
+  confidence:String(context.confidence||'').slice(0,16)
+ };
+}
+function detectMeeshoCatalog(scan){
+ const sections=Array.isArray(scan&&scan.sections)?scan.sections:[];
+ const fields=sections.flatMap(sec=>(sec.fields||[]).map(f=>({id:String(f.identifier||f.id||''),label:String(f.label||f.name||''),values:Array.isArray(f.values)?f.values:[]})));
+ const labelText=fields.map(f=>f.id.replace(/_/g,' ')+' '+f.label).join(' | ');
+ const selectedValues=Object.entries(scan&&scan.capturedValues||{}).filter(([,v])=>String(v||'').trim()).map(([k,v])=>k.replace(/_/g,' ')+' '+String(v)).join(' | ');
+ const context=scan&&scan.catalogContext||{};
+ const contextText=[context.pageTitle,...(context.headings||[]),context.breadcrumb,context.categoryName,context.subCategoryName,context.catalogType].filter(Boolean).join(' | ');
+ const imageNames=Array.from($('ai-product-images')?.files||[]).map(file=>String(file.name||'')).join(' | ');
+ const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value,imageNames].filter(Boolean).join(' | ');
+ const allText=norm([contextText,labelText,selectedValues,enteredText].join(' | '));
+ const fieldText=norm(labelText),visibleText=norm(contextText+' '+selectedValues+' '+enteredText);
+ const rules=[
+  {key:'bottles',name:'Bottles & Drinkware',type:'Bottle / Drinkware',signals:[
+   {r:/\b(water bottle|bottle|flask|sipper|thermos|drinkware|vacuum flask|water jug)\b/i,w:8,label:true},
+   {r:/\b(capacity in l|capacity|volume unit|leak proof|bpa free|lid type|insulation)\b/i,w:3,label:true}
+  ]},
+  {key:'apparel',name:'Apparel / Clothing',type:'Garment / Clothing',signals:[
+   {r:/\b(kurti|kurta|saree|sari|dupatta|shirt|t-shirt|jeans|dress|leggings|blouse|garment|apparel|ethnic wear)\b/i,w:8,label:false},
+   {r:/\b(sleeve length|neck type|neckline|fabric|pattern|fit type|bust|waist|hip|size chart|garment length)\b/i,w:4,label:true}
+  ]},
+  {key:'kitchen',name:'Kitchen / Lunch Boxes',type:'Kitchenware / Food Storage',signals:[
+   {r:/\b(lunch box|lunchbox|tiffin|food container|food storage|compartment|cutlery|microwave safe|lunch bag|kitchenware)\b/i,w:8,label:false},
+   {r:/\b(number of containers|no of containers|microwave safe|leak proof|set of containers)\b/i,w:4,label:true}
+  ]},
+  {key:'furniture',name:'Furniture / Chairs & Tables',type:'Furniture',signals:[
+   {r:/\b(plastic chair|dining chair|chair|stool|table|desk|sofa|furniture|dining set|folding chair)\b/i,w:8,label:false},
+   {r:/\b(seating capacity|arm rest|seat height|load capacity|foldable)\b/i,w:4,label:true}
+  ]},
+  {key:'baby',name:'Baby & Kids',type:'Baby / Kids Product',signals:[
+   {r:/\b(baby|infant|toddler|kids|kid's|newborn|stroller|feeding bottle|baby chair|baby diaper|toy)\b/i,w:8,label:false},
+   {r:/\b(age group|age range|recommended age|child safety)\b/i,w:3,label:true}
+  ]},
+  {key:'electronics',name:'Electronics / Accessories',type:'Electronics / Accessory',signals:[
+   {r:/\b(electronic|usb|bluetooth|charger|cable|power bank|adapter|battery|led|watt|voltage|earphone|headphone|speaker)\b/i,w:7,label:false},
+   {r:/\b(power source|charging time|battery capacity|connectivity|warranty)\b/i,w:3,label:true}
+  ]},
+  {key:'home',name:'Home & Household',type:'Home / Household Product',signals:[
+   {r:/\b(bedsheet|bed sheet|pillow|cushion|curtain|doormat|rug|towel|storage basket|home decor|wall decor)\b/i,w:7,label:false},
+   {r:/\b(thread count|fabric|wash care|room type|set contents)\b/i,w:2,label:true}
+  ]}
+ ];
+ const ranked=rules.map(rule=>{
+  let score=0;const evidence=[];
+  rule.signals.forEach(sig=>{
+   const haystack=sig.label?fieldText+' '+visibleText:allText;
+   if(sig.r.test(haystack)){score+=sig.w;evidence.push(sig.r.source.replace(/\\b/g,'').replace(/[()\\?]/g,'').split('|').slice(0,3).join('/'));}
+  });
+  // Actual Meesho field design is stronger evidence than a generic product word in page chrome.
+  if(rule.key==='bottles'&&/\b(capacity in l|volume unit)\b/i.test(fieldText))score+=4;
+  if(rule.key==='apparel'&&/\b(sleeve length|neck type|bust|garment length|size chart)\b/i.test(fieldText))score+=4;
+  if(rule.key==='kitchen'&&/\b(number of containers|microwave safe|no of containers)\b/i.test(fieldText))score+=4;
+  if(rule.key==='furniture'&&/\b(seating capacity|seat height|arm rest)\b/i.test(fieldText))score+=3;
+  return Object.assign({},rule,{score,evidence});
+ }).sort((a,b)=>b.score-a.score);
+ const winner=ranked[0],runner=ranked[1];
+ const enough=winner&&winner.score>=7&&winner.score-(runner?runner.score:0)>=2;
+ if(!enough)return {key:'general',name:'Selected Meesho Catalog · General Type',type:'Product type from selected form',confidence:'low',score:winner?winner.score:0,evidence:winner?winner.evidence:[],context:safeMeeshoCatalogContext(context)};
+ return {key:winner.key,name:winner.name,type:winner.type,confidence:winner.score>=11?'high':'medium',score:winner.score,evidence:winner.evidence,context:safeMeeshoCatalogContext(context)};
+}
+
 function promptFor(scan,p,d,s,research){
- const data={platform:'Meesho supplier catalog listing form',productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},googleSearchSeed:research.seed||'',googleSearchResults:(research.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet,query:r.query}))};
+ const data={platform:'Meesho supplier catalog listing form',selectedMeeshoCatalog:safeMeeshoCatalogContext(scan.catalogContext||{}),autoDetectedCatalog:detectMeeshoCatalog(scan),productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},googleSearchSeed:research.seed||'',googleSearchResults:(research.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet,query:r.query}))};
  return [
  'You are an evidence-first Indian e-commerce catalog listing assistant. Inspect the attached product photos, user inputs, scanned form schema, and the supplied Google Search result snippets before drafting values.',
  'Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"titleOptions":[{"title":"slash-separated title under 250 characters","reason":"brief reason","recommended":true}],"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}],"evidence":{"hsn_code":{"url":"exact URL from googleSearchResults"},"supplier_gst_percent":{"url":"exact URL from googleSearchResults"}}}. Provide 4 unique titleOptions whenever the form contains a product title field. Exactly one is recommended. Do not return markdown.',
+ 'The user already selected the catalog/category on Meesho. Do not ask them to select a category again. Infer the product family from selected catalog context, schema field identifiers/labels, live selected values and photos. Fill only fields that exist in this selected Meesho form; use only its exact allowed dropdown options. Never invent field identifiers or category values.',
  'Try every scanned field, not only obvious title/description fields. Prefer verified source facts, product image evidence, user inputs, and matching seller defaults. Never create field identifiers.',
  'If a product-name field exists, generate 4 distinct title options. Each title must be no longer than 250 characters and must use readable slash-separated segments (` / `): Product Type / Brand (if verified) / Capacity or Size / Material (if verified) / Color / Pack Quantity (if verified) / One verified feature. Omit unknown segments; do not use comma-separated keyword stuffing. Put the best search-friendly truthful option first and set recommended=true for exactly one. Do not repeat keywords or add unsupported claims.',
  'For every description field, aim for 950–1000 characters including spaces, and never exceed 1000 characters. Include only known product details, common use context, care/usage guidance only if appropriate, and a reminder to check dimensions/capacity where relevant. Never pad with repeated filler just to reach a count. Do not claim food-grade, insulation, hot/cold retention, leak-proof, BPA-free, certification, compatibility, or special construction unless verified by the photos/text or a relevant source.',
@@ -1026,8 +1102,13 @@ async function generate(googleAllowed){
   say('Scanning the selected Meesho catalog…');
   const scan=await scanCurrentCatalog(false),s=schema(scan);
   if(!s.fields.length)throw new Error('No form fields found. Select the catalog and scan again.');
+  let detectedCatalog=detectMeeshoCatalog(scan);
+  let category=detectedCatalog.key||'general';
+  scan.catalogContext=Object.assign({},scan.catalogContext||{},{detectedCategory:detectedCatalog.name,detectedCategoryKey:category,productType:detectedCatalog.type,confidence:detectedCatalog.confidence});
   liveLog('CATALOG SCAN · '+s.fields.length+' mapped fields; '+s.measurements.length+' per-size measurement fields.','ok');
-  setProgress(9,'Catalog schema scanned');
+  liveLog('AUTO CATEGORY · '+detectedCatalog.name+' · '+detectedCatalog.confidence+' confidence'+(detectedCatalog.evidence.length?' · signals: '+detectedCatalog.evidence.slice(0,3).join(', '):'')+'.','ok');
+  setProgress(9,'Catalog scanned · '+detectedCatalog.name);
+  updateScanSummary(scan);
 
   const inventoryInput=$('ai-product-inventory');
   if(inventoryInput&&!String(inventoryInput.value||'').trim())inventoryInput.value='100';
@@ -1039,6 +1120,7 @@ async function generate(googleAllowed){
    sellingPrice:$('ai-product-price').value.trim(),productMrp:$('ai-product-mrp')?$('ai-product-mrp').value.trim():'',
    inventory:inventoryInput&&String(inventoryInput.value||'').trim()?String(Math.max(0,Math.floor(Number(inventoryInput.value)||0))):'100',
    productCategory:category,
+   productType:detectedCatalog.type,
    productFacts:$('ai-product-facts').value.trim()
   };
   if(inventoryInput)inventoryInput.value=p.inventory;
@@ -1059,10 +1141,9 @@ async function generate(googleAllowed){
   if(p.productMrp)liveLog('MRP · Using the seller-entered MRP ₹'+p.productMrp+'.','info');
   else liveLog('MRP · No verified MRP entered; will not invent one.','warn');
 
-  setProgress(13,'Loading seller profile and category overrides');
-  const category=$('ai-profile-category')?$('ai-profile-category').value:'general';
-  const d=await getActiveDefaultsForCategory(category);
-  liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · category override: '+category+'.','ok');
+  setProgress(13,'Loading seller profile and matching '+detectedCatalog.name+' defaults');
+  let d=await getActiveDefaultsForCategory(category);
+  liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
   setProgress(18,'Photos ready · identify product and title');
   if(!p.productName){
@@ -1095,6 +1176,18 @@ async function generate(googleAllowed){
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
+  }
+  // If schema-only evidence is ambiguous, refine from the photo-identified title or image filename.
+  if(detectedCatalog.confidence==='low'){
+   const visionRefined=detectMeeshoCatalog(scan);
+   if(visionRefined.key!=='general'&&visionRefined.confidence!=='low'){
+    detectedCatalog=visionRefined;category=visionRefined.key;
+    p.productCategory=category;p.productType=visionRefined.type;
+    scan.catalogContext=Object.assign({},scan.catalogContext||{},{detectedCategory:visionRefined.name,detectedCategoryKey:category,productType:visionRefined.type,confidence:visionRefined.confidence});
+    d=await getActiveDefaultsForCategory(category);
+    liveLog('AUTO CATEGORY REFINED · '+visionRefined.name+' using product title/image hints plus the selected catalog schema.','ok');
+    updateScanSummary(scan);
+   }
   }
   setProgress(31,'Searching product specifications and official tax sources');
   say('Searching Google for product specifications, category clues and official tax sources…');

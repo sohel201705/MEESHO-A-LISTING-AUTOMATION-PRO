@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.6');
+          assert.equal(manifest.version, '3.17.7');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -207,5 +207,55 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-page-chat"'));
           assert.ok(popupHtml.includes('id="ai-page-activity"'));
           assert.ok(popupHtml.includes('Premium dashboard workspace: separate focused pages + neon edge glow'));
-          console.log('Free-mode safeguards and v3.17.6 dashboard, onboarding, profiles and AI workflow regressions passed.');
+
+          // Regression: category is inferred from the already-selected Meesho form,
+          // and initialized before productCategory is included in the request.
+          assert.ok(aiAssistant.includes('function detectMeeshoCatalog(scan)'));
+          const generateStart = aiAssistant.indexOf('async function generate(googleAllowed){');
+          const generateEnd = aiAssistant.indexOf('async function autofill()', generateStart);
+          assert.ok(generateStart >= 0 && generateEnd > generateStart);
+          const generateCode = aiAssistant.slice(generateStart, generateEnd);
+          assert.ok(generateCode.indexOf('let category=detectedCatalog.key') < generateCode.indexOf('productCategory:category'));
+          assert.ok(generateCode.includes('scanCurrentCatalog(false)'));
+          assert.ok(generateCode.includes('visionRefined=detectMeeshoCatalog(scan)'));
+          assert.ok(!generateCode.includes("const category=$('ai-profile-category')"));
+          assert.ok(aiAssistant.includes('Auto-detected from selected Meesho catalog:'));
+          assert.ok(content.includes('result.catalogContext = Object.assign'));
+          assert.ok(content.includes("mls:request-catalog-context"));
+          assert.ok(content.includes("window.addEventListener('mls:catalog-image'"));
+          assert.ok(popupHtml.includes('ai-optional-product-details'));
+          assert.ok(popupHtml.includes('ai-category-override-details'));
+          assert.equal((popupHtml.match(/id="ai-image-list"/g) || []).length, 1);
+
+          const detectorStart = aiAssistant.indexOf('function safeMeeshoCatalogContext(context={})');
+          const detectorEnd = aiAssistant.indexOf('function promptFor(scan,p,d,s,research)', detectorStart);
+          assert.ok(detectorStart >= 0 && detectorEnd > detectorStart);
+          const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const detectCatalog = new Function("$", "norm", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise);
+          const fixture = (fields, capturedValues = {}, catalogContext = {}) => ({
+            sections: [{ id: 'product_data', fields }],
+            capturedValues,
+            catalogContext: Object.assign({ pageTitle: 'Meesho Supplier Panel', headings: ['Add Single Catalog'] }, catalogContext)
+          });
+          assert.equal(detectCatalog(fixture([
+            { identifier: 'capacity_in_l', label: 'Capacity In L' },
+            { identifier: 'volume_unit', label: 'Volume Unit' },
+            { identifier: 'leak_proof', label: 'Leak Proof' },
+            { identifier: 'generic_name', label: 'Generic Name' }
+          ], { generic_name: 'Water Bottles' })).key, 'bottles');
+          assert.equal(detectCatalog(fixture([
+            { identifier: 'sleeve_length', label: 'Sleeve Length' },
+            { identifier: 'neck_type', label: 'Neck Type' },
+            { identifier: 'fabric', label: 'Fabric' },
+            { identifier: 'pattern', label: 'Pattern' }
+          ])).key, 'apparel');
+          assert.equal(detectCatalog(fixture([
+            { identifier: 'number_of_containers', label: 'Number of Containers' },
+            { identifier: 'microwave_safe', label: 'Microwave Safe' }
+          ])).key, 'kitchen');
+          assert.equal(detectCatalog(fixture([
+            { identifier: 'seat_height', label: 'Seat Height' },
+            { identifier: 'seating_capacity', label: 'Seating Capacity' }
+          ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
+          console.log('Free-mode safeguards and v3.17.7 Meesho selected-catalog detection/autofill regressions passed.');
           NODE

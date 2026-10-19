@@ -1999,6 +1999,17 @@
     .ai-dashboard-shell .ai-settings-section{background:linear-gradient(140deg,#101e31,#0c1727)!important;border:1px solid #28415e!important;border-radius:11px!important;padding:12px!important;margin-bottom:10px}
     .ai-dashboard-shell .ai-settings-section h4{color:#cce8ff!important;font-size:12px!important}
     .ai-dashboard-shell .ai-security-note{border-radius:8px!important}
+    .ai-dashboard-shell .ai-optional-product-details,.ai-dashboard-shell .ai-category-override-details{margin:10px 0;border:1px solid #274868;border-radius:10px;background:linear-gradient(145deg,#0e1b2e,#091422);overflow:hidden}
+    .ai-dashboard-shell .ai-optional-product-details>summary,.ai-dashboard-shell .ai-category-override-details>summary{list-style:none;cursor:pointer;display:flex;gap:5px;align-items:baseline;padding:11px;color:#bfe5ff;font-size:10px;font-weight:900}
+    .ai-dashboard-shell .ai-optional-product-details>summary::-webkit-details-marker,.ai-dashboard-shell .ai-category-override-details>summary::-webkit-details-marker{display:none}
+    .ai-dashboard-shell .ai-optional-product-details>summary:before,.ai-dashboard-shell .ai-category-override-details>summary:before{content:'＋';color:#5fe5d0;font-size:12px}
+    .ai-dashboard-shell .ai-optional-product-details[open]>summary:before,.ai-dashboard-shell .ai-category-override-details[open]>summary:before{content:'−'}
+    .ai-dashboard-shell .ai-optional-product-details>summary span,.ai-dashboard-shell .ai-category-override-details>summary span{font-size:8px;font-weight:500;color:#819ab8}
+    .ai-dashboard-shell .ai-optional-product-details .ai-product-grid{padding:0 10px 5px}
+    .ai-dashboard-shell .ai-optional-product-details>.ai-full-label{padding:0 10px 10px}
+    .ai-dashboard-shell .ai-essential-inputs label{font-size:10px}
+    .ai-dashboard-shell .ai-photo-label{margin-top:10px}
+    .ai-dashboard-shell .ai-scan-summary{border-left:3px solid #4bcbf0;background:linear-gradient(90deg,rgba(38,133,229,.12),rgba(10,24,41,.2));color:#b7d6f3}
     .ai-profile-completion-card{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:10px;border:1px solid #22665d;background:linear-gradient(130deg,rgba(20,117,103,.17),rgba(15,36,48,.3));margin-bottom:10px}
     .ai-profile-completion-icon{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:#103c39;border:1px solid #1c8c7b;color:#69f0d0;flex-shrink:0}
     .ai-profile-completion-card strong{font-size:10px;color:#c8fff1}
@@ -2537,31 +2548,36 @@
         <div class="ai-page-switcher"><span class="ai-page-overline" id="ai-page-overline">LISTING STUDIO</span><span class="ai-page-counter" id="ai-page-counter">01 / 05</span></div>
         <section class="ai-page active" id="ai-page-listing" data-ai-page-panel="listing">
           <div class="ai-page-intro"><h4>Listing Studio</h4><p>Scan Meesho, upload the product photos, prepare the draft and autofill when ready.</p></div>
-          <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
+          <div id="ai-scan-summary" class="ai-scan-summary">Open the catalog/category in Meesho first. The extension will detect its product type and form automatically.</div>
         <div class="ai-size-picker">
           <div class="ai-size-picker-title">Meesho size variants</div>
           <p class="ai-muted">Choose the sizes to select on Meesho. If Free Size is the only option, it is selected automatically.</p>
           <div id="ai-variation-sizes" class="ai-size-options"><span class="ai-muted">Scan the catalog to load size options.</span></div>
         </div>
-        <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Scan Current Meesho Catalog</button>
-        <div class="ai-product-grid">
-          <label>Product name (optional)<input id="ai-product-name" type="text" placeholder="AI identifies it from photos if blank"></label>
-          <label>Material (only if known)<input id="ai-product-material" type="text" placeholder="Verified material"></label>
-          <label>Color (optional)<input id="ai-product-color" type="text" placeholder="Known color"></label>
-          <label>Meesho selling price (₹)<input id="ai-product-price" type="number" min="5.01" step="0.01" placeholder="Enter selling price"></label>
-          <label>Wrong/Defective Returns Price (₹)<input id="ai-product-return-price" type="number" readonly placeholder="Selling price − ₹5"></label>
-          <label>MRP (₹) — printed/verified only<input id="ai-product-mrp" type="number" min="0" step="0.01" placeholder="Enter actual MRP"></label>
+        <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Refresh Selected Catalog Detection</button>
+        <div class="ai-product-grid ai-essential-inputs">
+          <label>Meesho selling price (₹)<input id="ai-product-price" type="number" min="5.01" step="0.01" placeholder="Enter selling price (optional if already set)"></label>
+          <label>Wrong/Defective Returns Price (₹)<input id="ai-product-return-price" type="number" readonly placeholder="Calculated: selling price − ₹5"></label>
+          <label>MRP (₹) — printed/verified only<input id="ai-product-mrp" type="number" min="0" step="0.01" placeholder="Actual MRP (optional)"></label>
           <label>Inventory / stock quantity<input id="ai-product-inventory" type="number" min="0" step="1" value="100" placeholder="Default: 100"></label>
-          <label>Product capacity (only if known)<input id="ai-product-capacity" type="text" placeholder="e.g. 750 ml or 1 L"></label>
-          <label>Product weight (g)<input id="ai-product-weight" type="number" min="0" step="0.1" placeholder="Actual weight"></label>
-          <label>Product length (cm)<input id="ai-product-length" type="number" min="0" step="0.1" placeholder="Actual length"></label>
-          <label>Product width (cm)<input id="ai-product-width" type="number" min="0" step="0.1" placeholder="Actual width"></label>
-          <label>Product height (cm)<input id="ai-product-height" type="number" min="0" step="0.1" placeholder="Actual height"></label>
         </div>
-        <p class="ai-muted ai-price-rule">Pricing rule: Meesho Price = Selling Price. Wrong/Defective Returns Price = Selling Price − ₹5. MRP is never guessed. Inventory defaults to 100 unless you change it.</p>
-        <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Capacity, set count, package contents, model or other confirmed facts"></textarea></label>
-        <label class="ai-full-label">Product photos for the same product (JPG / PNG / WEBP; up to 10 photos, 8 MB each)<input id="ai-product-images" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+        <p class="ai-muted ai-price-rule">The selected Meesho catalog determines the category and available fields automatically. Add photos; enter only price/stock details you know. Unverified measurements and legal details will not be guessed.</p>
+        <label class="ai-full-label ai-photo-label">Product photos for the same product (JPG / PNG / WEBP; up to 10 photos, 8 MB each)<input id="ai-product-images" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
         <div id="ai-image-list" class="ai-chip-list"></div>
+        <details class="ai-optional-product-details">
+          <summary>Optional verified product details <span>· AI will infer from the selected catalog and photos when possible</span></summary>
+          <div class="ai-product-grid">
+            <label>Product name (optional)<input id="ai-product-name" type="text" placeholder="AI identifies it from photos if blank"></label>
+            <label>Material (only if known)<input id="ai-product-material" type="text" placeholder="Verified material"></label>
+            <label>Color (optional)<input id="ai-product-color" type="text" placeholder="Known color"></label>
+            <label>Product capacity (only if known)<input id="ai-product-capacity" type="text" placeholder="e.g. 750 ml or 1 L"></label>
+            <label>Product weight (g)<input id="ai-product-weight" type="number" min="0" step="0.1" placeholder="Actual weight"></label>
+            <label>Product length (cm)<input id="ai-product-length" type="number" min="0" step="0.1" placeholder="Actual length"></label>
+            <label>Product width (cm)<input id="ai-product-width" type="number" min="0" step="0.1" placeholder="Actual width"></label>
+            <label>Product height (cm)<input id="ai-product-height" type="number" min="0" step="0.1" placeholder="Actual height"></label>
+          </div>
+          <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Only if you have confirmed capacity, set count, package contents or model details"></textarea></label>
+        </details>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
         
@@ -2584,8 +2600,10 @@
               <button id="ai-profile-save" type="button" class="ai-primary-btn">Save / Update Profile</button>
               <button id="ai-profile-delete" type="button" class="ai-small-btn ai-danger">Delete</button>
             </div>
+            <details class="ai-category-override-details">
+              <summary>Advanced category-specific defaults <span>· normally detected from the selected Meesho catalog</span></summary>
             <div class="ai-profile-divider"></div>
-            <label>Product category for defaults
+            <label>Override category (advanced only)
               <select id="ai-profile-category">
                 <option value="general">General / Other</option>
                 <option value="bottles">Bottles &amp; Drinkware</option>
@@ -2597,7 +2615,7 @@
                 <option value="home">Home &amp; Household</option>
               </select>
             </label>
-            <p class="ai-muted">The fields below override only this category. Leave a field blank to use the profile's main default.</p>
+            <p class="ai-muted">Usually you do not need to choose a category. Analyze reads the selected Meesho catalog automatically. Use these overrides only when this profile needs different details for a specific product type.</p>
             <div class="ai-default-grid">
               <label>Category Brand<input id="ai-override-brand" type="text"></label>
               <label>Country of origin<input id="ai-override-country" type="text" placeholder="Only if confirmed"></label>
@@ -2612,6 +2630,7 @@
               <label class="span-2">Importer address<textarea id="ai-override-importer-address" rows="2"></textarea></label>
             </div>
             <button id="ai-profile-save-override" type="button" class="ai-secondary-btn" style="width:100%;margin-top:8px">Save Override for This Category</button>
+            </details>
           </div>
           
           <div class="ai-settings-section">

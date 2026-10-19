@@ -12,11 +12,23 @@
   }, 2000);
 
   let __capturedProductFields = null;
+  let __capturedCatalogContext = {};
   let __fieldSourceMap = {};
   let __fieldSectionMap = {};
   let __labelCache = new Map();
   let __apiAllowedValues = {};
   window.addEventListener('__mfpd', e => { __capturedProductFields = e.detail; });
+  // The main-world interceptor already observes the catalog/draft APIs. Capture
+  // the selected catalog IDs/context from its event instead of asking the user.
+  window.addEventListener('mls:catalog-image', e => {
+    const detail = e && e.detail && typeof e.detail === 'object' ? e.detail : {};
+    const next = Object.assign({}, __capturedCatalogContext);
+    ['sscatId','catalogId','categoryId','categoryName','subCategoryName','catalogType'].forEach(key => {
+      const value = detail[key];
+      if (value !== undefined && value !== null && String(value).trim()) next[key] = String(value).slice(0, 500);
+    });
+    __capturedCatalogContext = next;
+  });
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1054,6 +1066,58 @@
         sec.fields.sort((a, b) => (a._top || 0) - (b._top || 0));
         sec.fields.forEach(f => delete f._top);
       }
+    });
+
+    // Expose only small, non-sensitive catalog/page context so the popup can
+    // infer the already-selected Meesho catalog from its real form structure.
+    function readCatalogContextValue(source, depth = 0, out = {}) {
+      if (depth > 6 || source == null || typeof source !== 'object') return out;
+      const keys = Array.isArray(source) ? source.entries() : Object.entries(source);
+      for (const [rawKey, value] of keys) {
+        const key = String(rawKey).toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (typeof value === 'string' || typeof value === 'number') {
+          const text = String(value).trim();
+          if (text && text.length <= 100) {
+            if (['categoryname','catalogcategoryname','primarycategoryname'].includes(key) && !out.categoryName) out.categoryName = text;
+            if (['subcategoryname','subsubCategoryName'.toLowerCase(),'subsubcategoryname','sscatname','catalogsubcategoryname'].includes(key) && !out.subCategoryName) out.subCategoryName = text;
+            if (['catalogtype','producttype','productfamily'].includes(key) && !out.catalogType) out.catalogType = text;
+          }
+        } else if (value && typeof value === 'object') {
+          readCatalogContextValue(value, depth + 1, out);
+        }
+      }
+      return out;
+    }
+    const headingTexts = Array.from(document.querySelectorAll(
+      'h1, h2, h3, [class*="breadcrumb" i] a, [aria-label*="breadcrumb" i] a'
+    )).filter(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }).map(node => String(node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim())
+      .filter(text => text && text.length <= 100).filter((text, index, list) => list.indexOf(text) === index).slice(0, 12);
+    try {
+      window.dispatchEvent(new CustomEvent('mls:request-catalog-context'));
+    } catch (_) {}
+    let locationIds = {};
+    try {
+      const params = new URLSearchParams(window.location.search);
+      locationIds = {
+        sscatId: params.get('sscat_id') || params.get('sscatId') || params.get('sub_sub_category_id') || '',
+        categoryId: params.get('category_id') || params.get('categoryId') || '',
+        catalogId: params.get('catalog_id') || params.get('catalogId') || ''
+      };
+    } catch (_) {}
+    result.catalogContext = Object.assign({
+      pageTitle: String(document.title || '').slice(0, 120),
+      pagePath: String(window.location.pathname || '').slice(0, 200),
+      headings: headingTexts,
+      categoryName: '',
+      subCategoryName: '',
+      catalogType: '',
+      ids: locationIds
+    }, readCatalogContextValue(__capturedProductFields), __capturedCatalogContext);
+    result.catalogContext.ids = Object.assign({}, locationIds, {
+      sscatId: __capturedCatalogContext.sscatId || locationIds.sscatId || ''
     });
 
     return result;
