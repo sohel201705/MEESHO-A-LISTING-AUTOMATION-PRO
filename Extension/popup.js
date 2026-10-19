@@ -1390,6 +1390,42 @@ document.getElementById('autofill-btn')?.addEventListener('click', async () => {
 
 // Saved profiles stay in chrome.storage.local. No profile values, scans or user actions are sent to a third-party server.
 
+const ONBOARD_DEFAULTS_MAP = {
+  'onboard-brand':'brand','onboard-seller-name':'sellerName','onboard-seller-address':'sellerAddress',
+  'onboard-manufacturer-name':'manufacturerName','onboard-manufacturer-address':'manufacturerAddress','onboard-manufacturer-pincode':'manufacturerPincode',
+  'onboard-packer-name':'packerName','onboard-packer-address':'packerAddress','onboard-packer-pincode':'packerPincode',
+  'onboard-country':'countryOfOrigin','onboard-importer-name':'importerName','onboard-importer-address':'importerAddress','onboard-importer-pincode':'importerPincode',
+  'onboard-support-phone':'supportPhone','onboard-support-email':'supportEmail','onboard-hsn':'hsn','onboard-gst':'gst'
+};
+function sellerSetupFlagKey(user=currentUser) {
+  const identity=String(user?.uid||user?.email||'local-user').toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+  return 'ai_seller_setup_completed_v1_'+identity;
+}
+function localGet(keys) {
+  return new Promise(resolve=>chrome.storage.local.get(keys,result=>resolve(result||{})));
+}
+function localSet(values) {
+  return new Promise((resolve,reject)=>chrome.storage.local.set(values,()=>{
+    if(chrome.runtime.lastError)reject(new Error(chrome.runtime.lastError.message));else resolve();
+  }));
+}
+function fillOnboardingForm(defaults={},profileName='') {
+  Object.entries(ONBOARD_DEFAULTS_MAP).forEach(([id,key])=>{const input=document.getElementById(id);if(input)input.value=String(defaults[key]||'');});
+  const name=document.getElementById('onboard-profile-name');if(name&&profileName)name.value=profileName;
+  const notApplicable=['Not Required','N/A','Not Applicable'].includes(String(defaults.importerName||''));
+  const check=document.getElementById('onboard-importer-na');if(check)check.checked=notApplicable;
+  ['onboard-importer-name','onboard-importer-address','onboard-importer-pincode'].forEach(id=>{
+    const input=document.getElementById(id);if(!input)return;input.disabled=notApplicable;input.style.opacity=notApplicable?'0.55':'1';
+    if(notApplicable)input.value='Not Required';else if(input.value==='Not Required')input.value='';
+  });
+}
+async function prefillOnboardingFromStorage() {
+  const data=await localGet(['ai_seller_profiles_v1','ai_seller_defaults_v1']);
+  const db=data.ai_seller_profiles_v1||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+  const profile=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
+  fillOnboardingForm(Object.assign({},data.ai_seller_defaults_v1||{},profile?.defaults||{}),profile?.name||'');
+}
+
 function enterLandingView() {
   if (!currentUser || !hasAutofillAccess(currentUser)) {
     loadPlans();
