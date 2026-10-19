@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1';
+const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1', PROFILE_OWNER='ai_seller_profile_owner_v1';
 let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''};
 let profileCache=null, titleChoices=[], activeTitleFieldId='', currentTitleProduct=null, currentTitleFields=[], currentTitleStats=null, currentTitleNeeds=[], chatHistory=[];
 const $=id=>document.getElementById(id);
@@ -302,8 +302,25 @@ function fillMappedFields(map,obj){
  Object.entries(map).forEach(([id,key])=>{if($(id))$(id).value=String((obj&&obj[key])||'');});
 }
 function makeProfileId(){return 'seller-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);}
+function currentSellerIdentity(){
+ return typeof sellerIdentity==='function'?sellerIdentity():'';
+}
+function scopedSellerKey(base){
+ const identity=currentSellerIdentity();
+ const token=(identity||'legacy').replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+ return base+'__'+token;
+}
+function profileDbKey(){return scopedSellerKey(PROFILE_DB);}
+function defaultsStoreKey(){return scopedSellerKey(DEFAULTS);}
 async function readProfileStore(){
- const r=await get(PROFILE_DB);let db=r[PROFILE_DB];
+ const identity=currentSellerIdentity(),ownerKey=PROFILE_OWNER;
+ const dbKey=profileDbKey(),r=await get([dbKey,PROFILE_DB,ownerKey]);
+ let db=r[dbKey];
+ if(!db){
+  const owner=String(r[ownerKey]||'');
+  if(owner&&identity&&owner!==identity)db={activeId:'',profiles:[]};
+  else db=r[PROFILE_DB];
+ }
  if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
  return db;
 }
@@ -331,7 +348,7 @@ async function loadSelectedProfile(){
  $('ai-profile-name').value=profile.name||'Seller Profile';
  fillMappedFields(DEFAULT_FIELD_MAP,profile.defaults||{});
  fillOverrideEditor(profile,$('ai-profile-category').value||'general');
- await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults||{}});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults||{}});
  say('Loaded seller profile: '+(profile.name||'Seller Profile')+'.','success');
 }
 async function loadCategoryOverride(){
@@ -339,8 +356,12 @@ async function loadCategoryOverride(){
  fillOverrideEditor(profile,$('ai-profile-category').value||'general');
 }
 async function loadDefaults(){
- const r=await get([DEFAULTS,PROFILE_DB]),legacy=r[DEFAULTS]||{};
- let db=r[PROFILE_DB];
+ const identity=currentSellerIdentity(),owner=String((await get(PROFILE_OWNER))[PROFILE_OWNER]||'');
+ const legacyAllowed=!(owner&&identity&&owner!==identity);
+ const keys=[defaultsStoreKey(),profileDbKey(),DEFAULTS,PROFILE_DB,PROFILE_OWNER];
+ const r=await get(keys);
+ const legacy=r[defaultsStoreKey()]||((legacyAllowed)?r[DEFAULTS]||{}:{});
+ let db=r[profileDbKey()]||((legacyAllowed)?r[PROFILE_DB]:null);
  if(!db||!Array.isArray(db.profiles)||!db.profiles.length){
   db={activeId:'profile-default',profiles:[{id:'profile-default',name:legacy.sellerName||'Default Seller Profile',defaults:legacy,categoryOverrides:{}}]};
  }else{
@@ -350,15 +371,21 @@ async function loadDefaults(){
  profileCache=db;renderProfileSelector(db);
  const active=selectedProfile(db);
  if(active){$('ai-profile-name').value=active.name||'Default Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,active.defaults||legacy);}
+ else{$('ai-profile-name').value='Main Seller Profile';fillMappedFields(DEFAULT_FIELD_MAP,{});}
  fillOverrideEditor(active,$('ai-profile-category').value||'general');
- await set({[PROFILE_DB]:db,[DEFAULTS]:(active&&active.defaults)||legacy});
+ if(identity){
+  const migratedLegacy=!owner&&(Boolean(r[DEFAULTS])||Boolean(r[PROFILE_DB]));
+  const scopedValues={[profileDbKey()]:db,[defaultsStoreKey()]:(active&&active.defaults)||legacy};
+  if(migratedLegacy)scopedValues[PROFILE_OWNER]=identity;
+  await set(scopedValues);
+ }
 }
 async function persistActiveProfileDefaults(d,successMessage){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===$('ai-profile-select').value)||db.profiles[0];
  if(!profile)throw new Error('Create a seller profile first.');
  profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
  profile.defaults=d;db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:d});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:d});
  renderProfileSelector(db);if($('ai-profile-select'))$('ai-profile-select').value=profile.id;
  if(successMessage)say(successMessage,'success');
 }
@@ -372,7 +399,7 @@ async function saveProfile(){
  if(!profile){profile={id:makeProfileId(),name:'Seller Profile',defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
  profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
  profile.defaults=d;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:d});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:d});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;
  say('Profile "'+profile.name+'" saved locally with base seller/legal details.','success');
 }
@@ -380,7 +407,7 @@ async function createProfile(){
  const current=readMappedFields(DEFAULT_FIELD_MAP),db=profileCache||await readProfileStore();
  const profile={id:makeProfileId(),name:'New Seller Profile',defaults:current,categoryOverrides:{}};
  db.profiles.push(profile);db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:current});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:current});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
  fillMappedFields(DEFAULT_FIELD_MAP,current);fillOverrideEditor(profile,$('ai-profile-category').value||'general');
  say('New profile created. Edit the base details, then Save / Update Profile.','success');
@@ -391,7 +418,7 @@ async function deleteProfile(){
  const profile=db.profiles.find(p=>p.id===id);if(!profile)return;
  if(!confirm('Delete profile "'+(profile.name||'Seller Profile')+'" and its category overrides from this Chrome profile?'))return;
  db.profiles=db.profiles.filter(p=>p.id!==id);db.activeId=db.profiles[0].id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:db.profiles[0].defaults||{}});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:db.profiles[0].defaults||{}});
  renderProfileSelector(db);$('ai-profile-select').value=db.activeId;await loadSelectedProfile();
  say('Seller profile deleted.','success');
 }
@@ -407,13 +434,13 @@ async function saveCategoryOverride(){
  if(Object.values(override).some(v=>String(v||'').trim()))profile.categoryOverrides[category]=override;
  else delete profile.categoryOverrides[category];
  db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults});
+ await set({[profileDbKey()]:db,[defaultsStoreKey()]:profile.defaults});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
  say('Saved category-specific overrides for '+($('ai-profile-category').selectedOptions[0]?.textContent||category)+'. Blank override fields use the profile base details.','success');
 }
 async function getActiveDefaultsForCategory(category){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===((db.activeId)||$('ai-profile-select')?.value))||db.profiles[0];
- const stored=await get(DEFAULTS),base=Object.assign({},stored[DEFAULTS]||{},profile&&profile.defaults||{});
+ const stored=await get(defaultsStoreKey()),base=Object.assign({},stored[defaultsStoreKey()]||{},profile&&profile.defaults||{});
  const override=(profile&&profile.categoryOverrides&&profile.categoryOverrides[category])||{};
  Object.entries(override).forEach(([key,value])=>{if(String(value||'').trim())base[key]=String(value).trim();});
  return base;
@@ -1220,8 +1247,43 @@ async function autofill(){
   say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}
 }
+const AI_PAGE_META={
+ listing:{label:'LISTING STUDIO',counter:'01 / 05'},
+ profile:{label:'SELLER PROFILE',counter:'02 / 05'},
+ api:{label:'API CONNECTIONS',counter:'03 / 05'},
+ chat:{label:'AI LISTING CHAT',counter:'04 / 05'},
+ activity:{label:'ACTIVITY CENTER',counter:'05 / 05'}
+};
+function switchAiDashboardPage(page){
+ if(!AI_PAGE_META[page])page='listing';
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page]').forEach(button=>{
+  const active=button.getAttribute('data-ai-page')===page;
+  button.classList.toggle('active',active);
+  button.setAttribute('aria-current',active?'page':'false');
+ });
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page-panel]').forEach(panel=>{
+  panel.classList.toggle('active',panel.getAttribute('data-ai-page-panel')===page);
+ });
+ const label=$('ai-page-overline'),counter=$('ai-page-counter');
+ if(label)label.textContent=AI_PAGE_META[page].label;
+ if(counter)counter.textContent=AI_PAGE_META[page].counter;
+ // The legacy Meesho form lives outside the AI card; show it only in Listing Studio.
+ const root=$('tab-fill');
+ if(root){
+  const legacyScan=root.querySelector(':scope > .scan-section');
+  const step=root.querySelector(':scope > .step-label');
+  const fields=$('dynamic-sections-container'),footer=$('fill-footer');
+  [legacyScan,step,fields,footer].forEach(node=>{if(node)node.style.display=page==='listing'?'':'none';});
+ }
+ liveLog('WORKSPACE NAVIGATION · '+AI_PAGE_META[page].label+' opened.','info');
+}
+
 function init(){
  if(!$('ai-catalog-assistant'))return;
+ document.querySelectorAll('#ai-catalog-assistant [data-ai-page]').forEach(button=>{
+  button.addEventListener('click',()=>switchAiDashboardPage(button.getAttribute('data-ai-page')));
+ });
+ switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
  $('ai-add-key-btn').addEventListener('click',addKey);
@@ -1260,6 +1322,7 @@ function init(){
    liveLog('AUTOFILL · '+String(message.label||'Processing fields'),'info');
   }
  });
+ window.addEventListener('seller-profile-saved',()=>loadDefaults().then(()=>liveLog('SELLER PROFILE · saved profile loaded into the workspace.','ok')).catch(e=>say(e.message||'Could not refresh seller profile.','error')));
  updatePricePreview();loadDefaults().catch(e=>say(e.message||'Could not load seller profile.','error'));renderKeys();updateProviderForm();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();

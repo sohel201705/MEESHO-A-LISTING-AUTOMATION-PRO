@@ -477,7 +477,7 @@ function renderMeasurementSection(container) {
 }
 
 function showView(viewId) {
-  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding';
+  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding' || viewId === 'onboarding';
   if (currentUser && isPremiumView && !hasAutofillAccess(currentUser)) {
     viewId = 'pricing';
   }
@@ -1390,6 +1390,114 @@ document.getElementById('autofill-btn')?.addEventListener('click', async () => {
 
 // Saved profiles stay in chrome.storage.local. No profile values, scans or user actions are sent to a third-party server.
 
+const ONBOARD_DEFAULTS_MAP = {
+  'onboard-brand':'brand','onboard-seller-name':'sellerName','onboard-seller-address':'sellerAddress',
+  'onboard-manufacturer-name':'manufacturerName','onboard-manufacturer-address':'manufacturerAddress','onboard-manufacturer-pincode':'manufacturerPincode',
+  'onboard-packer-name':'packerName','onboard-packer-address':'packerAddress','onboard-packer-pincode':'packerPincode',
+  'onboard-country':'countryOfOrigin','onboard-importer-name':'importerName','onboard-importer-address':'importerAddress','onboard-importer-pincode':'importerPincode',
+  'onboard-support-phone':'supportPhone','onboard-support-email':'supportEmail','onboard-hsn':'hsn','onboard-gst':'gst'
+};
+function sellerIdentity(user=currentUser) {
+  return String(user?.uid||user?.email||'').toLowerCase();
+}
+function sellerScopedStorageKey(base,user=currentUser) {
+  const identity=sellerIdentity(user)||'legacy';
+  const token=identity.replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+  return base+'__'+token;
+}
+function sellerProfileDbKey(user=currentUser) { return sellerScopedStorageKey('ai_seller_profiles_v1',user); }
+function sellerDefaultsStorageKey(user=currentUser) { return sellerScopedStorageKey('ai_seller_defaults_v1',user); }
+function sellerSetupFlagKey(user=currentUser) {
+  const identity=sellerIdentity(user)||'local-user';
+  const safe=identity.replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+  return 'ai_seller_setup_completed_v1_'+safe;
+}
+function localGet(keys) {
+  return new Promise(resolve=>chrome.storage.local.get(keys,result=>resolve(result||{})));
+}
+function localSet(values) {
+  return new Promise((resolve,reject)=>chrome.storage.local.set(values,()=>{
+    if(chrome.runtime.lastError)reject(new Error(chrome.runtime.lastError.message));else resolve();
+  }));
+}
+function fillOnboardingForm(defaults={},profileName='') {
+  Object.entries(ONBOARD_DEFAULTS_MAP).forEach(([id,key])=>{const input=document.getElementById(id);if(input)input.value=String(defaults[key]||'');});
+  const name=document.getElementById('onboard-profile-name');if(name&&profileName)name.value=profileName;
+  const notApplicable=['Not Required','N/A','Not Applicable'].includes(String(defaults.importerName||''));
+  const check=document.getElementById('onboard-importer-na');if(check)check.checked=notApplicable;
+  ['onboard-importer-name','onboard-importer-address','onboard-importer-pincode'].forEach(id=>{
+    const input=document.getElementById(id);if(!input)return;input.disabled=notApplicable;input.style.opacity=notApplicable?'0.55':'1';
+    if(notApplicable)input.value='Not Required';else if(input.value==='Not Required')input.value='';
+  });
+}
+async function prefillOnboardingFromStorage() {
+  const dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+  const data=await localGet([dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']);
+  const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+  const db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null)||{};
+  const profiles=Array.isArray(db.profiles)?db.profiles:[];
+  const profile=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
+  const defaults=Object.assign({},data[defaultsKey]||(legacyAllowed?data.ai_seller_defaults_v1:{})||{},profile?.defaults||{});
+  fillOnboardingForm(defaults,profile?.name||'Main Seller Profile');
+  const status=document.getElementById('onboard-status');
+  if(status)status.textContent=owner&&identity&&owner!==identity&&!data[dbKey]?'Create a profile for this signed-in account. Previous account details are not copied into this setup.':'Enter details you know; unconfirmed legal fields can stay blank.';
+}
+
+async function saveInitialSellerProfile() {
+  const status=document.getElementById('onboard-status'),button=document.getElementById('onboard-save-continue');
+  const sellerName=String(document.getElementById('onboard-seller-name')?.value||'').trim();
+  const sellerAddress=String(document.getElementById('onboard-seller-address')?.value||'').trim();
+  if(!sellerName||!sellerAddress){
+    if(status)status.textContent='Please enter Seller / Business Name and Seller Address. Unknown manufacturer/importer/tax details may remain blank.';
+    if(!sellerName)document.getElementById('onboard-seller-name')?.focus();else document.getElementById('onboard-seller-address')?.focus();
+    return;
+  }
+  if(button){button.disabled=true;button.textContent='SAVING PROFILE…';}
+  try{
+    const defaults={};
+    Object.entries(ONBOARD_DEFAULTS_MAP).forEach(([id,key])=>{defaults[key]=String(document.getElementById(id)?.value||'').trim();});
+    if(document.getElementById('onboard-importer-na')?.checked){
+      defaults.importerName='Not Required';defaults.importerAddress='Not Required';defaults.importerPincode='Not Required';
+    }
+    const dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+    const data=await localGet([dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']);
+    const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+    let db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null);
+    const migratingLegacy=!data[dbKey]&&legacyAllowed&&(Boolean(data.ai_seller_profiles_v1)||Boolean(data.ai_seller_defaults_v1));
+    if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
+    const name=String(document.getElementById('onboard-profile-name')?.value||'').trim()||'Main Seller Profile';
+    let profile=db.profiles.find(p=>p.id===db.activeId)||db.profiles[0];
+    if(!profile){profile={id:'seller-main-'+Date.now().toString(36),name,defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
+    profile.name=name;profile.defaults=defaults;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;
+    const storeValues={[dbKey]:db,[defaultsKey]:defaults,[sellerSetupFlagKey()]:true};
+    if(migratingLegacy&&!owner)storeValues.ai_seller_profile_owner_v1=identity;
+    await localSet(storeValues);
+    if(status)status.textContent='Profile saved. Opening your workspace…';
+    showStatus('Seller profile saved locally.','success');
+    openLandingWorkspace();
+  }catch(error){
+    if(status)status.textContent='Could not save profile: '+(error?.message||'Unknown error');
+  }finally{
+    if(button){button.disabled=false;button.innerHTML='SAVE PROFILE &amp; CONTINUE <span>→</span>';}
+  }
+}
+function toggleOnboardingImporterFields(notApplicable) {
+  ['onboard-importer-name','onboard-importer-address','onboard-importer-pincode'].forEach(id=>{
+    const input=document.getElementById(id);if(!input)return;
+    input.disabled=!!notApplicable;input.style.opacity=notApplicable?'0.55':'1';
+    if(notApplicable)input.value='Not Required';else if(input.value==='Not Required')input.value='';
+  });
+}
+
+function openLandingWorkspace() {
+  currentProfileName = null;
+  currentProfileMode = null;
+  setProfileContextBar();
+  populateProfileDropdown();
+  showView('profilesLanding');
+  updateAccountUI();
+  window.dispatchEvent(new Event('seller-profile-saved'));
+}
 function enterLandingView() {
   if (!currentUser || !hasAutofillAccess(currentUser)) {
     loadPlans();
@@ -1398,14 +1506,25 @@ function enterLandingView() {
     showView('pricing');
     return;
   }
-
-  currentProfileName = null;
-  currentProfileMode = null;
-  setProfileContextBar();
-  populateProfileDropdown();
-  showView('profilesLanding');
-  updateAccountUI();
-
+  const flagKey=sellerSetupFlagKey(),dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+  localGet([flagKey,dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']).then(data=>{
+    const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+    const db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null)||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+    const active=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
+    const defaults=Object.assign({},data[defaultsKey]||(legacyAllowed?data.ai_seller_defaults_v1:{})||{},active?.defaults||{});
+    const hasBasics=Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
+    if(data[flagKey]||hasBasics){
+      if(hasBasics&&!data[flagKey]){
+        const migrated={[dbKey]:db,[defaultsKey]:defaults,[flagKey]:true};
+        if(!data[dbKey]&&legacyAllowed&&!owner&&(data.ai_seller_profiles_v1||data.ai_seller_defaults_v1))migrated.ai_seller_profile_owner_v1=identity;
+        localSet(migrated).catch(()=>{});
+      }
+      openLandingWorkspace();
+      return;
+    }
+    prefillOnboardingFromStorage().catch(()=>{});
+    showView('onboarding');
+  }).catch(()=>openLandingWorkspace());
 }
 
 function setProfileSelection(name) {

@@ -1959,7 +1959,82 @@
     .tab{color:#91a4bf!important}
     .tab.active{color:#8cc8ff!important;border-bottom-color:#3b9eff!important}
     .tab-content{background:#0b1220!important;color:#e5efff!important}
-  </style>
+    /* Premium dashboard workspace: separate focused pages + neon edge glow */
+    body{background:#070d19!important;color:#e8f2ff!important}
+    .header{background:linear-gradient(110deg,#091524,#101f36 55%,#0b2a37)!important;border-bottom:1px solid rgba(77,180,255,.28)!important;box-shadow:0 4px 22px rgba(0,0,0,.22),0 1px 18px rgba(40,160,255,.06)!important}
+    #view-profilesLanding,#view-fill,#view-pricing,#view-onboarding{background:radial-gradient(ellipse at top left,rgba(38,122,255,.13),transparent 38%),radial-gradient(ellipse at top right,rgba(23,223,190,.07),transparent 32%),#070d19!important;color:#e6f1ff!important}
+    #view-profilesLanding>div:first-child{background:linear-gradient(150deg,#0e1a2d,#0a1220)!important;border:1px solid #24415e!important;box-shadow:0 0 0 1px rgba(52,152,255,.05),0 16px 44px rgba(0,0,0,.35),0 0 22px rgba(41,157,255,.1)!important}
+    #view-profilesLanding .account-overview-card{background:linear-gradient(145deg,#101f35,#0b1525)!important;border-color:#284361!important}
+    #view-profilesLanding .account-row{border-color:#253b56!important}
+    #view-profilesLanding .account-row__label,#view-profilesLanding .support-footer__label{color:#8ba6c6!important}
+    #view-profilesLanding .account-row__value{color:#e3efff!important}
+    #view-profilesLanding .profile-dropdown-trigger,#profile-dropdown-trigger{background:#0a1423!important;border-color:#2c4d71!important;color:#e6f1ff!important;box-shadow:0 0 14px rgba(54,156,255,.06)}
+    #view-profilesLanding .support-footer{border-color:#263c57!important}
+    #view-profilesLanding .support-footer__link:not(.support-footer__link--wa){background:#102138!important;color:#cde4ff!important;border-color:#284663!important}
+    .ai-dashboard-shell{background:linear-gradient(160deg,#0b1628 0%,#0a1220 50%,#0d1a2e 100%)!important;border:1px solid #26496b!important;border-radius:15px!important;box-shadow:0 0 0 1px rgba(53,160,255,.045),0 14px 38px rgba(0,0,0,.34),0 0 28px rgba(40,153,255,.11)!important;padding:12px!important;color:#e7f1ff!important}
+    .ai-dashboard-overview{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 4px 12px}
+    .ai-dashboard-eyebrow{font-size:8px;font-weight:900;letter-spacing:1.5px;color:#55d9c5;margin-bottom:5px}
+    .ai-dashboard-title{font-size:17px;line-height:1.2;font-weight:950;letter-spacing:-.45px;color:#f1f7ff;text-shadow:0 0 16px rgba(75,166,255,.13)}
+    .ai-dashboard-welcome p{font-size:10px;line-height:1.5;color:#8fa8c8;margin-top:5px;max-width:285px}
+    .ai-workspace-avatar{flex:0 0 39px;height:39px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(145deg,rgba(61,164,255,.2),rgba(45,235,198,.08));border:1px solid rgba(89,193,255,.46);color:#70eece;font-size:23px;box-shadow:0 0 18px rgba(56,164,255,.17),inset 0 0 12px rgba(52,160,255,.09)}
+    .ai-dashboard-nav{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:5px 0 12px}
+    .ai-menu-card{display:flex;align-items:center;gap:8px;text-align:left;min-width:0;padding:9px 8px;background:linear-gradient(150deg,#101f34,#0a1525);border:1px solid #263e5b;border-radius:10px;color:#dcecff;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}
+    .ai-menu-card:hover{transform:translateY(-1px);border-color:#4b9cf3;box-shadow:0 0 16px rgba(45,153,255,.15)}
+    .ai-menu-card.active{background:linear-gradient(145deg,#123253,#10263b);border-color:#43aeff;box-shadow:0 0 0 1px rgba(67,174,255,.09),0 0 17px rgba(44,157,255,.15),inset 0 0 18px rgba(45,157,255,.05)}
+    .ai-menu-icon{flex:0 0 27px;height:27px;display:grid;place-items:center;border-radius:8px;background:#0b1a2c;border:1px solid #274968;color:#69c8ff;font-size:16px;box-shadow:0 0 9px rgba(59,166,255,.1)}
+    .ai-menu-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+    .ai-menu-text strong{font-size:10px;font-weight:900;white-space:nowrap}
+    .ai-menu-text small{font-size:8px;line-height:1.25;color:#839fbe;white-space:normal}
+    .ai-menu-arrow{font-size:17px;color:#5faeff}
+    .ai-page-switcher{display:flex;align-items:center;justify-content:space-between;margin:2px 1px 8px;padding:0 1px}
+    .ai-page-overline{font-size:8px;font-weight:900;letter-spacing:1.2px;color:#5bd9c5}
+    .ai-page-counter{font-size:8px;font-weight:800;color:#6f89a8}
+    .ai-page{display:none;min-width:0;animation:premiumIn .18s ease-out}
+    .ai-page.active{display:block}
+    .ai-page-intro{padding:10px 10px 12px;background:linear-gradient(120deg,rgba(43,135,232,.105),rgba(30,210,190,.04));border:1px solid #24415f;border-radius:10px;margin-bottom:10px}
+    .ai-page-intro h4{font-size:14px;font-weight:950;color:#eaf4ff}
+    .ai-page-intro p{font-size:10px;line-height:1.5;color:#8ea8c6;margin-top:4px}
+    .ai-dashboard-shell .ai-head{display:none}
+    .ai-dashboard-shell .ai-menu-card:focus-visible,.ai-dashboard-shell button:focus-visible{outline:2px solid #58bcff;outline-offset:2px}
+    .ai-dashboard-shell .ai-settings-section{background:linear-gradient(140deg,#101e31,#0c1727)!important;border:1px solid #28415e!important;border-radius:11px!important;padding:12px!important;margin-bottom:10px}
+    .ai-dashboard-shell .ai-settings-section h4{color:#cce8ff!important;font-size:12px!important}
+    .ai-dashboard-shell .ai-security-note{border-radius:8px!important}
+    .ai-profile-completion-card{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:10px;border:1px solid #22665d;background:linear-gradient(130deg,rgba(20,117,103,.17),rgba(15,36,48,.3));margin-bottom:10px}
+    .ai-profile-completion-icon{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:#103c39;border:1px solid #1c8c7b;color:#69f0d0;flex-shrink:0}
+    .ai-profile-completion-card strong{font-size:10px;color:#c8fff1}
+    .ai-profile-completion-card p{font-size:9px;line-height:1.5;color:#83b9b0;margin-top:3px}
+    .ai-activity-tips{border:1px solid #253f5d;background:#0c192b;border-radius:9px;padding:10px;margin-top:10px}
+    .ai-activity-tips strong{font-size:10px;color:#8bd0ff}
+    .ai-activity-tips p{font-size:9px;line-height:1.55;color:#8da6c5;margin-top:4px}
+    .ai-dashboard-shell .ai-live-console{margin-top:0}
+    .onboarding-wrap{width:100%;max-width:760px;margin:0 auto;padding:14px;overflow-y:auto}
+    .onboarding-hero{position:relative;overflow:hidden;border-radius:16px;padding:20px 18px 14px;background:radial-gradient(ellipse at 95% 5%,rgba(42,198,235,.2),transparent 40%),linear-gradient(145deg,#102844,#0a1423 70%);border:1px solid #32618a;box-shadow:0 0 25px rgba(48,155,255,.15),0 20px 44px rgba(0,0,0,.25)}
+    .onboarding-orb{position:absolute;right:17px;top:17px;width:39px;height:39px;display:grid;place-items:center;border-radius:13px;background:rgba(43,175,255,.14);border:1px solid #398abf;color:#75e5df;font-size:23px;box-shadow:0 0 17px rgba(47,195,255,.22)}
+    .onboarding-kicker{font-size:8px;letter-spacing:1.3px;color:#72dbd2;font-weight:900}
+    .onboarding-hero h2{max-width:300px;margin-top:10px;font-size:20px;line-height:1.2;letter-spacing:-.5px;color:#f2f8ff}
+    .onboarding-hero p{font-size:10px;line-height:1.55;color:#91b4d2;margin-top:8px;max-width:450px;padding-right:13px}
+    .onboarding-progress{height:4px;background:#1b3550;border-radius:99px;overflow:hidden;margin-top:16px}
+    .onboarding-progress span{display:block;width:100%;height:100%;background:linear-gradient(90deg,#46a7ff,#42edc4);box-shadow:0 0 10px #32bfff}
+    .onboarding-form-card{background:linear-gradient(145deg,#101d30,#0c1524);border:1px solid #243f5e;border-radius:13px;padding:13px;margin-top:10px;box-shadow:0 8px 24px rgba(0,0,0,.19)}
+    .onboarding-section-heading{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+    .onboarding-step{width:29px;height:29px;display:grid;place-items:center;flex-shrink:0;border-radius:9px;background:rgba(55,157,255,.13);border:1px solid #356e9c;color:#8bd4ff;font-size:10px;font-weight:900}
+    .onboarding-section-heading h3{font-size:12px;color:#eaf4ff;font-weight:900}
+    .onboarding-section-heading p{font-size:9px;color:#7e9abb;margin-top:2px}
+    .onboarding-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .onboarding-grid label{min-width:0;display:flex;flex-direction:column;gap:5px;color:#a9c3e0;font-size:9px;font-weight:800}
+    .onboarding-grid label.span-2{grid-column:1/-1}
+    .onboarding-grid label b{color:#61d8c2;display:inline}
+    .onboarding-grid input:not([type=checkbox]),.onboarding-grid textarea{width:100%;min-width:0;background:#08111e;color:#e7f1ff;border:1px solid #294766;border-radius:8px;padding:9px 10px;font:inherit;font-size:10px;outline:none}
+    .onboarding-grid input:focus,.onboarding-grid textarea:focus{border-color:#43b2ff;box-shadow:0 0 0 2px rgba(67,178,255,.12),0 0 13px rgba(67,178,255,.08)}
+    .onboarding-grid input::placeholder,.onboarding-grid textarea::placeholder{color:#536d8a}
+    .onboarding-check{grid-column:1/-1;display:flex!important;flex-direction:row!important;align-items:center;gap:8px!important;background:#0a1728;border:1px solid #263e59;border-radius:8px;padding:9px}
+    .onboarding-check input{accent-color:#2be0bb}
+    .onboarding-privacy-note{font-size:9px;line-height:1.55;color:#819ab7;border-left:2px solid #3ba5e5;padding-left:8px;margin:12px 0}
+    #onboard-status{font-size:10px;color:#8fd7ff;min-height:15px;margin-bottom:8px}
+    #onboard-save-continue{display:flex;justify-content:center;gap:8px;align-items:center}
+    .onboarding-later{width:100%;background:transparent;border:1px solid #243f5d;color:#8fa8c8;padding:9px;border-radius:8px;margin-top:7px;cursor:pointer;font-size:10px}
+    @media(max-width:420px){.ai-dashboard-nav{gap:6px}.ai-menu-card{padding:8px 7px}.ai-menu-text strong{font-size:9px}.ai-menu-text small{font-size:7px}.onboarding-grid{gap:8px}}
+    </style>
 
 </head>
 
@@ -2035,7 +2110,56 @@
       <div class="ai-device-showcase" aria-hidden="true">
         <img src="assets/ai-iphone-showcase.jpg" alt="AI-selected iPhone showcase" />
       </div>
+    </div>
+  </div>
 
+  <!-- FIRST LOGIN: BASIC SELLER PROFILE SETUP -->
+  <div class="view" id="view-onboarding">
+    <div class="onboarding-wrap">
+      <div class="onboarding-hero">
+        <div class="onboarding-orb">✦</div>
+        <div class="onboarding-kicker">FIRST-TIME SETUP · 01 / 03</div>
+        <h2>Let's set up your seller workspace</h2>
+        <p>Save your real business and packaging details once. The extension will reuse them on future listings, and you can edit them by category later.</p>
+        <div class="onboarding-progress"><span></span></div>
+      </div>
+      <div class="onboarding-form-card">
+        <div class="onboarding-section-heading"><span class="onboarding-step">01</span><div><h3>Business identity</h3><p>Your shop's basic details</p></div></div>
+        <div class="onboarding-grid">
+          <label>Profile name<input id="onboard-profile-name" type="text" placeholder="e.g. Main Seller Profile" value="Main Seller Profile"></label>
+          <label>Brand (if confirmed)<input id="onboard-brand" type="text" placeholder="Product brand, if known"></label>
+          <label class="span-2">Seller / business name <b>*</b><input id="onboard-seller-name" type="text" placeholder="Legal or registered business name" required></label>
+          <label class="span-2">Seller address <b>*</b><textarea id="onboard-seller-address" rows="2" placeholder="Full business/return address" required></textarea></label>
+        </div>
+      </div>
+      <div class="onboarding-form-card">
+        <div class="onboarding-section-heading"><span class="onboarding-step">02</span><div><h3>Manufacturer &amp; packaging</h3><p>Enter only details you can verify. These may differ from your seller address.</p></div></div>
+        <div class="onboarding-grid">
+          <label>Manufacturer name<input id="onboard-manufacturer-name" type="text" placeholder="If known"></label>
+          <label>Manufacturer pincode<input id="onboard-manufacturer-pincode" type="text" inputmode="numeric" placeholder="6-digit pincode"></label>
+          <label class="span-2">Manufacturer address<textarea id="onboard-manufacturer-address" rows="2" placeholder="Actual manufacturer address, if known"></textarea></label>
+          <label>Packer name<input id="onboard-packer-name" type="text" placeholder="If known"></label>
+          <label>Packer pincode<input id="onboard-packer-pincode" type="text" inputmode="numeric" placeholder="6-digit pincode"></label>
+          <label class="span-2">Packer address<textarea id="onboard-packer-address" rows="2" placeholder="Actual packer address, if known"></textarea></label>
+          <label>Country of origin<input id="onboard-country" type="text" placeholder="Only if verified"></label>
+          <label>Importer name<input id="onboard-importer-name" type="text" placeholder="If applicable"></label>
+          <label class="span-2">Importer address<textarea id="onboard-importer-address" rows="2" placeholder="If applicable"></textarea></label>
+          <label>Importer pincode<input id="onboard-importer-pincode" type="text" inputmode="numeric" placeholder="6-digit pincode"></label>
+          <label class="onboarding-check"><input id="onboard-importer-na" type="checkbox"> Importer is not applicable for my product</label>
+        </div>
+      </div>
+      <div class="onboarding-form-card">
+        <div class="onboarding-section-heading"><span class="onboarding-step">03</span><div><h3>Support &amp; tax defaults</h3><p>Optional; keep unconfirmed values empty.</p></div></div>
+        <div class="onboarding-grid">
+          <label>Customer support phone<input id="onboard-support-phone" type="tel" placeholder="Support number"></label>
+          <label>Customer support email<input id="onboard-support-email" type="email" placeholder="Support email"></label>
+          <label>HSN code (verified)<input id="onboard-hsn" type="text" placeholder="Leave blank if unsure"></label>
+          <label>GST rate (verified)<input id="onboard-gst" type="text" placeholder="Leave blank if unsure"></label>
+        </div>
+        <p class="onboarding-privacy-note">These profile values are stored in Chrome local storage on this device. Do not enter a guessed manufacturer, packer, importer, HSN, GST or country-of-origin value. You can edit this profile later.</p>
+        <div id="onboard-status" role="status" aria-live="polite"></div>
+        <button id="onboard-save-continue" class="premium-activate" type="button">SAVE PROFILE &amp; CONTINUE <span>→</span></button>
+        <button id="onboard-continue-later" class="onboarding-later" type="button">I'll complete the unknown details later</button>
       </div>
     </div>
   </div>
@@ -2198,7 +2322,7 @@
   </div>
 
   <!-- PROFILES LANDING VIEW (default for active-sub users) -->
-  <div class="view active" id="view-profilesLanding" style="padding: 16px; background: linear-gradient(180deg,#eff6ff 0%,#dbeafe 100%);">
+  <div class="view" id="view-profilesLanding" style="padding: 16px; background: linear-gradient(180deg,#eff6ff 0%,#dbeafe 100%);">
     <div
       style="background:#fff; border-radius:14px; padding:20px 18px; box-shadow:0 16px 36px rgba(37,99,235,0.14); border:1px solid #bfdbfe;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
@@ -2339,6 +2463,7 @@
     </div>
 
     
+    <div class="support-footer" style="margin: 10px 0 0; padding: 12px; border-top: 1px solid #263c57; text-align: center;">
       <div class="support-footer__label">NEED HELP? · SOHEL RANA · SOHEL ENTERPRISE</div>
       <div class="support-footer__links">
         <a href="tel:+919064827025" class="support-footer__link">📱 9064827025</a>
@@ -2387,7 +2512,32 @@
           <div><div class="ai-kicker">AI WORKFLOW</div><h3>AI Catalog Autofill</h3><p>Scan the selected catalog, upload photos, generate a draft and autofill.</p></div>
           <span class="ai-status-pill">MULTI-API</span>
         </div>
-        <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
+        
+        <div class="ai-dashboard-overview">
+          <div class="ai-dashboard-welcome">
+            <div class="ai-dashboard-eyebrow">WORKSPACE / SOHEL ENTERPRISE</div>
+            <div class="ai-dashboard-title">Your listing workspace</div>
+            <p>Open one focused tool at a time. Your seller details and API connections are managed separately.</p>
+          </div>
+          <div class="ai-workspace-avatar" aria-hidden="true">✦</div>
+        </div>
+        <div class="ai-progress-panel">
+          <div class="ai-progress-title"><span id="ai-progress-stage">READY · Waiting for input</span><strong id="ai-progress-percent">0%</strong></div>
+          <div class="ai-progress-track"><div id="ai-progress-fill" class="ai-progress-fill" style="width:0%"></div></div>
+          <div class="ai-progress-caption" id="ai-progress-caption">Workflow progress appears here while the listing is researched, drafted and filled.</div>
+        </div>
+        
+        <nav class="ai-dashboard-nav" aria-label="Workspace sections">
+          <button type="button" class="ai-menu-card active" data-ai-page="listing"><span class="ai-menu-icon">▤</span><span class="ai-menu-text"><strong>Listing Studio</strong><small>Photos · title · autofill</small></span><span class="ai-menu-arrow">›</span></button>
+          <button type="button" class="ai-menu-card" data-ai-page="profile"><span class="ai-menu-icon">♙</span><span class="ai-menu-text"><strong>Seller Profile</strong><small>Business &amp; legal defaults</small></span><span class="ai-menu-arrow">›</span></button>
+          <button type="button" class="ai-menu-card" data-ai-page="api"><span class="ai-menu-icon">⌘</span><span class="ai-menu-text"><strong>API Connections</strong><small>Keys · model · rotation</small></span><span class="ai-menu-arrow">›</span></button>
+          <button type="button" class="ai-menu-card" data-ai-page="chat"><span class="ai-menu-icon">✧</span><span class="ai-menu-text"><strong>AI Listing Chat</strong><small>Ask about the current draft</small></span><span class="ai-menu-arrow">›</span></button>
+          <button type="button" class="ai-menu-card" data-ai-page="activity"><span class="ai-menu-icon">◴</span><span class="ai-menu-text"><strong>Activity Center</strong><small>Sources · live process log</small></span><span class="ai-menu-arrow">›</span></button>
+        </nav>
+        <div class="ai-page-switcher"><span class="ai-page-overline" id="ai-page-overline">LISTING STUDIO</span><span class="ai-page-counter" id="ai-page-counter">01 / 05</span></div>
+        <section class="ai-page active" id="ai-page-listing" data-ai-page-panel="listing">
+          <div class="ai-page-intro"><h4>Listing Studio</h4><p>Scan Meesho, upload the product photos, prepare the draft and autofill when ready.</p></div>
+          <div id="ai-scan-summary" class="ai-scan-summary">Not scanned yet. Select a catalog, then scan its form to count blank fields.</div>
         <div class="ai-size-picker">
           <div class="ai-size-picker-title">Meesho size variants</div>
           <p class="ai-muted">Choose the sizes to select on Meesho. If Free Size is the only option, it is selected automatically.</p>
@@ -2414,53 +2564,14 @@
         <div id="ai-image-list" class="ai-chip-list"></div>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
-        <div class="ai-progress-panel">
-          <div class="ai-progress-title"><span id="ai-progress-stage">READY · Waiting for input</span><strong id="ai-progress-percent">0%</strong></div>
-          <div class="ai-progress-track"><div id="ai-progress-fill" class="ai-progress-fill" style="width:0%"></div></div>
-          <div class="ai-progress-caption" id="ai-progress-caption">Workflow progress appears here while the listing is researched, drafted and filled.</div>
-        </div>
-        <div class="ai-live-console">
-          <div class="ai-live-head"><span><i class="ai-live-dot"></i> LIVE PROCESS CONSOLE</span><span id="ai-live-state">READY</span></div>
-          <pre id="ai-live-log" role="log" aria-live="polite">[SYSTEM] Waiting for product photos and catalog scan…</pre>
-        </div>
+        
         <div id="ai-title-options" class="ai-title-options" style="display:none"></div>
         <div id="ai-preview" class="ai-preview" style="display:none"></div>
-        <div id="ai-research-sources" class="ai-research-sources" style="display:none"></div>
-        <div class="ai-chat-panel">
-          <div class="ai-chat-heading"><span><i class="ai-chat-spark">✦</i> AI LISTING CHAT</span><span class="ai-chat-model">DRAFT-AWARE</span></div>
-          <p class="ai-muted">Ask for title feedback, attribute explanations, description edits or help with Meesho fields. Chat replies stay in this extension; they are not sent to customers.</p>
-          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
-            <div class="ai-chat-bubble ai-chat-assistant">Hello! Generate a catalog draft, then ask me questions about its titles, description, pricing or missing fields.</div>
-          </div>
-          <label class="ai-chat-input-label">Your message
-            <textarea id="ai-chat-input" rows="2" maxlength="1200" placeholder="e.g. Which title is best for search? Why is HSN still blank?"></textarea>
-          </label>
-          <div class="ai-chat-actions"><span class="ai-muted">Ctrl + Enter to send</span><button id="ai-chat-send" type="button" class="ai-primary-btn">Send Message ↗</button></div>
-        </div>
-        <details class="ai-settings">
-          <summary>Settings · Multiple API Keys &amp; Saved Seller Defaults</summary>
-          <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
-          <div class="ai-settings-section">
-            <h4>AI API Providers</h4>
-            <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
-            <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
-            <div class="ai-provider-form">
-              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
-              <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
-              <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
-              <datalist id="ai-model-options"></datalist>
-              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
-              <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
-              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
-              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
-              <label>Bulk add API keys (one per line; optional format: Label | API key)
-                <textarea id="ai-key-bulk" rows="4" placeholder="Gemini Key 1 | paste-key-here&#10;Gemini Key 2 | paste-key-here&#10;paste another key on its own line"></textarea>
-              </label>
-              <p class="ai-muted">All lines use the selected provider and model. Lines beginning with # are ignored. Duplicate keys for the same provider are skipped.</p>
-              <button id="ai-add-bulk-keys-btn" type="button" class="ai-secondary-btn">Add All Keys in List</button>
-              <p id="ai-provider-hint" class="ai-muted"></p>
-            </div>
-          </div>
+        
+        </section>
+        <section class="ai-page" id="ai-page-profile" data-ai-page-panel="profile">
+          <div class="ai-page-intro"><h4>Seller Profile</h4><p>Set these basics once. The active profile is reused across catalog drafts; category overrides can change only the details that differ.</p></div>
+          <div class="ai-profile-completion-card"><div class="ai-profile-completion-icon">✓</div><div><strong>Saved defaults</strong><p>Unknown legal fields remain blank. Seller details are never substituted for manufacturer or packer details unless you explicitly enter the same value.</p></div></div>
           <div class="ai-settings-section ai-profile-manager">
             <h4>Seller Profiles &amp; Category Overrides</h4>
             <p class="ai-muted">Create local seller profiles once. Each profile can store manufacturer/packer details and per-category overrides. The active profile is applied when the next product draft is generated.</p>
@@ -2502,6 +2613,7 @@
             </div>
             <button id="ai-profile-save-override" type="button" class="ai-secondary-btn" style="width:100%;margin-top:8px">Save Override for This Category</button>
           </div>
+          
           <div class="ai-settings-section">
             <h4>Saved Seller Defaults</h4>
             <p class="ai-muted">Add your confirmed business details here. They are used only when a scanned field clearly matches. Product weight and dimensions stay per-product above.</p>
@@ -2526,7 +2638,59 @@
             </div>
             <button id="ai-save-defaults-btn" type="button" class="ai-secondary-btn">Save Seller Defaults</button>
           </div>
-        </details>
+        
+        </section>
+        <section class="ai-page" id="ai-page-api" data-ai-page-panel="api">
+          <div class="ai-page-intro"><h4>API Connections</h4><p>Connect multiple providers and choose model IDs. Keys are stored locally in this Chrome profile.</p></div>
+          <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
+          <div class="ai-settings-section">
+            <h4>AI API Providers</h4>
+            <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
+            <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
+            <div class="ai-provider-form">
+              <label>Provider<select id="ai-provider-type"><option value="gemini">Google Gemini API</option><option value="groq">Groq Cloud API</option><option value="compatible">OpenAI-compatible API (xAI Grok / other)</option></select></label>
+              <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
+              <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
+              <datalist id="ai-model-options"></datalist>
+              <p class="ai-muted">Free-tier presets: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite; Groq Qwen 3.8 27B Vision. Free quotas are limited and depend on your provider account. Custom xAI/Grok endpoints may be paid.</p>
+              <div id="ai-key-endpoint-wrap" style="display:none"><label>HTTPS Chat Completions endpoint<input id="ai-key-endpoint" type="url" placeholder="https://api.x.ai/v1/chat/completions"></label></div>
+              <label>API key<input id="ai-key-value" type="password" autocomplete="off" placeholder="Paste one provider API key"></label>
+              <button id="ai-add-key-btn" type="button" class="ai-secondary-btn">Add Single API Key</button>
+              <label>Bulk add API keys (one per line; optional format: Label | API key)
+                <textarea id="ai-key-bulk" rows="4" placeholder="Gemini Key 1 | paste-key-here&#10;Gemini Key 2 | paste-key-here&#10;paste another key on its own line"></textarea>
+              </label>
+              <p class="ai-muted">All lines use the selected provider and model. Lines beginning with # are ignored. Duplicate keys for the same provider are skipped.</p>
+              <button id="ai-add-bulk-keys-btn" type="button" class="ai-secondary-btn">Add All Keys in List</button>
+              <p id="ai-provider-hint" class="ai-muted"></p>
+            </div>
+          </div>
+          
+        </section>
+        <section class="ai-page" id="ai-page-chat" data-ai-page-panel="chat">
+          <div class="ai-page-intro"><h4>AI Listing Chat</h4><p>Discuss the active draft, improve titles, and ask why a field needs confirmation.</p></div>
+          <div class="ai-chat-panel">
+          <div class="ai-chat-heading"><span><i class="ai-chat-spark">✦</i> AI LISTING CHAT</span><span class="ai-chat-model">DRAFT-AWARE</span></div>
+          <p class="ai-muted">Ask for title feedback, attribute explanations, description edits or help with Meesho fields. Chat replies stay in this extension; they are not sent to customers.</p>
+          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
+            <div class="ai-chat-bubble ai-chat-assistant">Hello! Generate a catalog draft, then ask me questions about its titles, description, pricing or missing fields.</div>
+          </div>
+          <label class="ai-chat-input-label">Your message
+            <textarea id="ai-chat-input" rows="2" maxlength="1200" placeholder="e.g. Which title is best for search? Why is HSN still blank?"></textarea>
+          </label>
+          <div class="ai-chat-actions"><span class="ai-muted">Ctrl + Enter to send</span><button id="ai-chat-send" type="button" class="ai-primary-btn">Send Message ↗</button></div>
+        </div>
+        
+        </section>
+        <section class="ai-page" id="ai-page-activity" data-ai-page-panel="activity">
+          <div class="ai-page-intro"><h4>Activity Center</h4><p>Follow the live status, Google research sources, provider rotation and autofill issues.</p></div>
+          <div class="ai-live-console">
+          <div class="ai-live-head"><span><i class="ai-live-dot"></i> LIVE PROCESS CONSOLE</span><span id="ai-live-state">READY</span></div>
+          <pre id="ai-live-log" role="log" aria-live="polite">[SYSTEM] Waiting for product photos and catalog scan…</pre>
+        </div>
+        
+          <div id="ai-research-sources" class="ai-research-sources" style="display:none"></div>
+          <div class="ai-activity-tips"><strong>What you'll see here</strong><p>Search results found, API batches tried, description refinement, dropdown mismatches and fields that require manual confirmation.</p></div>
+        </section>
       </section>
 
       <!-- STEP 2: Fill -->
@@ -2548,6 +2712,7 @@
   </div>
 
   <script src="popup.js"></script>
+  <script src="js/sellerOnboarding.js"></script>
   <script src="js/aiCatalogAssistant.js"></script>
 </body>
 
