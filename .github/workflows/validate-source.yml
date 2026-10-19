@@ -37,6 +37,7 @@ jobs:
           node --check Extension/background.js
           node --check Extension/popup.js
           node --check Extension/js/aiCatalogAssistant.js
+          node --check Extension/js/sellerOnboarding.js
           node --check Extension/content.js
           node --check Extension/interceptor.js
           node --check Extension/js/meeshoApi.js
@@ -69,8 +70,9 @@ jobs:
           const shipping = fs.readFileSync('Extension/js/shippingOptimizer.js', 'utf8');
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
+          const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.5');
+          assert.equal(manifest.version, '3.17.6');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -181,5 +183,29 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-progress-percent"'));
           assert.ok(content.includes('const reportAutofillProgress='));
           assert.ok(content.includes("type:'AUTOFILL_PROGRESS'"));
-          console.log('Free-mode safeguards and v3.17.5 profile, title, description, chat and progress regressions passed.');
+          assert.ok(aiAssistant.includes("function switchAiDashboardPage(page)"));
+          assert.ok(aiAssistant.includes("function profileDbKey()"));
+          assert.ok(aiAssistant.includes("function defaultsStoreKey()"));
+          assert.ok(aiAssistant.includes("seller-profile-saved"));
+          assert.ok(popup.includes("function sellerIdentity(user=currentUser)"));
+          assert.ok(popup.includes("function sellerProfileDbKey(user=currentUser)"));
+          assert.ok(popup.includes("function sellerDefaultsStorageKey(user=currentUser)"));
+          assert.ok(popup.includes("showView('onboarding')"));
+          assert.ok(popup.includes("async function saveInitialSellerProfile()"));
+          assert.ok(onboarding.includes("saveInitialSellerProfile()"));
+          assert.ok(popupHtml.includes('id="view-onboarding"'));
+          assert.ok(popupHtml.includes('id="onboard-save-continue"'));
+          assert.ok(popupHtml.includes('class="ai-dashboard-shell"'));
+          assert.ok(popupHtml.includes('data-ai-page="listing"'));
+          assert.ok(popupHtml.includes('data-ai-page="profile"'));
+          assert.ok(popupHtml.includes('data-ai-page="api"'));
+          assert.ok(popupHtml.includes('data-ai-page="chat"'));
+          assert.ok(popupHtml.includes('data-ai-page="activity"'));
+          assert.ok(popupHtml.includes('id="ai-page-listing"'));
+          assert.ok(popupHtml.includes('id="ai-page-profile"'));
+          assert.ok(popupHtml.includes('id="ai-page-api"'));
+          assert.ok(popupHtml.includes('id="ai-page-chat"'));
+          assert.ok(popupHtml.includes('id="ai-page-activity"'));
+          assert.ok(popupHtml.includes('Premium dashboard workspace: separate focused pages + neon edge glow'));
+          console.log('Free-mode safeguards and v3.17.6 dashboard, onboarding, profiles and AI workflow regressions passed.');
           NODE
