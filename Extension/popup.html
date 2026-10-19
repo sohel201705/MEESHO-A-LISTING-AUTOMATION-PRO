@@ -1921,6 +1921,40 @@
     #ai-live-log{max-height:142px;min-height:76px;overflow:auto;padding:9px;margin:0;color:#8cb5d9;font:10px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;scrollbar-width:thin;scrollbar-color:#294767 #050b14}
     #ai-live-log .live-line{display:block}
     .ai-live-line-ok{color:#63e6a4}.ai-live-line-warn{color:#f7c878}.ai-live-line-error{color:#ff9aa9}.ai-live-line-info{color:#8bc8ff}
+    .ai-progress-panel{margin:8px 0;border:1px solid #244366;background:#091526;border-radius:8px;padding:9px}
+    .ai-progress-title{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#b8d8ff;font:800 9px/1.4 system-ui;letter-spacing:.45px}
+    #ai-progress-percent{font:900 16px/1.2 system-ui;color:#68e8b1}
+    .ai-progress-track{margin-top:7px;height:7px;background:#1b2b41;border-radius:99px;overflow:hidden;border:1px solid #233b58}
+    .ai-progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#1686ff,#41d8b0);box-shadow:0 0 13px rgba(22,134,255,.35);transition:width .25s ease}
+    .ai-progress-caption{margin-top:5px;font-size:9px;line-height:1.4;color:#8199b7}
+    .ai-title-options{margin:10px 0;border:1px solid #315375;border-radius:9px;background:#091524;padding:10px}
+    .ai-title-options-heading{font-size:12px;color:#e5efff;font-weight:900;margin-bottom:3px}
+    .ai-title-options-subtitle{font-size:10px;color:#8ea8c7;line-height:1.4;margin-bottom:8px}
+    .ai-title-choice{display:grid!important;grid-template-columns:17px 1fr;align-items:start;gap:8px!important;padding:8px!important;margin:6px 0;border:1px solid #263f5c;border-radius:7px;background:#0e1c2f;color:#d9e7fa!important;cursor:pointer}
+    .ai-title-choice:has(input:checked){border-color:#399dff;background:#102b48;box-shadow:0 0 0 1px rgba(57,157,255,.18)}
+    .ai-title-choice input{width:auto!important;margin-top:2px}
+    .ai-title-choice-main{font-size:11px!important;line-height:1.45;font-weight:700!important;color:#e5efff;overflow-wrap:anywhere}
+    .ai-title-choice-meta{font-size:9px;color:#8da7c7;margin-top:3px;line-height:1.4}
+    .ai-recommended-tag{display:inline-block;padding:2px 5px;border-radius:4px;background:#123c39;color:#6ee7b7;font-size:8px;font-weight:900;margin-left:5px}
+    .ai-title-choice-count{color:#83b9f0;font-size:9px;font-weight:800}
+    .ai-profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    .ai-profile-actions{display:grid;grid-template-columns:.8fr 1.5fr .5fr;gap:6px}
+    .ai-profile-divider{height:1px;background:#203a57;margin:10px 0}
+    .ai-chat-panel{margin:10px 0;border:1px solid #294766;border-radius:10px;padding:10px;background:linear-gradient(150deg,#0c1a2d,#08111f);box-shadow:0 10px 26px rgba(0,0,0,.22)}
+    .ai-chat-heading{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:900;letter-spacing:.6px;color:#dcecff}
+    .ai-chat-spark{color:#5ce1b0;margin-right:5px}
+    .ai-chat-model{font-size:8px;color:#8abfff;border:1px solid #244669;border-radius:99px;padding:4px 6px}
+    .ai-chat-messages{display:flex;flex-direction:column;gap:7px;max-height:190px;min-height:62px;overflow:auto;padding:7px 0;scrollbar-width:thin;scrollbar-color:#284866 #08111f}
+    .ai-chat-bubble{max-width:94%;border-radius:8px;padding:8px;font-size:10px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+    .ai-chat-assistant{align-self:flex-start;background:#112740;border:1px solid #27496b;color:#d7e8fb}
+    .ai-chat-user{align-self:flex-end;background:#123d3a;border:1px solid #17665d;color:#d1fae5}
+    .ai-chat-input-label{display:flex;flex-direction:column;gap:4px;margin-top:7px;color:#a9bfdc!important;font-size:10px}
+    .ai-chat-actions{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:7px}
+    .ai-chat-actions button{padding:7px 10px}
+    #ai-chat-input{min-height:48px;resize:vertical}
+    .ai-chat-actions .ai-muted{font-size:9px}
+    #ai-catalog-assistant .ai-profile-manager{border-color:#2c4c6f}
+    #ai-catalog-assistant .ai-profile-manager h4{color:#8bc8ff}
     .tabs{background:#0c1728!important;border-color:#1d304a!important}
     .tab{color:#91a4bf!important}
     .tab.active{color:#8cc8ff!important;border-bottom-color:#3b9eff!important}
@@ -2380,12 +2414,29 @@
         <div id="ai-image-list" class="ai-chip-list"></div>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
+        <div class="ai-progress-panel">
+          <div class="ai-progress-title"><span id="ai-progress-stage">READY · Waiting for input</span><strong id="ai-progress-percent">0%</strong></div>
+          <div class="ai-progress-track"><div id="ai-progress-fill" class="ai-progress-fill" style="width:0%"></div></div>
+          <div class="ai-progress-caption" id="ai-progress-caption">Workflow progress appears here while the listing is researched, drafted and filled.</div>
+        </div>
         <div class="ai-live-console">
           <div class="ai-live-head"><span><i class="ai-live-dot"></i> LIVE PROCESS CONSOLE</span><span id="ai-live-state">READY</span></div>
           <pre id="ai-live-log" role="log" aria-live="polite">[SYSTEM] Waiting for product photos and catalog scan…</pre>
         </div>
+        <div id="ai-title-options" class="ai-title-options" style="display:none"></div>
         <div id="ai-preview" class="ai-preview" style="display:none"></div>
         <div id="ai-research-sources" class="ai-research-sources" style="display:none"></div>
+        <div class="ai-chat-panel">
+          <div class="ai-chat-heading"><span><i class="ai-chat-spark">✦</i> AI LISTING CHAT</span><span class="ai-chat-model">DRAFT-AWARE</span></div>
+          <p class="ai-muted">Ask for title feedback, attribute explanations, description edits or help with Meesho fields. Chat replies stay in this extension; they are not sent to customers.</p>
+          <div id="ai-chat-messages" class="ai-chat-messages" role="log" aria-live="polite">
+            <div class="ai-chat-bubble ai-chat-assistant">Hello! Generate a catalog draft, then ask me questions about its titles, description, pricing or missing fields.</div>
+          </div>
+          <label class="ai-chat-input-label">Your message
+            <textarea id="ai-chat-input" rows="2" maxlength="1200" placeholder="e.g. Which title is best for search? Why is HSN still blank?"></textarea>
+          </label>
+          <div class="ai-chat-actions"><span class="ai-muted">Ctrl + Enter to send</span><button id="ai-chat-send" type="button" class="ai-primary-btn">Send Message ↗</button></div>
+        </div>
         <details class="ai-settings">
           <summary>Settings · Multiple API Keys &amp; Saved Seller Defaults</summary>
           <p class="ai-security-note">API keys and seller defaults stay in this Chrome profile's local extension storage and are not synced to the app's Firebase user database. Local extension storage is not encrypted against someone who can access your browser profile.</p>
@@ -2410,6 +2461,47 @@
               <p id="ai-provider-hint" class="ai-muted"></p>
             </div>
           </div>
+          <div class="ai-settings-section ai-profile-manager">
+            <h4>Seller Profiles &amp; Category Overrides</h4>
+            <p class="ai-muted">Create local seller profiles once. Each profile can store manufacturer/packer details and per-category overrides. The active profile is applied when the next product draft is generated.</p>
+            <div class="ai-profile-grid">
+              <label>Saved profile<select id="ai-profile-select"></select></label>
+              <label>Profile name<input id="ai-profile-name" type="text" placeholder="e.g. Sohel Enterprise — Main"></label>
+            </div>
+            <div class="ai-profile-actions">
+              <button id="ai-profile-new" type="button" class="ai-secondary-btn">＋ New Profile</button>
+              <button id="ai-profile-save" type="button" class="ai-primary-btn">Save / Update Profile</button>
+              <button id="ai-profile-delete" type="button" class="ai-small-btn ai-danger">Delete</button>
+            </div>
+            <div class="ai-profile-divider"></div>
+            <label>Product category for defaults
+              <select id="ai-profile-category">
+                <option value="general">General / Other</option>
+                <option value="bottles">Bottles &amp; Drinkware</option>
+                <option value="apparel">Apparel / Clothing</option>
+                <option value="kitchen">Kitchen / Lunch Boxes</option>
+                <option value="furniture">Furniture / Chairs &amp; Tables</option>
+                <option value="baby">Baby &amp; Kids</option>
+                <option value="electronics">Electronics / Accessories</option>
+                <option value="home">Home &amp; Household</option>
+              </select>
+            </label>
+            <p class="ai-muted">The fields below override only this category. Leave a field blank to use the profile's main default.</p>
+            <div class="ai-default-grid">
+              <label>Category Brand<input id="ai-override-brand" type="text"></label>
+              <label>Country of origin<input id="ai-override-country" type="text" placeholder="Only if confirmed"></label>
+              <label>Manufacturer name<input id="ai-override-manufacturer-name" type="text"></label>
+              <label>Manufacturer pincode<input id="ai-override-manufacturer-pincode" type="text"></label>
+              <label class="span-2">Manufacturer address<textarea id="ai-override-manufacturer-address" rows="2"></textarea></label>
+              <label>Packer name<input id="ai-override-packer-name" type="text"></label>
+              <label>Packer pincode<input id="ai-override-packer-pincode" type="text"></label>
+              <label class="span-2">Packer address<textarea id="ai-override-packer-address" rows="2"></textarea></label>
+              <label>Importer name<input id="ai-override-importer-name" type="text" placeholder="If applicable"></label>
+              <label>Importer pincode<input id="ai-override-importer-pincode" type="text" placeholder="If applicable"></label>
+              <label class="span-2">Importer address<textarea id="ai-override-importer-address" rows="2"></textarea></label>
+            </div>
+            <button id="ai-profile-save-override" type="button" class="ai-secondary-btn" style="width:100%;margin-top:8px">Save Override for This Category</button>
+          </div>
           <div class="ai-settings-section">
             <h4>Saved Seller Defaults</h4>
             <p class="ai-muted">Add your confirmed business details here. They are used only when a scanned field clearly matches. Product weight and dimensions stay per-product above.</p>
@@ -2422,6 +2514,11 @@
               <label>Packer name<input id="ai-default-packer-name" type="text"></label>
               <label>Packer address<input id="ai-default-packer-address" type="text"></label>
               <label>Country of origin<input id="ai-default-country" type="text" placeholder="Only if confirmed"></label>
+              <label>Manufacturer pincode<input id="ai-default-manufacturer-pincode" type="text"></label>
+              <label>Packer pincode<input id="ai-default-packer-pincode" type="text"></label>
+              <label>Importer name<input id="ai-default-importer-name" type="text" placeholder="If applicable"></label>
+              <label>Importer pincode<input id="ai-default-importer-pincode" type="text" placeholder="If applicable"></label>
+              <label class="span-2">Importer address<textarea id="ai-default-importer-address" rows="2"></textarea></label>
               <label>Customer support phone<input id="ai-default-support-phone" type="text"></label>
               <label>Customer support email<input id="ai-default-support-email" type="email"></label>
               <label>HSN code<input id="ai-default-hsn" type="text" placeholder="Only if confirmed"></label>
