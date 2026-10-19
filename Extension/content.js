@@ -406,28 +406,47 @@
   }
 
   function findVariationSizeField() {
-    let otherAttrAnchor = null;
-    const anchorWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let an;
-    while ((an = anchorWalker.nextNode())) {
-      if (norm(an.textContent) === 'other attributes') { otherAttrAnchor = an; break; }
-    }
-
-    const candidates = [];
+    // Find the actual "Size" form label, then choose the nearest visible form
+    // control by screen geometry. Do not climb into a whole row/card and take
+    // its first input (which can accidentally be GST/HSN in the other column).
+    const targets = new Set(['size', 'select size', 'select sizes', 'choose size', 'choose sizes',
+      'available size', 'available sizes', 'size selection', 'variation size', 'variation sizes']);
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const labels = [];
     let node;
     while ((node = walker.nextNode())) {
-      if (node === otherAttrAnchor) break;
-      const t = norm(node.textContent);
-      if (!t || t.length < 2 || t.length > 50) continue;
+      const text = norm(node.textContent);
+      if (!targets.has(text)) continue;
       const parent = node.parentElement;
-      if (!parent || ['INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'SCRIPT', 'STYLE', 'BUTTON'].includes(parent.tagName)) continue;
-      if (/^(size|select size|select sizes|choose size|choose sizes|available size|available sizes|size selection|variation size|variation sizes)$/.test(t) || t.startsWith('size ')) candidates.push({ node, len: t.length });
+      if (!parent || ['INPUT','TEXTAREA','SELECT','OPTION','SCRIPT','STYLE','BUTTON'].includes(parent.tagName)) continue;
+      const rect = parent.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(parent).visibility === 'hidden') continue;
+      labels.push({ node, rect, exact: text === 'size' || text === 'select size' || text === 'select sizes' });
     }
-    candidates.sort((a, b) => a.len - b.len);
-    for (const c of candidates) {
-      const field = findFieldFromTextNode(c.node);
-      if (field) return field;
+    labels.sort((a,b) => Number(b.exact) - Number(a.exact));
+    const controls = Array.from(document.querySelectorAll(
+      'input:not([type="hidden"]):not([type="button"]):not([type="submit"]), textarea, select'
+    )).filter(input => {
+      const rect = input.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(input).visibility === 'hidden') return false;
+      if (input.disabled) return false;
+      if (/search/i.test(String(input.placeholder || ''))) return false;
+      return true;
+    });
+    for (const label of labels) {
+      const lr = label.rect;
+      const ly = lr.top + lr.height / 2;
+      const lx = lr.left + lr.width / 2;
+      let best = null, bestScore = Infinity;
+      for (const input of controls) {
+        const r = input.getBoundingClientRect();
+        const cy = r.top + r.height / 2, cx = r.left + r.width / 2;
+        const dy = Math.abs(cy - ly), dx = Math.abs(cx - lx);
+        if (dy > 72 || dx > 520) continue;
+        const score = dy * 5 + dx;
+        if (score < bestScore) { best = input; bestScore = score; }
+      }
+      if (best) return classifyInput(best);
     }
     return null;
   }
