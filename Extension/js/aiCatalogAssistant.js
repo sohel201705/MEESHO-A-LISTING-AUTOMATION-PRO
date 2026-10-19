@@ -276,7 +276,32 @@ async function saveDefaults(){
  await set({[DEFAULTS]:d});say('Seller defaults saved in this Chrome profile.','success');
 }
 
-const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({name:file.name,mimeType:file.type||'image/jpeg',dataUrl:String(reader.result||'')});reader.onerror=()=>reject(new Error('Could not read image: '+file.name));reader.readAsDataURL(file);});
+const readImage=async file=>{
+ const readAsDataUrl=blob=>new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=()=>resolve(String(reader.result||''));
+  reader.onerror=()=>reject(new Error('Could not read image: '+file.name));
+  reader.readAsDataURL(blob);
+ });
+ // Resize only the in-memory AI copy; the seller's original file is never modified.
+ try{
+  if(typeof createImageBitmap==='function'){
+   const bitmap=await createImageBitmap(file),maxEdge=1600,scale=Math.min(1,maxEdge/Math.max(bitmap.width,bitmap.height));
+   if(scale<1||file.size>2*1024*1024){
+    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('Canvas unavailable');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.84));
+    if(blob&&blob.size<file.size){
+     liveLog('IMAGE OPTIMIZATION · '+file.name+' resized to '+canvas.width+'×'+canvas.height+' for API request size.','info');
+     return {name:file.name,mimeType:blob.type||'image/jpeg',dataUrl:await readAsDataUrl(blob)};
+    }
+   }else bitmap.close();
+  }
+ }catch(e){liveLog('IMAGE OPTIMIZATION · keeping original image copy for '+file.name+'.','warn');}
+ return {name:file.name,mimeType:file.type||'image/jpeg',dataUrl:await readAsDataUrl(file)};
+};
 async function images(){
  const files=Array.from($('ai-product-images').files||[]);if(!files.length)throw new Error('Upload at least one product photo.');if(files.length>10)throw new Error('Upload no more than 10 photos of the same product at once.');
  for(const f of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(f.type))throw new Error('Use JPG, PNG, WEBP or GIF: '+f.name);if(f.size>8*1024*1024)throw new Error(f.name+' is over 8 MB.');}
