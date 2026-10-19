@@ -395,7 +395,8 @@ const OVERRIDE_FIELD_MAP={
  'ai-override-brand':'brand','ai-override-country':'countryOfOrigin',
  'ai-override-manufacturer-name':'manufacturerName','ai-override-manufacturer-address':'manufacturerAddress','ai-override-manufacturer-pincode':'manufacturerPincode',
  'ai-override-packer-name':'packerName','ai-override-packer-address':'packerAddress','ai-override-packer-pincode':'packerPincode',
- 'ai-override-importer-name':'importerName','ai-override-importer-address':'importerAddress','ai-override-importer-pincode':'importerPincode'
+ 'ai-override-importer-name':'importerName','ai-override-importer-address':'importerAddress','ai-override-importer-pincode':'importerPincode',
+ 'ai-override-hsn':'hsn','ai-override-gst':'gst'
 };
 function readMappedFields(map){
  const obj={};Object.entries(map).forEach(([id,key])=>{if($(id))obj[key]=String($(id).value||'').trim();});return obj;
@@ -543,6 +544,9 @@ async function saveCategoryOverride(){
 async function getActiveDefaultsForCategory(category){
  const db=profileCache||await readProfileStore(),profile=db.profiles.find(p=>p.id===((db.activeId)||$('ai-profile-select')?.value))||db.profiles[0];
  const stored=await get(defaultsStoreKey()),base=Object.assign({},stored[defaultsStoreKey()]||{},profile&&profile.defaults||{});
+ // HSN/GST rate belongs to the product category, not to the seller identity.
+ // Do not reuse a broad profile-wide code for a different type of product.
+ delete base.hsn;delete base.gst;
  const override=(profile&&profile.categoryOverrides&&profile.categoryOverrides[category])||{};
  Object.entries(override).forEach(([key,value])=>{if(String(value||'').trim())base[key]=String(value).trim();});
  return base;
@@ -749,7 +753,7 @@ function preset(f,p,d){
  if(/(country of origin|origin country|made in)/.test(x)&&d.countryOfOrigin)return d.countryOfOrigin;
  if(/(customer care phone|support phone|customer care number|contact phone)/.test(x)&&d.supportPhone)return d.supportPhone;
  if(/(customer care email|support email|contact email)/.test(x)&&d.supportEmail)return d.supportEmail;
- if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
+ if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst; // d.hsn/gst only exist when an explicit category override was saved.
  if(/(wrong|defective|return)/.test(x)&&/price/.test(x)&&p.sellingPrice)return p.wrongReturnPrice||'';
  if(/\bmrp\b|maximum retail price/.test(x)&&p.productMrp)return p.productMrp;
  if(/\binventory\b|stock quantity/.test(x))return String(p.inventory===undefined||p.inventory===null||p.inventory===''?100:p.inventory);
