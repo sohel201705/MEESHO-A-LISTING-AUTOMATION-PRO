@@ -209,8 +209,7 @@ const PROVIDER_CONFIG={
   {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
  ]},
  groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'',model:'qwen/qwen3.8-27b',tier:'MODEL PRICING · ACCOUNT QUOTAS VARY',description:'Fast vision inference; check the current Groq console pricing/trial for your account',models:[
-  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'},
-  {id:'qwen/qwen3.6-27b',label:'Qwen 3.6 27B · vision'}
+  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'}
  ]},
  openrouter:{label:'OpenRouter Free Router',kind:'compatible',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'FREE ROUTER · RATE LIMITS',description:'Routes to available free models that support images',models:[
   {id:'openrouter/free',label:'OpenRouter Free Router · automatically routes free VLMs'}
@@ -1057,7 +1056,7 @@ function showPreview(fields,values,needs,stats,research){
  const sizes=selectedVariationSizes();
  if(sizes.length)root.appendChild(el('p','ai-muted','Size variants to select on Meesho: '+sizes.join(', ')));
  if(needs.length){const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs confirmation — '+needs.length));const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});box.appendChild(ul);root.appendChild(box);}
- root.appendChild(el('p','ai-muted','Review the draft. Unverified tax/legal values and actual measurements are not guessed. Search sources are shown above when Google access is available.'));
+ root.appendChild(el('p','ai-muted','Review the draft. HSN/GST candidates without conclusive official evidence are marked PROVISIONAL; confirm the classification before submission. Actual product measurements are never estimated from a photo.'));
 }
 function isDescriptionField(f){
  return /description/.test(norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||'')));
