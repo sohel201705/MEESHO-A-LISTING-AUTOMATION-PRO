@@ -70,7 +70,7 @@ jobs:
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.3');
+          assert.equal(manifest.version, '3.17.4');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -131,5 +131,23 @@ jobs:
           assert.ok(content.includes("add_ons: ['add ons'"));
           assert.ok(content.includes('bis_isi_certification_number'));
           assert.ok(content.includes('cm_l_number'));
-          console.log('Free-mode safeguards and v3.17.3 catalog research/autofill regressions passed.');
+          assert.ok(aiAssistant.includes('function calculateWrongReturnPrice'));
+          assert.ok(aiAssistant.includes('return n!==null&&n>5?formatMoney(n-5):'));
+          assert.ok(aiAssistant.includes('function updatePricePreview'));
+          assert.ok(aiAssistant.includes('function mergeImageBatchResponses'));
+          assert.ok(aiAssistant.includes('imgs.length>10'));
+          assert.ok(aiAssistant.includes("k.provider==='groq'?3:5"));
+          assert.ok(aiAssistant.includes("inventory:inventoryInput"));
+          assert.ok(aiAssistant.includes("wrongReturnPrice:"));
+          assert.ok(aiAssistant.includes("All '+imgs.length+' photos were sent"));
+          assert.ok(aiAssistant.includes('function liveLog'));
+          assert.ok(aiAssistant.includes('LIVE PROCESS CONSOLE') || popupHtml.includes('LIVE PROCESS CONSOLE'));
+          assert.ok(aiAssistant.includes("ai-product-price').addEventListener('input',updatePricePreview)"));
+          assert.ok(popupHtml.includes('id="ai-product-return-price"'));
+          assert.ok(popupHtml.includes('id="ai-product-mrp"'));
+          assert.ok(popupHtml.includes('id="ai-product-inventory"'));
+          assert.ok(popupHtml.includes('up to 10 photos'));
+          assert.ok(popupHtml.includes('ai-live-console'));
+          assert.ok(popupHtml.includes('Premium graphite + midnight-blue AI workspace'));
+          console.log('Free-mode safeguards and v3.17.4 price, batch-image, and premium-console regressions passed.');
           NODE
