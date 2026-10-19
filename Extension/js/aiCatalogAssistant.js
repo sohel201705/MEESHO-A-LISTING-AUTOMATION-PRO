@@ -158,21 +158,34 @@ function say(m,t){
  const level=t==='error'?'error':(t==='warning'?'warn':(t==='success'?'ok':'info'));
  if(m)liveLog(m,level);
 }
-function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
-function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
+const PROVIDERS={
+ gemini:{label:'Google Gemini',endpoint:'',model:'gemini-3.8-flash',kind:'native',hint:'Google AI Studio has a free tier for eligible models/accounts; quotas change.'},
+ groq:{label:'Groq Cloud',endpoint:'https://api.groq.com/openai/v1/chat/completions',model:'qwen/qwen3.8-27b',kind:'compatible',hint:'Fast vision model: qwen/qwen3.8-27b. Free plan limits apply; image inputs are supported.'},
+ openrouter:{label:'OpenRouter',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'qwen/qwen3.8-27b:free',kind:'compatible',hint:'Suggested free vision model: qwen/qwen3.8-27b:free. Free model availability and daily limits can change.'},
+ xai:{label:'xAI Grok',endpoint:'https://api.x.ai/v1/chat/completions',model:'',kind:'compatible',hint:'Requires an xAI API key and supported vision model; normally paid.'},
+ together:{label:'Together AI',endpoint:'https://api.together.xyz/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a vision-capable model ID available to your Together account; credits/pricing vary.'},
+ fireworks:{label:'Fireworks AI',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a supported vision model ID; free credits/promotions vary.'},
+ mistral:{label:'Mistral AI',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a vision-capable model ID supported by your Mistral account; availability/pricing vary.'},
+ huggingface:{label:'Hugging Face Router',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'',kind:'compatible',hint:'Use a compatible vision model and provider token available to your account; free credits/rates vary.'},
+ custom:{label:'Custom OpenAI-Compatible',endpoint:'',model:'',kind:'compatible',hint:'Enter the HTTPS endpoint and vision model ID supplied by your provider.'}
+};
+function label(p){return (PROVIDERS[p]&&PROVIDERS[p].label)||'OpenAI-compatible API';}
+function modelDefault(p){return (PROVIDERS[p]&&PROVIDERS[p].model)||'';}
 function modelChoices(p){
  if(p==='gemini')return [
-  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · Free tier · vision'},
-  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · Free tier · vision'},
-  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · Free tier · vision'},
-  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · Free tier · vision'}
+  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · vision'},
+  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · vision'},
+  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},
+  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
  ];
- if(p==='groq')return [
-  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · free-tier rate limits'}
- ];
+ if(p==='groq')return [{id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'}];
+ if(p==='openrouter')return [{id:'qwen/qwen3.8-27b:free',label:'Qwen 3.8 27B · free vision model'}];
  return [];
 }
-function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
+function endpointDefault(p){return (PROVIDERS[p]&&PROVIDERS[p].endpoint)||'';}
+function isNativeProvider(p){return p==='gemini';}
+function usesEndpoint(p){return !isNativeProvider(p);}
+
 function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
  if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
@@ -227,11 +240,14 @@ function updateModelChoices(p){
 }
 function updateProviderForm(){
  const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
- if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
- $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
- if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
+ if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);
+ m.dataset.provider=p;
+ $('ai-key-endpoint-wrap').style.display=usesEndpoint(p)?'block':'none';
+ if(usesEndpoint(p)&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);
+ ep.dataset.provider=p;
  updateModelChoices(p);
- $('ai-provider-hint').textContent=p==='gemini'?'Recommended free-tier vision models: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, and 3.1 Flash-Lite. Free-tier quotas and availability depend on your Google AI Studio project.':p==='groq'?'Recommended Groq vision model: qwen/qwen3.8-27b (up to 3 images/request). Groq free-tier rate limits apply.':'Custom OpenAI-compatible endpoints may be paid; xAI/Grok is not guaranteed free. Do not use a Groq model ID with an xAI endpoint.';
+ $('ai-provider-hint').textContent=(PROVIDERS[p]?.hint||'Use a supported vision model and an HTTPS endpoint.')+
+  ' Use your own key. This provider may be paid; the extension cannot promise free quotas.';
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
@@ -241,8 +257,8 @@ function makeKey(p,model,endpoint,apiKey,name){
  return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:name||label(p)+' key',model,endpoint,apiKey,enabled:true};
 }
 async function checkProviderPermission(p,endpoint){
- if(p!=='compatible')return true;
- return await askPermission(endpoint);
+ if(isNativeProvider(p))return true;
+ return await askPermission(endpoint||endpointDefault(p));
 }
 async function addKey(){
  const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
@@ -250,7 +266,7 @@ async function addKey(){
  let p=selectedProvider;
  if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
  if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
- const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=usesEndpoint(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
  if(!model)return say('Enter the model ID.','error');
  let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
@@ -259,7 +275,7 @@ async function addKey(){
  all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
 }
 async function addBulkKeys(){
- const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=usesEndpoint(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
  const raw=$('ai-key-bulk').value;
  const entries=raw.split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('#')).map((line,index)=>{
   const split=line.indexOf('|');
@@ -776,7 +792,7 @@ async function gemini(k,prompt,imgs=[]){
 async function compatible(k,prompt,imgs=[]){
  if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
- let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
+ let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!url)throw new Error('Enter the HTTPS API endpoint for '+label(k.provider)+'.');if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
  if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
@@ -822,7 +838,7 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
  const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
  for(let i=0;i<order.length;i++){
-  const k=order[i],batchSize=k.provider==='groq'?3:5,batches=[];
+  const k=order[i],batchSize=(k.provider==='groq'||(k.provider==='openrouter'&&/qwen\/qwen3\.8-27b/i.test(k.model)))?3:5,batches=[];
   for(let p=0;p<imgs.length;p+=batchSize)batches.push(imgs.slice(p,p+batchSize));
   try{
    const texts=[];
@@ -830,7 +846,7 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
     const message='Analyzing photo batch '+(b+1)+'/'+batches.length+' via '+label(k.provider)+' ('+batches[b].length+' photo(s)).';
     say(message);
     setProgress(progressBase+Math.round(progressSpan*(b/batches.length)),message);
-    const text=k.provider==='gemini'?await gemini(k,prompt,batches[b]):await compatible(k,prompt,batches[b]);
+    const text=isNativeProvider(k.provider)?await gemini(k,prompt,batches[b]):await compatible(k,prompt,batches[b]);
     texts.push(text);
     setProgress(progressBase+Math.round(progressSpan*((b+1)/batches.length)),message+' complete');
    }
@@ -851,7 +867,7 @@ async function callTextAI(prompt){
  for(let i=0;i<order.length;i++){
   const k=order[i];say('AI Listing Chat · trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
   try{
-   const text=k.provider==='gemini'?await gemini(k,prompt,[]):await compatible(k,prompt,[]);
+   const text=isNativeProvider(k.provider)?await gemini(k,prompt,[]):await compatible(k,prompt,[]);
    await set({[ROT]:(start+i+1)%list.length});
    return {text,name:safeKeyName(k),provider:k.provider};
   }catch(e){
