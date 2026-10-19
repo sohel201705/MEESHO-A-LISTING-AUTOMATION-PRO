@@ -1376,10 +1376,6 @@ async function generate(googleAllowed){
     return;
    }
    const v=proposed[f.identifier];if(v===undefined||v===null||!String(v).trim())return;
-   if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
-   if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
-    needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
-   }
    if(isTaxField(f)){
     const candidate=String(v).trim();
     const mapped=taxDropdownOption(f,candidate);
@@ -1397,6 +1393,10 @@ async function generate(googleAllowed){
      liveLog('TAX WARNING · '+f.label+' candidate '+mapped+' filled provisionally; official match was not conclusive.','warn');
     }
     return;
+   }
+   if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
+   if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
+    needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
    }
    values[f.identifier]=String(v).trim();ai++;
   });
