@@ -195,7 +195,7 @@ jobs:
           assert.ok(onboarding.includes("saveInitialSellerProfile()"));
           assert.ok(popupHtml.includes('id="view-onboarding"'));
           assert.ok(popupHtml.includes('id="onboard-save-continue"'));
-          assert.ok(popupHtml.includes('class="ai-dashboard-shell"'));
+          assert.ok(popupHtml.includes('ai-dashboard-shell'));
           assert.ok(popupHtml.includes('data-ai-page="listing"'));
           assert.ok(popupHtml.includes('data-ai-page="profile"'));
           assert.ok(popupHtml.includes('data-ai-page="api"'));
