@@ -1300,7 +1300,9 @@ async function generate(googleAllowed){
   const missingTaxFields=s.fields.filter(f=>{
    if(!isTaxField(f)||!f.mandatory)return false;
    const candidate=proposed[f.identifier];
-   if(candidate!==undefined&&candidate!==null&&!/^(0(?:\.\d+)?\s*%?|select|choose|--|—)$/i.test(String(candidate).trim()))return false;
+   if(candidate!==undefined&&candidate!==null&&!/^(0(?:\.\d+)?\s*%?|select|choose|--|—)$/i.test(String(candidate).trim())&&taxDropdownOption(f,candidate))return false;
+   const knownDefault=preset(f,p,d);
+   if(knownDefault&&taxDropdownOption(f,knownDefault))return false;
    const prior=captured(scan,f.identifier);
    return !prior||/^(0(?:\.\d+)?\s*%?|select|choose|--|—)$/i.test(String(prior).trim());
   });
