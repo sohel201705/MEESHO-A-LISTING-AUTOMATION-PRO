@@ -869,7 +869,17 @@ function cleanTitle(title){
 function buildTitleChoices(raw,baseTitle,p,d){
  const choices=[],seen=new Set();
  const add=(title,reason,recommended)=>{
-  const clean=cleanTitle(title);if(!clean)return;
+  let clean=cleanTitle(title);if(!clean)return;
+  if(!clean.includes(' / ')){
+   const hyphenParts=clean.split(/\s+-\s+/).map(x=>x.trim()).filter(Boolean);
+   if(hyphenParts.length>1)clean=hyphenParts.join(' / ');
+   else{
+    const words=clean.split(/\s+/);
+    if(words.length>=4)clean=words.slice(0,2).join(' ')+' / '+words.slice(2).join(' ');
+    else clean=clean+' / Product Details';
+   }
+   clean=cleanTitle(clean);
+  }
   const key=norm(clean);if(seen.has(key))return;seen.add(key);
   choices.push({title:clean,reason:String(reason||'Uses the known product details.'),recommended:Boolean(recommended)});
  };
