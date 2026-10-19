@@ -506,9 +506,9 @@
     if (!img) return '';
     const srcset = String(img.getAttribute('srcset') || img.dataset?.srcset || '').trim();
     const src = String(img.currentSrc || img.getAttribute('src') || img.dataset?.src || img.dataset?.original || '').trim();
-    if (src && !/^data:image\\/gif/i.test(src)) return src;
+    if (src && !/^data:image\/gif/i.test(src)) return src;
     if (srcset) {
-      const first = srcset.split(',').map(x => x.trim().split(/\\s+/)[0]).filter(Boolean).pop();
+      const first = srcset.split(',').map(x => x.trim().split(/\s+/)[0]).filter(Boolean).pop();
       if (first) return first;
     }
     return '';
