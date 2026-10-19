@@ -156,80 +156,166 @@
     return svg ? 'native-svg' : 'native-row';
   }
 
-  async function selectSizeDropdown(triggerEl, sizesStr, failed = []) {
-    await closeOpenDropdown();
-    const wantedSizes = String(sizesStr||'').split(',').map(s => s.trim()).filter(Boolean);
-    if (!wantedSizes.length) return false;
-    const existing = new Set(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
-    const handled = callReactOnClick(triggerEl);
-    if (!handled) {
-      realClick(triggerEl);
-      const input = triggerEl && triggerEl.querySelector('input');
-      if (input) realClick(input);
-    }
-    let menu = await new Promise(resolve => {
-      const check = () => {
-        const candidates = Array.from(document.querySelectorAll('[role="listbox"], ul[role="menu"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root'));
-        const visible = candidates.filter(el => {
-          const r=el.getBoundingClientRect();
-          return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';
-        });
-        const fresh = visible.find(el=>!existing.has(el));
-        if(fresh){observer.disconnect();resolve(fresh);return;}
-        if(visible.length){observer.disconnect();resolve(visible[visible.length-1]);}
-      };
-      const observer = new MutationObserver(check);
-      observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','aria-expanded']});
-      check();
-      setTimeout(()=>{observer.disconnect();resolve(null);},3500);
+  function elementIsVisible(el) {
+    if(!el||!el.isConnected)return false;
+    const r=el.getBoundingClientRect();
+    return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';
+  }
+
+  function findVisibleSizeOption(target) {
+    const wanted=norm(target);
+    if(!wanted)return null;
+    const selectors='input[type="checkbox"], [role="checkbox"], label, li, [role="option"], [role="menuitem"], button, p, span, div, [data-value]';
+    const elements=Array.from(document.querySelectorAll(selectors)).filter(elementIsVisible);
+    // Prefer a real checkbox whose nearby row says exactly "Free Size".
+    const checkboxes=elements.filter(el=>el.matches('input[type="checkbox"],[role="checkbox"]'));
+    const checkboxRows=[];
+    checkboxes.forEach(box=>{
+      let parent=box;
+      for(let depth=0;depth<7&&parent;depth++,parent=parent.parentElement){
+        if(!elementIsVisible(parent))continue;
+        const txt=norm(parent.textContent);
+        if(txt===wanted||((txt.startsWith(wanted+' ')||txt.startsWith(wanted+'\\n'))&&txt.length<=wanted.length+24)){
+          checkboxRows.push({box,row:parent,exact:txt===wanted,area:parent.getBoundingClientRect().width*parent.getBoundingClientRect().height,textLength:txt.length});
+          break;
+        }
+      }
     });
-    if(!menu)menu=findVisibleSizeMenu();
-    if(!menu){failed.push('Size selector did not open; please select the size manually.');return false;}
-    const clicked=[];
+    checkboxRows.sort((a,b)=>(Number(b.exact)-Number(a.exact))||a.textLength-b.textLength||a.area-b.area);
+    if(checkboxRows.length)return {row:checkboxRows[0].row,checkbox:checkboxRows[0].box};
+    // Some Meesho versions render checkbox controls without a useful label ancestor.
+    const exact=elements.filter(el=>{
+      if(el.matches('input[type="checkbox"]'))return false;
+      const txt=norm(el.textContent);
+      return txt===wanted||norm(el.getAttribute('data-value')||'')===wanted;
+    }).sort((a,b)=>{
+      const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
+      const childCount=a.querySelectorAll('*').length-b.querySelectorAll('*').length;
+      if(childCount)return childCount;
+      return ar.width*ar.height-br.width*br.height;
+    });
+    for(const item of exact){
+      let parent=item;
+      for(let depth=0;depth<5&&parent;depth++,parent=parent.parentElement){
+        const box=parent.matches&&parent.matches('input[type="checkbox"]')?parent:parent.querySelector&&parent.querySelector('input[type="checkbox"],[role="checkbox"]');
+        if(box&&elementIsVisible(box))return {row:parent,checkbox:box};
+        if(parent.matches&&parent.matches('[role="option"],[role="menuitem"],label,li,button'))break;
+      }
+      return {row:item,checkbox:null};
+    }
+    // Last-resort contains match is allowed only if the text is a close match, never a random first option.
+    const contains=elements.filter(el=>{
+      if(el.querySelectorAll('*').length>4)return false;
+      const t=norm(el.textContent);
+      return t===wanted||t.startsWith(wanted+' ');
+    }).sort((a,b)=>a.textContent.length-b.textContent.length);
+    return contains.length?{row:contains[0],checkbox:null}:null;
+  }
+
+  function waitForSizeOption(target,timeoutMs=950) {
+    return new Promise(resolve=>{
+      const began=Date.now();
+      const tick=()=>{
+        const found=findVisibleSizeOption(target);
+        if(found){resolve(found);return;}
+        if(Date.now()-began>=timeoutMs){resolve(null);return;}
+        setTimeout(tick,25);
+      };
+      tick();
+    });
+  }
+
+  function findSizeApplyButton(optionRow) {
+    const visibleApply=()=>Array.from(document.querySelectorAll('button,[role="button"]')).filter(elementIsVisible)
+      .filter(btn=>/^apply$/i.test(norm(btn.textContent)));
+    let parent=optionRow;
+    for(let depth=0;depth<8&&parent;depth++,parent=parent.parentElement){
+      if(parent.querySelectorAll&&parent.querySelectorAll('input[type="checkbox"]').length){
+        const local=visibleApply().find(btn=>parent.contains(btn));
+        if(local)return local;
+      }
+    }
+    return visibleApply()[0]||null;
+  }
+
+  async function selectSizeDropdown(triggerEl, sizesStr, failed = []) {
+    const wantedSizes=String(sizesStr||'').split(',').map(x=>x.trim()).filter(Boolean);
+    if(!wantedSizes.length)return false;
+    await closeOpenDropdown();
+    const handled=callReactOnClick(triggerEl);
+    if(!handled){
+      realClick(triggerEl);
+      const input=triggerEl&&triggerEl.querySelector('input');
+      if(input)realClick(input);
+    }
+    const selected=[];
+    let lastRow=null;
     for(const target of wantedSizes){
-      const active=menu.isConnected?menu:findVisibleSizeMenu();
-      if(!active){if(clicked.length)break;failed.push('Size selector closed before '+target+' was selected.');return false;}
-      const options=Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, [data-value]'));
-      const option=options.find(el=>norm(el.textContent)===norm(target))||
-        options.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
-      if(!option){failed.push('Size option not found: '+target);continue;}
-      const clickTarget=option.tagName==='P'&&option.parentElement?option.parentElement:option;
-      const clickResult=clickSizeRow(clickTarget);
-      await sleep(180);
-      const optionCheckbox=clickTarget.matches&&clickTarget.matches('input[type="checkbox"]')?clickTarget:clickTarget.querySelector('input[type="checkbox"]');
-      if(clickResult==='checkbox-failed'||(optionCheckbox&&!optionCheckbox.checked)){
-        failed.push('Could not select size option: '+target);
+      const found=await waitForSizeOption(target,950);
+      if(!found){
+        failed.push('Size option not found on the selected Meesho catalog: '+target);
         continue;
       }
-      clicked.push(target);
-      menu=findVisibleSizeMenu()||menu;
+      lastRow=found.row;
+      if(found.checkbox){
+        if(!found.checkbox.checked)found.checkbox.click();
+        // Controlled React checkboxes may update on the next paint.
+        const began=Date.now();
+        while(!found.checkbox.checked&&Date.now()-began<220)await sleep(20);
+        if(!found.checkbox.checked){
+          // Try the associated label/row once only, then verify state.
+          const label=found.checkbox.closest('label')||found.row;
+          if(label&&label!==found.checkbox)realClick(label);
+          const retryStart=Date.now();
+          while(!found.checkbox.checked&&Date.now()-retryStart<180)await sleep(20);
+        }
+        if(!found.checkbox.checked){
+          failed.push('Meesho did not register the size checkbox: '+target);
+          continue;
+        }
+      }else{
+        const result=clickSizeRow(found.row);
+        if(result==='checkbox-failed'||result==='none'){
+          failed.push('Could not click Meesho size option: '+target);
+          continue;
+        }
+      }
+      selected.push(target);
     }
-    if(!clicked.length){await closeOpenDropdown();return false;}
-    let active=menu&&menu.isConnected?menu:findVisibleSizeMenu();
-    let applyBtn=null;
-    if(active)applyBtn=Array.from(active.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim()));
-    if(!applyBtn)applyBtn=Array.from(document.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim())&&btn.getBoundingClientRect().width>0);
+    if(!selected.length){failed.push('No size options were selected.');return false;}
+    const applyBtn=findSizeApplyButton(lastRow);
     if(applyBtn){
       applyBtn.scrollIntoView({behavior:'auto',block:'center'});
-      await sleep(100);
-      const handledApply=callReactOnClick(applyBtn);
-      if(!handledApply)realClick(applyBtn);
-      await sleep(400);
-      await closeOpenDropdown();
-      return true;
+      // Native click is closer to a user's real click and avoids double-firing React handlers.
+      realClick(applyBtn);
+      const began=Date.now();
+      while(Date.now()-began<800){
+        await sleep(25);
+        const stillVisible=elementIsVisible(applyBtn);
+        const triggerText=norm(String(triggerEl&&triggerEl.textContent||'')+' '+String(triggerEl&&triggerEl.querySelector('input')?.value||''));
+        if(!stillVisible||!findVisibleSizeOption(wantedSizes[0]))break;
+        if(wantedSizes.every(size=>triggerText.includes(norm(size))))break;
+      }
+      const openMenus=Array.from(document.querySelectorAll('.MuiPopover-root,.MuiModal-root,.MuiDialog-root,[role="listbox"],[role="menu"]')).filter(elementIsVisible);
+      const triggerText=norm(String(triggerEl&&triggerEl.textContent||'')+' '+String(triggerEl&&triggerEl.querySelector('input')?.value||''));
+      const menuStillContainsSize=!!findVisibleSizeOption(wantedSizes[0]);
+      if(!elementIsVisible(applyBtn)||!menuStillContainsSize||wantedSizes.every(size=>triggerText.includes(norm(size))))return true;
+      // The first click may have landed while the panel was animating; retry only if Apply is still visible.
+      if(elementIsVisible(applyBtn)){
+        realClick(applyBtn);
+        const retry=Date.now();
+        while(Date.now()-retry<500&&elementIsVisible(applyBtn))await sleep(25);
+        if(!elementIsVisible(applyBtn))return true;
+      }
+      failed.push('Size checkbox selected, but Meesho did not apply the selection. Please check the size field before saving.');
+      return false;
     }
-    // Single-select variants often close immediately and have no Apply button.
-    // Do not demand an Apply button or double-click it, which can undo a selection.
     const triggerText=norm(String(triggerEl&&triggerEl.textContent||'')+' '+String(triggerEl&&triggerEl.querySelector('input')?.value||''));
-    if(active&&active.isConnected){
-      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
-      await sleep(120);
-    }
-    const stillOpen=!!findVisibleSizeMenu();
-    const selectedVisible=clicked.every(target=>triggerText.includes(norm(target)));
-    if(!stillOpen||selectedVisible)return true;
-    failed.push('Size options were clicked but the selection could not be verified. Please check the Meesho size field.');
-    await closeOpenDropdown();
+    if(wantedSizes.every(size=>triggerText.includes(norm(size))))return true;
+    // If the UI uses a single-select variant with no Apply button, let React commit it.
+    const menus=Array.from(document.querySelectorAll('.MuiPopover-root,.MuiModal-root,.MuiDialog-root,[role="listbox"],[role="menu"]')).filter(elementIsVisible);
+    if(!menus.length)return true;
+    failed.push('Size checkbox selected but Apply was not found; leave the menu open and press Apply manually.');
     return false;
   }
 
