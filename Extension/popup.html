@@ -2058,6 +2058,9 @@
     .ai-provider-card__status--free{border-color:#1f7667;background:#0b302d;color:#78efd0}
     .ai-provider-card--wide{grid-column:1/-1}
     @media(max-width:420px){.ai-provider-cards{gap:5px}.ai-provider-card{padding:7px 5px;gap:5px}.ai-provider-card__copy strong{font-size:8px}.ai-provider-card__copy small{font-size:6.5px}.ai-provider-card__icon{width:24px;height:24px;flex-basis:24px}}
+    .ai-provider-select-legacy{display:none!important}
+    .ai-provider-section-label{display:flex;flex-wrap:wrap;gap:5px;align-items:baseline;font-size:10px;font-weight:950;letter-spacing:.3px;color:#cae9ff;margin:7px 0 2px}
+    .ai-provider-section-label span{font-size:8px;font-weight:500;letter-spacing:0;color:#819ab9}
   </style>
 
 </head>
@@ -2680,7 +2683,7 @@
             <p class="ai-muted">Add multiple Gemini keys, Groq Cloud keys, or OpenAI-compatible vision API keys such as xAI Grok. Enabled keys are tried in rotation if one hits a limit or returns an error.</p>
             <div id="ai-provider-key-list" class="ai-provider-key-list"></div>
             <div class="ai-provider-form">
-              <label>Provider<select id="ai-provider-type">
+              <label class="ai-provider-select-legacy">Provider<select id="ai-provider-type">
                 <option value="gemini">Google Gemini API · Free tier</option>
                 <option value="groq">Groq Cloud · Model/account limits</option>
                 <option value="openrouter">OpenRouter Free Router</option>
@@ -2691,6 +2694,7 @@
                 <option value="fireworks">Fireworks AI · Trial/credits</option>
                 <option value="compatible">OpenAI-compatible / xAI Grok</option>
               </select></label>
+              <div class="ai-provider-section-label">Choose your AI provider <span>· free-first presets, optional custom endpoints</span></div>
               <div id="ai-provider-cards" class="ai-provider-cards" aria-label="Choose API provider">
                 <button type="button" class="ai-provider-card" data-provider-card="gemini"><span class="ai-provider-card__icon">G</span><span class="ai-provider-card__copy"><strong>Google Gemini</strong><small>Free tier · vision models</small></span><span class="ai-provider-card__status">FREE</span></button>
                 <button type="button" class="ai-provider-card" data-provider-card="groq"><span class="ai-provider-card__icon">ϟ</span><span class="ai-provider-card__copy"><strong>Groq Cloud</strong><small>Fast multimodal inference</small></span><span class="ai-provider-card__status">CHECK</span></button>
