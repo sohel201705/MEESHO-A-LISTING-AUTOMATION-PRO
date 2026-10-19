@@ -1395,7 +1395,7 @@ const ONBOARD_DEFAULTS_MAP = {
   'onboard-manufacturer-name':'manufacturerName','onboard-manufacturer-address':'manufacturerAddress','onboard-manufacturer-pincode':'manufacturerPincode',
   'onboard-packer-name':'packerName','onboard-packer-address':'packerAddress','onboard-packer-pincode':'packerPincode',
   'onboard-country':'countryOfOrigin','onboard-importer-name':'importerName','onboard-importer-address':'importerAddress','onboard-importer-pincode':'importerPincode',
-  'onboard-support-phone':'supportPhone','onboard-support-email':'supportEmail','onboard-hsn':'hsn','onboard-gst':'gst'
+  'onboard-support-phone':'supportPhone','onboard-support-email':'supportEmail'
 };
 function sellerIdentity(user=currentUser) {
   return String(user?.uid||user?.email||'').toLowerCase();
