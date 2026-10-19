@@ -2075,6 +2075,12 @@
     .ai-key-entry-head small{display:block;color:#809cba;font-size:8px;line-height:1.45;margin-top:3px}
     .ai-key-entry-card .ai-primary-btn{width:100%;justify-content:center;box-shadow:0 0 16px rgba(49,163,255,.12)}
     @media(max-width:370px){.ai-provider-preset-grid{gap:6px}.ai-provider-preset{padding:8px 7px}.ai-provider-preset-name{font-size:9px}.ai-provider-tier{font-size:6px;padding:3px 4px}}
+
+    .ai-provider-preset-grid{display:grid!important}
+    .ai-provider-preset{font-family:inherit!important;line-height:1.35!important}
+    .ai-provider-preset:focus-visible{outline:2px solid #68ceff;outline-offset:2px}
+    .ai-provider-preset.is-selected .ai-provider-preset-name{color:#f6fbff}
+    .ai-provider-preset.is-selected .ai-provider-glyph{color:#8bf4df;border-color:#43acba;box-shadow:0 0 13px rgba(66,209,190,.14)}
 </style>
 
 </head>
@@ -2709,7 +2715,6 @@
                 <option value="fireworks">Fireworks AI</option>
                 <option value="xai">xAI Grok</option>
               </select></label>
-              <label>Key label<input id="ai-key-name" type="text" placeholder="e.g. Gemini Key 2"></label>
               <label>Model ID<input id="ai-key-model" list="ai-model-options" type="text" placeholder="Choose a suggested free-tier vision model or enter a custom model ID"></label>
               <datalist id="ai-model-options"></datalist>
               <p class="ai-muted">Free options are prioritized, but no provider guarantees unlimited free vision requests. Gemini offers a free tier; Groq has strict rate limits; OpenRouter Free routes to currently available free models that support images. Other providers may require credits or payment.</p>
