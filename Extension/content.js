@@ -565,7 +565,9 @@
           const items = Array.from(portal.querySelectorAll('li, [role="option"]'));
           opt = items.find(el => norm(el.textContent) === targetText) ||
             items.find(el => norm(el.textContent).startsWith(targetText)) ||
-            items[0];
+            items.find(el => norm(el.textContent).includes(targetText));
+          // Never choose the first tax/dropdown option simply because search failed.
+          // A guessed dropdown pick can silently assign the wrong HSN/GST value.
         }
       }
     }
