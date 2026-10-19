@@ -1474,6 +1474,7 @@ function openLandingWorkspace() {
   populateProfileDropdown();
   showView('profilesLanding');
   updateAccountUI();
+  window.dispatchEvent(new Event('seller-profile-saved'));
 }
 function enterLandingView() {
   if (!currentUser || !hasAutofillAccess(currentUser)) {
