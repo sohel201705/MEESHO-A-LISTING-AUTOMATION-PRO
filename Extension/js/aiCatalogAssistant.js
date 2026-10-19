@@ -179,7 +179,8 @@ const PROVIDERS={
  fireworks:{label:'Fireworks AI',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a supported vision model ID; free credits/promotions vary.'},
  mistral:{label:'Mistral AI',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a vision-capable model ID supported by your Mistral account; availability/pricing vary.'},
  huggingface:{label:'Hugging Face Router',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'',kind:'compatible',hint:'Use a compatible vision model and provider token available to your account; free credits/rates vary.'},
- custom:{label:'Custom OpenAI-Compatible',endpoint:'',model:'',kind:'compatible',hint:'Enter the HTTPS endpoint and vision model ID supplied by your provider.'}
+ freellmapi:{label:'FreeLLMAPI Local Router',endpoint:'http://localhost:3001/v1/chat/completions',model:'auto',kind:'compatible',hint:'Uses your local FreeLLMAPI server at localhost:3001. Ensure a vision-capable model is enabled in the router fallback chain.'},
+ custom:{label:'Custom OpenAI-Compatible',endpoint:'',model:'',kind:'compatible',hint:'Enter an HTTPS endpoint, or HTTP only for localhost/127.0.0.1, and a compatible vision model ID.'}
 };
 function label(p){return (PROVIDERS[p]&&PROVIDERS[p].label)||'OpenAI-compatible API';}
 function modelDefault(p){return (PROVIDERS[p]&&PROVIDERS[p].model)||'';}
@@ -287,11 +288,18 @@ function updateProviderForm(){
  if(usesEndpoint(p)&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);
  ep.dataset.provider=p;
  updateModelChoices(p);
- $('ai-provider-hint').textContent=(PROVIDERS[p]?.hint||'Use a supported vision model and an HTTPS endpoint.')+
+ $('ai-provider-hint').textContent=(PROVIDERS[p]?.hint||'Use a supported vision model and a reachable OpenAI-compatible endpoint.')+
   ' Use your own key. This provider may be paid; the extension cannot promise free quotas.';
 }
 async function askPermission(endpoint){
- let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
+ let pattern;try{
+  const u=new URL(endpoint);
+  const localHost=['localhost','127.0.0.1','[::1]','::1'].includes(u.hostname);
+  if(u.protocol!=='https:'&&!(u.protocol==='http:'&&localHost))throw new Error('Use HTTPS for remote APIs; HTTP is allowed only for localhost or 127.0.0.1.');
+  // Chrome host permission patterns do not need an explicit port. Keep HTTP limited to loopback.
+  const host=u.hostname==='::1'?'[::1]':u.hostname;
+  pattern=u.protocol+'//'+host+'/*';
+ }catch(e){throw new Error(e.message||'Enter a valid HTTPS or localhost HTTP endpoint.');}
  return await new Promise(resolve=>chrome.permissions.request({origins:[pattern]},resolve));
 }
 function makeKey(p,model,endpoint,apiKey,name){
