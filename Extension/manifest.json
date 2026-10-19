@@ -76,7 +76,7 @@
     "storage",
     "offscreen"
   ],
-  "version": "3.18.0",
+  "version": "3.18.1",
   "web_accessible_resources": [
     {
       "matches": [
@@ -92,7 +92,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https: http://localhost:3001 http://127.0.0.1:3001 https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com; frame-src https://sohel201705.github.io https://meesho-a-plus-listing-b5ea0.firebaseapp.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https: http://localhost:3001 http://127.0.0.1:3001 http://localhost:31415 http://127.0.0.1:31415 https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com; frame-src https://sohel201705.github.io https://meesho-a-plus-listing-b5ea0.firebaseapp.com;"
   },
   "optional_host_permissions": [
     "https://*/*",
