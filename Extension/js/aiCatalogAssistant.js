@@ -385,7 +385,7 @@ async function saveProfile(){
  if(!profile){profile={id:makeProfileId(),name:'Seller Profile',defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
  profile.name=String($('ai-profile-name').value||'').trim()||'Seller Profile';
  profile.defaults=d;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;profileCache=db;
- await set({[PROFILE_DB]:db,[DEFAULTS]:d});
+ await set({[PROFILE_DB]:db,[DEFAULTS]:d,[PROFILE_OWNER]:currentSellerIdentity()});
  renderProfileSelector(db);$('ai-profile-select').value=profile.id;
  say('Profile "'+profile.name+'" saved locally with base seller/legal details.','success');
 }
