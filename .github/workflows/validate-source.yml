@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.7');
+          assert.equal(manifest.version, '3.17.8');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -257,5 +257,65 @@ jobs:
             { identifier: 'seat_height', label: 'Seat Height' },
             { identifier: 'seating_capacity', label: 'Seating Capacity' }
           ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
-          console.log('Free-mode safeguards and v3.17.7 Meesho selected-catalog detection/autofill regressions passed.');
+          // v3.17.8: tax candidates must populate an allowed exact option even when
+          // official search snippets cannot directly prove the match; mark those as provisional.
+          assert.ok(aiAssistant.includes('function normalizeTaxCandidate(field,candidate)'));
+          assert.ok(aiAssistant.includes('The field was filled to avoid leaving a mandatory field blank'));
+          assert.ok(aiAssistant.includes('site:cbic-gst.gov.in/hindi/gst-goods-services-rates.html'));
+          assert.ok(aiAssistant.includes('Promise.all(queries.map'));
+          assert.ok(aiAssistant.includes('delete base.hsn;delete base.gst;'));
+          assert.ok(aiAssistant.includes("'ai-override-hsn':'hsn'"));
+          assert.ok(aiAssistant.includes("'ai-override-gst':'gst'"));
+          assert.ok(!aiAssistant.includes("'ai-default-hsn':'hsn'"));
+          assert.ok(!popupHtml.includes('id="ai-default-hsn"'));
+          assert.ok(!popupHtml.includes('id="ai-default-gst"'));
+          assert.ok(!popupHtml.includes('id="onboard-hsn"'));
+          assert.ok(!popupHtml.includes('id="onboard-gst"'));
+
+          // Validate allowed-dropdown normalization for HSN/GST.
+          const taxStart = aiAssistant.indexOf('function isTaxField(field){');
+          const taxEnd = aiAssistant.indexOf('function hashText(text){', taxStart);
+          assert.ok(taxStart >= 0 && taxEnd > taxStart);
+          const taxHelpers = new Function('norm',
+            "const OFFICIAL_TAX_HOST=/(^|\\\\.)(cbic\\\\.gov\\\\.in|cbic-gst\\\\.gov\\\\.in|gst\\\\.gov\\\\.in|gstcouncil\\\\.gov\\\\.in)$/i;" +
+            aiAssistant.slice(taxStart, taxEnd) +
+            "; return {normalizeTaxCandidate, officialTaxEvidence};"
+          )(normalise);
+          assert.equal(taxHelpers.normalizeTaxCandidate({identifier:'supplier_gst_percent',label:'GST',values:['0','5','12','18','28']},'18%'),'18');
+          assert.equal(taxHelpers.normalizeTaxCandidate({identifier:'supplier_gst_percent',label:'GST',values:['0%','5%','12%','18%']},'5'),'5%');
+          assert.equal(taxHelpers.normalizeTaxCandidate({identifier:'hsn_code',label:'HSN Code',values:['96170010 - Vacuum Flasks']},'9617.00.10'),'96170010 - Vacuum Flasks');
+          assert.equal(taxHelpers.normalizeTaxCandidate({identifier:'hsn_code',label:'HSN Code',values:['9617 - Vacuum Flasks']},'96170010'),'');
+          const officialHsn = taxHelpers.officialTaxEvidence({identifier:'hsn_code',label:'HSN Code'},
+            '96170010',{url:'https://cbic-gst.gov.in/example'},
+            {results:[{url:'https://cbic-gst.gov.in/example',title:'HSN tariff 96170010',snippet:'HSN commodity tariff 96170010'}]});
+          assert.ok(officialHsn);
+
+          // Verify that Size auto-selection targets its own labelled control,
+          // selects the checkbox, applies exactly once, and uses a shorter wait.
+          assert.ok(content.includes('function findVariationSizeField()'));
+          assert.ok(content.includes('const score = dy * 5 + dx'));
+          assert.ok(content.includes('function findSizeOption(panel, target)'));
+          assert.ok(content.includes('function findSizeApplyButton(panel)'));
+          assert.ok(content.includes('async function waitForSizeCheck(panel, target, timeout = 260)'));
+          assert.ok(content.includes('setTimeout(() => finish(findVisibleSizeMenu()), 900)'));
+          assert.ok(content.includes('Apply was clicked, but Meesho did not show the selected size afterwards.'));
+
+          // Verify provider cards, real providers and their endpoint/model presets.
+          const providers = ['gemini','groq','openrouter','cloudflare','mistral','nvidia','xai','openai'];
+          for (const provider of providers) {
+            assert.ok(aiAssistant.includes(provider+":{id:'"+provider+"'"));
+            assert.ok(popupHtml.includes('data-provider-card="'+provider+'"'));
+            assert.ok(popupHtml.includes('<option value="'+provider+'"'));
+          }
+          assert.ok(aiAssistant.includes("model:'openrouter/free'"));
+          assert.ok(aiAssistant.includes("model:'@cf/meta/llama-3.2-11b-vision-instruct'"));
+          assert.ok(aiAssistant.includes("model:'mistral-small-2506'"));
+          assert.ok(aiAssistant.includes("model:'grok-4.7'"));
+          assert.ok(aiAssistant.includes('providerPreset(inferPlatform(k)).maxImages'));
+          assert.ok(aiAssistant.includes("document.querySelectorAll('#ai-provider-cards [data-provider-card]')"));
+          assert.ok(!aiAssistant.includes("qwen/qwen3.6-27b"));
+          assert.equal((popupHtml.match(/id="ai-image-list"/g) || []).length, 1);
+          const allIds = [...popupHtml.matchAll(/\\bid="([^"]+)"/g)].map(m => m[1]);
+          assert.equal(new Set(allIds).size, allIds.length);
+          console.log('Free-mode safeguards and v3.17.8 GST/HSN autofill, Free Size selection and eight provider-card regressions passed.');
           NODE
