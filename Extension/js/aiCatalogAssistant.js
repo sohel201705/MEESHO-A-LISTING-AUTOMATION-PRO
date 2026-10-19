@@ -208,7 +208,7 @@ const PROVIDER_CONFIG={
   {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},
   {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
  ]},
- groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'',model:'qwen/qwen3.8-27b',tier:'FREE PLAN · RATE LIMITS',description:'Fast vision inference on the free plan',models:[
+ groq:{label:'Groq Cloud',kind:'native-compatible',endpoint:'',model:'qwen/qwen3.8-27b',tier:'MODEL PRICING · ACCOUNT QUOTAS VARY',description:'Fast vision inference; check the current Groq console pricing/trial for your account',models:[
   {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'},
   {id:'qwen/qwen3.6-27b',label:'Qwen 3.6 27B · vision'}
  ]},
@@ -300,7 +300,7 @@ function updateProviderForm(){
  updateModelChoices(p);
  const hints={
   gemini:'FREE TIER · Google AI Studio offers free API access for selected models; quotas and availability depend on the project.',
-  groq:'FREE PLAN · Qwen 3.8 27B accepts image+text. Free-plan limits apply and can change.',
+  groq:'MODEL PRICING · Qwen 3.8 27B accepts image+text. Check the current Groq console for available trial credits, usage pricing and rate limits.',
   openrouter:'FREE ROUTER · openrouter/free selects currently available free models that support image input. Shared/free-tier rate limits apply.',
   huggingface:'SMALL FREE CREDIT · Hugging Face currently provides limited monthly free credits; availability depends on the routed vision model.',
   cloudflare:'DAILY FREE ALLOCATION · Workers AI currently includes a daily free allocation. Replace YOUR_ACCOUNT_ID in the endpoint and use a model enabled on your account.',
