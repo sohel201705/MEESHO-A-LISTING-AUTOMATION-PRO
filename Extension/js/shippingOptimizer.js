@@ -548,7 +548,7 @@
     });
     return candidates.find(img => imageSourceUrl(img) === url) ||
       candidates.find(img => img === document.querySelector('#changeFrontImage')?.parentElement?.querySelector('img')) ||
-      candidates[0] || null;
+      null;
   }
 
   async function fileFromUrl(url, filenamePrefix = 'meesho-front') {
