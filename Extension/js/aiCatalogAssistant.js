@@ -158,21 +158,50 @@ function say(m,t){
  const level=t==='error'?'error':(t==='warning'?'warn':(t==='success'?'ok':'info'));
  if(m)liveLog(m,level);
 }
-function label(p){return p==='gemini'?'Google Gemini':p==='groq'?'Groq Cloud':'OpenAI-compatible API';}
-function modelDefault(p){return p==='gemini'?'gemini-3.8-flash':p==='groq'?'qwen/qwen3.8-27b':'';}
+const PROVIDER_CATALOG=[
+ {id:'gemini',name:'Google Gemini',short:'Gemini',endpoint:'',model:'gemini-3.8-flash',tier:'FREE TIER',tierClass:'free',note:'Vision + strong structured output',desc:'Good first choice'},
+ {id:'groq',name:'Groq Cloud',short:'Groq',endpoint:'',model:'qwen/qwen3.8-27b',tier:'LIMITED FREE',tierClass:'limited',note:'Fast vision; up to 3 images/request',desc:'Free quota/rate limits apply'},
+ {id:'openrouter',name:'OpenRouter Free Router',short:'OpenRouter',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'FREE ROUTER',tierClass:'free',note:'Picks an available free model supporting image input',desc:'Availability changes with free models'},
+ {id:'huggingface',name:'Hugging Face',short:'HF Inference',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'zai-org/GLM-4.5V',tier:'USAGE / CREDITS',tierClass:'credits',note:'OpenAI-compatible vision endpoint',desc:'Quota depends on token/account credits'},
+ {id:'together',name:'Together AI',short:'Together',endpoint:'https://api.together.xyz/v1/chat/completions',model:'Qwen/Qwen2.5-VL-72B-Instruct',tier:'CREDITS / PAID',tierClass:'credits',note:'OpenAI-compatible; vision model selection',desc:'Check your account pricing'},
+ {id:'deepinfra',name:'DeepInfra',short:'DeepInfra',endpoint:'https://api.deepinfra.com/v1/openai/chat/completions',model:'Qwen/Qwen2.5-VL-72B-Instruct',tier:'USAGE BASED',tierClass:'paid',note:'OpenAI-compatible multimodal models',desc:'Free access is not guaranteed'},
+ {id:'fireworks',name:'Fireworks AI',short:'Fireworks',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'accounts/fireworks/models/qwen2p5-vl-72b-instruct',tier:'CREDITS / PAID',tierClass:'credits',note:'Compatible vision endpoint',desc:'Trial credits/model availability vary'},
+ {id:'xai',name:'xAI Grok',short:'Grok',endpoint:'https://api.x.ai/v1/chat/completions',model:'grok-4.7',tier:'PAID',tierClass:'paid',note:'High-capability text + image input',desc:'Metered API; not a free-tier guarantee'}
+];
+function providerMeta(p){return PROVIDER_CATALOG.find(x=>x.id===p)||PROVIDER_CATALOG.find(x=>x.id==='openrouter');}
+function isCompatibleProvider(p){return p!=='gemini'&&p!=='groq';}
+function label(p){return (providerMeta(p)||{}).name||'AI Provider';}
+function modelDefault(p){return (providerMeta(p)||{}).model||'openrouter/free';}
 function modelChoices(p){
+ const base=(providerMeta(p)||{}).model||'';
  if(p==='gemini')return [
-  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · Free tier · vision'},
-  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · Free tier · vision'},
-  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · Free tier · vision'},
-  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · Free tier · vision'}
+  {id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · free tier · vision'},
+  {id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · vision'},
+  {id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},
+  {id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}
  ];
- if(p==='groq')return [
-  {id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · free-tier rate limits'}
+ if(p==='groq')return [{id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision · limited free quota'}];
+ if(p==='openrouter')return [{id:'openrouter/free',label:'OpenRouter Free Router · auto-picks supported free vision model'}];
+ if(p==='huggingface')return [
+  {id:'zai-org/GLM-4.5V',label:'GLM-4.5V · vision · quota/credits vary'},
+  {id:'Qwen/Qwen2.5-VL-3B-Instruct',label:'Qwen2.5-VL 3B · vision · check provider availability'}
  ];
- return [];
+ if(p==='together')return [
+  {id:'Qwen/Qwen2.5-VL-72B-Instruct',label:'Qwen2.5-VL 72B · vision · account pricing'},
+  {id:'meta-llama/Llama-4-Scout-17B-16E-Instruct',label:'Llama 4 Scout · vision · account pricing'}
+ ];
+ if(p==='deepinfra')return [
+  {id:'Qwen/Qwen2.5-VL-72B-Instruct',label:'Qwen2.5-VL 72B · vision · account pricing'},
+  {id:'deepseek-ai/DeepSeek-VL2',label:'DeepSeek VL2 · vision · check availability'}
+ ];
+ if(p==='fireworks')return [
+  {id:'accounts/fireworks/models/qwen2p5-vl-72b-instruct',label:'Qwen2.5-VL 72B · vision · account pricing'},
+  {id:'accounts/fireworks/models/llama-v3p2-11b-vision-instruct',label:'Llama 3.2 Vision 11B · vision · account pricing'}
+ ];
+ if(p==='xai')return [{id:'grok-4.7',label:'Grok 4.7 · vision · paid API'}];
+ return base?[{id:base,label:base+' · model preset'}]:[];
 }
-function endpointDefault(p){return p==='compatible'?'https://api.x.ai/v1/chat/completions':'';}
+function endpointDefault(p){return (providerMeta(p)||{}).endpoint||'';}
 function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
  if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
@@ -226,12 +255,12 @@ function updateModelChoices(p){
  modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
 }
 function updateProviderForm(){
- const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
+ const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint'),meta=providerMeta(p);
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);m.dataset.provider=p;
- $('ai-key-endpoint-wrap').style.display=p==='compatible'?'block':'none';
- if(p==='compatible'&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
- updateModelChoices(p);
- $('ai-provider-hint').textContent=p==='gemini'?'Recommended free-tier vision models: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, and 3.1 Flash-Lite. Free-tier quotas and availability depend on your Google AI Studio project.':p==='groq'?'Recommended Groq vision model: qwen/qwen3.8-27b (up to 3 images/request). Groq free-tier rate limits apply.':'Custom OpenAI-compatible endpoints may be paid; xAI/Grok is not guaranteed free. Do not use a Groq model ID with an xAI endpoint.';
+ $('ai-key-endpoint-wrap').style.display=isCompatibleProvider(p)?'block':'none';
+ if(isCompatibleProvider(p)&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);ep.dataset.provider=p;
+ updateModelChoices(p);renderProviderPresetCards(p);
+ $('ai-provider-hint').textContent=meta?(meta.tier+' · '+meta.note+'. '+meta.desc+'. Change the model ID if your provider account lists a different supported vision model.'):'Choose a provider preset.';
 }
 async function askPermission(endpoint){
  let pattern;try{const u=new URL(endpoint);if(u.protocol!=='https:')throw new Error('API endpoint must use HTTPS.');pattern=u.origin+'/*';}catch(e){throw new Error(e.message||'Enter a valid HTTPS endpoint.');}
@@ -241,16 +270,16 @@ function makeKey(p,model,endpoint,apiKey,name){
  return {id:'key_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),provider:p,name:name||label(p)+' key',model,endpoint,apiKey,enabled:true};
 }
 async function checkProviderPermission(p,endpoint){
- if(p!=='compatible')return true;
+ if(!isCompatibleProvider(p))return true;
  return await askPermission(endpoint);
 }
 async function addKey(){
  const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
  if(!apiKey)return say('Enter an API key first.','error');
  let p=selectedProvider;
- if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';
+ if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini';else if(/^sk-or-/i.test(apiKey))p='openrouter';else if(/^hf_/i.test(apiKey))p='huggingface';else if(/^xai-/i.test(apiKey))p='xai';
  if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
- const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=isCompatibleProvider(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
  if(!model)return say('Enter the model ID.','error');
  let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
  if(!ok)return say('API-host permission denied; key was not saved.','error');
@@ -259,7 +288,7 @@ async function addKey(){
  all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
 }
 async function addBulkKeys(){
- const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=p==='compatible' ? $('ai-key-endpoint').value.trim() : '';
+ const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=isCompatibleProvider(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
  const raw=$('ai-key-bulk').value;
  const entries=raw.split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('#')).map((line,index)=>{
   const split=line.indexOf('|');
@@ -776,7 +805,7 @@ async function gemini(k,prompt,imgs=[]){
 async function compatible(k,prompt,imgs=[]){
  if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
- let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
+ let url=String(k.endpoint||endpointDefault(k.provider)||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
  const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
  if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
