@@ -1507,6 +1507,15 @@ function init(){
  document.querySelectorAll('#ai-catalog-assistant [data-ai-page]').forEach(button=>{
   button.addEventListener('click',()=>switchAiDashboardPage(button.getAttribute('data-ai-page')));
  });
+ document.querySelectorAll('#ai-provider-cards [data-provider-card]').forEach(card=>{
+  card.addEventListener('click',()=>{
+   const selected=card.getAttribute('data-provider-card');
+   if(!$('ai-provider-type')||!PROVIDER_PRESETS[selected])return;
+   $('ai-provider-type').value=selected;
+   updateProviderForm();
+   liveLog('API PROVIDER · '+platformLabel(selected)+' selected. Model/endpoint presets are ready to review.','info');
+  });
+ });
  switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
  $('ai-provider-type').addEventListener('change',updateProviderForm);
