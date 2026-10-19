@@ -736,6 +736,85 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  throw new Error('All enabled API keys failed. '+errors.join(' | '));
 }
 
+async function callTextAI(prompt){
+ const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);
+ if(!list.length)throw new Error('Add and enable an API key in Settings before using AI Listing Chat.');
+ const old=await get(ROT),start=Number(old[ROT]||0)%list.length,order=list.slice(start).concat(list.slice(0,start)),errors=[];
+ for(let i=0;i<order.length;i++){
+  const k=order[i];say('AI Listing Chat · trying '+label(k.provider)+' ('+(i+1)+'/'+order.length+')…');
+  try{
+   const text=k.provider==='gemini'?await gemini(k,prompt,[]):await compatible(k,prompt,[]);
+   await set({[ROT]:(start+i+1)%list.length});
+   return {text,name:safeKeyName(k),provider:k.provider};
+  }catch(e){
+   errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));
+   liveLog('CHAT · '+label(k.provider)+' failed; trying the next enabled key.','warn');
+  }
+ }
+ throw new Error('AI Listing Chat providers failed. '+errors.join(' | '));
+}
+function addChatBubble(role,message){
+ const root=$('ai-chat-messages');if(!root)return;
+ const bubble=el('div','ai-chat-bubble '+(role==='user'?'ai-chat-user':'ai-chat-assistant'),message);
+ root.appendChild(bubble);
+ while(root.children.length>24)root.removeChild(root.firstElementChild);
+ root.scrollTop=root.scrollHeight;
+}
+function chatContext(){
+ const titleChoice=titleChoices.find(x=>x.recommended)||titleChoices[0];
+ const values={};
+ if(draft)Object.entries(draft).forEach(([key,value])=>{
+  if(!String(value||'').trim())return;
+  if(/api.?key|password|token/i.test(key))return;
+  values[key]=String(value).slice(0,500);
+ });
+ return {
+  title:(titleChoice&&titleChoice.title)||($('ai-product-name')&&$('ai-product-name').value)||'',
+  titleOptions:titleChoices.map(x=>({title:x.title,recommended:x.recommended,reason:x.reason})),
+  productInputs:{
+   material:$('ai-product-material')?.value||'',color:$('ai-product-color')?.value||'',
+   capacity:$('ai-product-capacity')?.value||'',weight:$('ai-product-weight')?.value||'',
+   sellingPrice:$('ai-product-price')?.value||'',mrp:$('ai-product-mrp')?.value||'',
+   inventory:$('ai-product-inventory')?.value||'100'
+  },
+  filledFields:Object.keys(values).length,values:Object.fromEntries(Object.entries(values).slice(0,35)),
+  unresolved:(currentTitleNeeds||[]).slice(0,18),
+  research:(researchNow.results||[]).slice(0,5).map(r=>({title:r.title,domain:r.domain,snippet:r.snippet,url:r.url}))
+ };
+}
+async function sendChatMessage(){
+ const input=$('ai-chat-input'),btn=$('ai-chat-send');
+ const message=String(input&&input.value||'').trim();
+ if(!message)return;
+ if(message.length>1200)throw new Error('Keep each message under 1,200 characters.');
+ chatHistory.push({role:'user',content:message});chatHistory=chatHistory.slice(-10);
+ addChatBubble('user',message);input.value='';if(btn)btn.disabled=true;
+ liveLog('AI LISTING CHAT · preparing answer from the active listing context.','info');
+ try{
+  const context=chatContext();
+  const history=chatHistory.slice(-8).map(x=>({role:x.role,content:x.content}));
+  const prompt=[
+   'You are the helpful AI Listing Chat inside MEESHO A+ LISTING AUTOMATION PRO for Indian e-commerce sellers.',
+   'Reply in Bengali when the user writes Bengali; preserve English for product titles, listing fields and search terms when appropriate. Be clear, practical, and concise.',
+   'Answer only the user query using the product/form context. You may explain missing fields, compare title options, suggest honest title/description improvements, or propose next steps. Never claim you changed the actual Meesho page; only the Autofill button does that.',
+   'Do not invent HSN/GST, legal identity, dimensions, pack contents, certification, product performance, or policy facts. Flag unknown facts and explain what evidence is needed.',
+   'If the user asks to change a title, suggest an option and tell them to choose it from the title cards above; do not claim the draft changed.',
+   'Return only valid JSON: {"reply":"your answer here"}.',
+   'Current listing context:',JSON.stringify(context),
+   'Recent conversation:',JSON.stringify(history)
+  ].join('\n');
+  const result=await callTextAI(prompt),obj=parseJson(result.text);
+  const reply=String(obj.reply||obj.answer||obj.message||'I could not compose a reply. Please try again.').trim().slice(0,4500);
+  chatHistory.push({role:'assistant',content:reply});chatHistory=chatHistory.slice(-10);
+  addChatBubble('assistant',reply);
+  liveLog('AI LISTING CHAT · response received from '+result.name+'.','ok');
+  say('AI Listing Chat replied.','success');
+ }catch(e){
+  const msg=redactSecrets(e,null);addChatBubble('assistant','Could not answer: '+msg);
+  liveLog('AI LISTING CHAT · '+msg,'error');say(msg,'error');
+ }finally{if(btn)btn.disabled=false;}
+}
+
 function parseJson(text){
  let s=String(text||'').trim(),f=String.fromCharCode(96);
  s=s.replace(new RegExp('^'+f+f+f+'(?:json)?\\\\s*','i'),'').replace(new RegExp('\\\\s*'+f+f+f+'$'),'');
@@ -877,7 +956,7 @@ async function refineDescriptionToBudget(raw,title,p,imgs){
  try{
   const response=await callAI(prompt,(imgs||[]).slice(0,3),80,6),obj=parseJson(response.text);
   const candidate=normalizeDescription(obj.description||(obj.values&&obj.values.description)||'');
-  if(candidate.length>value.length||value.length<950)value=candidate;
+  if(candidate.length>value.length)value=candidate;
  }catch(e){liveLog('DESCRIPTION · refinement request failed; keeping the current safe text.','warn');}
  value=normalizeDescription(value);
  if(value.length<950)liveLog('DESCRIPTION · '+value.length+'/1000 characters. The model could not safely expand further without inventing unsupported product facts.','warn');
