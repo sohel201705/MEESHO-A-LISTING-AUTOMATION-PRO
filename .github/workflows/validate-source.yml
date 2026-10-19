@@ -154,12 +154,14 @@ jobs:
           assert.ok(popupHtml.includes('up to 10 photos'));
           assert.ok(popupHtml.includes('ai-live-console'));
           assert.ok(popupHtml.includes('Premium graphite + midnight-blue AI workspace'));
-          assert.ok(aiAssistant.includes("const PROFILE_DB='ai_seller_profiles_v1'"));
+          assert.ok(aiAssistant.includes("PROFILE_DB='ai_seller_profiles_v1'"));
           assert.ok(aiAssistant.includes('async function getActiveDefaultsForCategory(category)'));
           assert.ok(aiAssistant.includes('async function saveCategoryOverride()'));
           assert.ok(aiAssistant.includes('ai-default-manufacturer-pincode'));
           assert.ok(aiAssistant.includes('ai-override-importer-pincode'));
           assert.ok(aiAssistant.includes('function buildTitleChoices'));
+          assert.ok(aiAssistant.includes('slice(0,250)'));
+          assert.ok(aiAssistant.includes('exactly one is recommended'));
           assert.ok(aiAssistant.includes('function renderTitleOptions'));
           assert.ok(aiAssistant.includes('async function applyTitleChoice(index)'));
           assert.ok(aiAssistant.includes('function isDescriptionField(f)'));
@@ -167,6 +169,8 @@ jobs:
           assert.ok(aiAssistant.includes('function refineDescriptionToBudget'));
           assert.ok(aiAssistant.includes('950–1000 characters'));
           assert.ok(aiAssistant.includes('async function callTextAI(prompt)'));
+          assert.ok(aiAssistant.includes("await gemini(k,prompt,[])"));
+          assert.ok(aiAssistant.includes("await compatible(k,prompt,[])"));
           assert.ok(aiAssistant.includes('async function sendChatMessage()'));
           assert.ok(aiAssistant.includes("chrome.runtime.onMessage.addListener(message=>"));
           assert.ok(aiAssistant.includes("message.type==='AUTOFILL_PROGRESS'"));
