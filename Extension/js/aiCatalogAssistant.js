@@ -665,6 +665,19 @@ function preset(f,p,d){
  return '';
 }
 function captured(scan,id){const v=(scan.capturedValues||{})[id];return v===undefined||v===null?'':String(v).trim();}
+function safeMeeshoCatalogContext(context={}){
+ return {
+  pageTitle:String(context.pageTitle||'').slice(0,120),
+  headings:Array.isArray(context.headings)?context.headings.map(x=>String(x||'').slice(0,100)).slice(0,12):[],
+  breadcrumb:String(context.breadcrumb||'').slice(0,180),
+  categoryName:String(context.categoryName||'').slice(0,100),
+  subCategoryName:String(context.subCategoryName||'').slice(0,100),
+  catalogType:String(context.catalogType||'').slice(0,100),
+  detectedCategory:String(context.detectedCategory||'').slice(0,100),
+  productType:String(context.productType||'').slice(0,100),
+  confidence:String(context.confidence||'').slice(0,16)
+ };
+}
 function detectMeeshoCatalog(scan){
  const sections=Array.isArray(scan&&scan.sections)?scan.sections:[];
  const fields=sections.flatMap(sec=>(sec.fields||[]).map(f=>({id:String(f.identifier||f.id||''),label:String(f.label||f.name||''),values:Array.isArray(f.values)?f.values:[]})));
@@ -721,12 +734,12 @@ function detectMeeshoCatalog(scan){
  }).sort((a,b)=>b.score-a.score);
  const winner=ranked[0],runner=ranked[1];
  const enough=winner&&winner.score>=7&&winner.score-(runner?runner.score:0)>=2;
- if(!enough)return {key:'general',name:'Selected Meesho Catalog · General Type',type:'Product type from selected form',confidence:'low',score:winner?winner.score:0,evidence:winner?winner.evidence:[],context};
- return {key:winner.key,name:winner.name,type:winner.type,confidence:winner.score>=11?'high':'medium',score:winner.score,evidence:winner.evidence,context};
+ if(!enough)return {key:'general',name:'Selected Meesho Catalog · General Type',type:'Product type from selected form',confidence:'low',score:winner?winner.score:0,evidence:winner?winner.evidence:[],context:safeMeeshoCatalogContext(context)};
+ return {key:winner.key,name:winner.name,type:winner.type,confidence:winner.score>=11?'high':'medium',score:winner.score,evidence:winner.evidence,context:safeMeeshoCatalogContext(context)};
 }
 
 function promptFor(scan,p,d,s,research){
- const data={platform:'Meesho supplier catalog listing form',selectedMeeshoCatalog:scan.catalogContext||{},autoDetectedCatalog:detectMeeshoCatalog(scan),productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},googleSearchSeed:research.seed||'',googleSearchResults:(research.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet,query:r.query}))};
+ const data={platform:'Meesho supplier catalog listing form',selectedMeeshoCatalog:safeMeeshoCatalogContext(scan.catalogContext||{}),autoDetectedCatalog:detectMeeshoCatalog(scan),productInputs:p,sellerDefaults:d,scannedFields:s.fields.map(f=>({identifier:f.identifier,label:f.label,section:f.section,mandatory:f.mandatory,inputType:f.inputType,allowedValues:f.values})),currentFormValues:scan.capturedValues||{},googleSearchSeed:research.seed||'',googleSearchResults:(research.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet,query:r.query}))};
  return [
  'You are an evidence-first Indian e-commerce catalog listing assistant. Inspect the attached product photos, user inputs, scanned form schema, and the supplied Google Search result snippets before drafting values.',
  'Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"titleOptions":[{"title":"slash-separated title under 250 characters","reason":"brief reason","recommended":true}],"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}],"evidence":{"hsn_code":{"url":"exact URL from googleSearchResults"},"supplier_gst_percent":{"url":"exact URL from googleSearchResults"}}}. Provide 4 unique titleOptions whenever the form contains a product title field. Exactly one is recommended. Do not return markdown.',
