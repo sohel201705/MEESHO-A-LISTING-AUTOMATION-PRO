@@ -128,7 +128,7 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-product-capacity"'));
           assert.ok(popupHtml.includes('id="ai-variation-sizes"'));
           assert.ok(popupHtml.includes('id="ai-research-sources"'));
-          assert.ok(content.includes("clickResult==='checkbox-failed'"));
+          assert.ok(content.includes('function sizeOptionContainer(option, menu)'));
           assert.ok(content.includes('Selected size(s) could not be matched'));
           assert.ok(content.includes("add_ons: ['add ons'"));
           assert.ok(content.includes('bis_isi_certification_number'));
