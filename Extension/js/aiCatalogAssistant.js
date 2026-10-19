@@ -1305,7 +1305,9 @@ async function generate(googleAllowed){
    const fixed=preset(f,p,d);
    const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
-   if(old&&!isPriceOrInventory&&!isDescriptionField(f)){values[f.identifier]=old;return;}
+   const taxField=isTaxField(f);
+   const oldTaxIsPlaceholder=taxField&&(!old||/^(0(?:\.0+)?\s*%?|select|choose|--|—)$/i.test(norm(old))||/^select\b/.test(norm(old)));
+   if(old&&!isPriceOrInventory&&!isDescriptionField(f)&&!oldTaxIsPlaceholder){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
    if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    if(isPriceOrInventory){
@@ -1328,13 +1330,21 @@ async function generate(googleAllowed){
     needs.push({identifier:f.identifier,reason:'AI candidate "'+String(v)+'" was not filled because Google result snippets did not verify this physical measurement. Enter the actual value from the product/package specification.'});return;
    }
    if(isTaxField(f)){
-    const src=officialTaxEvidence(f,String(v),evidence[f.identifier],researchNow);
-    if(!src){
-     needs.push({identifier:f.identifier,reason:'AI suggested candidate "'+String(v)+'", but Google results did not contain a directly matching official CBIC/GST source for this exact code/rate. It was not filled. Verify the product classification before use.'});
-     return;
+    const candidate=String(v).trim();
+    const mapped=taxDropdownOption(f,candidate);
+    if(!mapped){
+     needs.push({identifier:f.identifier,reason:'AI candidate "'+candidate+'" could not be matched to the selected Meesho '+f.label+' field/dropdown. Search/select this tax value manually; it was not replaced with a different option.'});
+     bad++;return;
     }
-    values[f.identifier]=String(v).trim();ai++;
-    needs.push({identifier:f.identifier,reason:'Official result matched this candidate: '+src.url+'. Confirm the exact classification applies to this product before submitting.'});
+    const src=officialTaxEvidence(f,candidate,evidence[f.identifier],researchNow);
+    values[f.identifier]=mapped;ai++;
+    if(src){
+     needs.push({identifier:f.identifier,reason:'Tax candidate has matching official-source evidence: '+src.url+'. Review that this classification applies to this exact product before final submission.'});
+     liveLog('TAX EVIDENCE · '+f.label+' candidate '+mapped+' matched an official source.','ok');
+    }else{
+     needs.push({identifier:f.identifier,reason:'PROVISIONAL TAX CANDIDATE: '+f.label+' = '+mapped+'. AI used product/category evidence, but the collected official snippets did not conclusively verify this exact rate/code. Review it before submitting.'});
+     liveLog('TAX WARNING · '+f.label+' candidate '+mapped+' filled provisionally; official match was not conclusive.','warn');
+    }
     return;
    }
    values[f.identifier]=String(v).trim();ai++;
