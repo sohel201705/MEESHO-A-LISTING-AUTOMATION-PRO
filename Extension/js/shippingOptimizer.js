@@ -515,49 +515,28 @@
   }
 
   function findFrontImagePreviewUrl() {
-    const inputs = getPageFileInputs();
-    const exactInput = document.querySelector('#changeFrontImage');
-    const contextualInput = exactInput || findFrontImageInputByContext();
-    const likelyContainers = [];
-    let node = contextualInput;
-    for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
-      if (node.querySelectorAll) {
-        const imgs = Array.from(node.querySelectorAll('img')).filter(img => !img.closest(`#${BOX_ID}'));
-        if (imgs.length) likelyContainers.push(...imgs.map(img => ({ img, bonus: 14 - depth })));
-      }
-    }
-
-    const candidates = [...document.querySelectorAll('img')].map(img => ({ img, bonus: 0 })).filter(item => {
-      const img = item.img;
-      if (!imageSourceUrl(img) || img.closest(`#${BOX_ID}`)) return false;
+    const allImages = Array.from(document.querySelectorAll('img'));
+    let bestUrl = '';
+    let bestScore = -1000;
+    allImages.forEach(function(img) {
+      if (!img || !imageSourceUrl(img) || img.closest('#' + BOX_ID)) return;
       const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
-    });
-    const preferred = new Map();
-    [...candidates, ...likelyContainers].forEach(item => {
-      const img = item.img;
-      if (!imageSourceUrl(img) || img.closest(`#${BOX_ID}`)) return;
-      const old = preferred.get(img);
-      if (!old || old.bonus < item.bonus) preferred.set(img, item);
-    });
-
-    const scored = Array.from(preferred.values()).map(({img, bonus}) => {
-      const rect = img.getBoundingClientRect();
-      const containerText = String(img.closest('div, section, article, aside, label')?.textContent || '').toLowerCase();
-      const alt = String(img.alt || img.getAttribute('aria-label') || '').toLowerCase();
-      let score = bonus;
-      if (containerText.includes('uploaded images')) score += 9;
-      if (containerText.includes('front image')) score += 13;
-      if (containerText.includes('change front image')) score += 12;
-      if (containerText.includes('uploaded')) score += 3;
-      if (/front image|uploaded image|catalog image/.test(alt)) score += 5;
+      if (rect.width <= 20 || rect.height <= 20 || img.offsetParent === null) return;
+      const container = img.closest('div, section, article, aside, label');
+      const containerText = String(container ? container.textContent : '').toLowerCase();
+      const altText = String(img.alt || img.getAttribute('aria-label') || '').toLowerCase();
+      let score = 0;
+      if (containerText.indexOf('uploaded images') >= 0) score += 9;
+      if (containerText.indexOf('front image') >= 0) score += 13;
+      if (containerText.indexOf('change front image') >= 0) score += 12;
+      if (containerText.indexOf('uploaded') >= 0) score += 3;
+      if (/front image|uploaded image|catalog image/.test(altText)) score += 5;
       if (rect.width >= 180 && rect.height >= 180) score += 4;
       if (rect.width < 75 || rect.height < 75) score -= 8;
       if (/similar products|top verified matches|best match|shipping optimizer results/.test(containerText)) score -= 15;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0] ? imageSourceUrl(scored[0].img) : '';
+      if (score > bestScore) { bestScore = score; bestUrl = imageSourceUrl(img); }
+    });
+    return bestUrl;
   }
 
   function findFrontImagePreviewElement() {
