@@ -210,7 +210,7 @@ const PROVIDER_PRESETS={
   models:[{id:'gemini-3.8-flash',label:'Gemini 3.8 Flash · vision'},{id:'gemini-3.6-flash',label:'Gemini 3.6 Flash · vision'},{id:'gemini-3.5-flash-lite',label:'Gemini 3.5 Flash-Lite · vision'},{id:'gemini-3.1-flash-lite',label:'Gemini 3.1 Flash-Lite · vision'}]},
  groq:{id:'groq',label:'Groq Cloud',group:'groq',endpoint:'https://api.groq.com/openai/v1/chat/completions',model:'qwen/qwen3.8-27b',tier:'Free plan · rate limits',kind:'free',maxImages:3,
   note:'Fast vision inference. Free-plan limits apply; current supported models and quotas can change.',
-  models:[{id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · vision'},{id:'qwen/qwen3.6-27b',label:'Qwen 3.6 27B · vision'}]},
+  models:[{id:'qwen/qwen3.8-27b',label:'Qwen 3.8 27B · current vision model'}]},
  openrouter:{id:'openrouter',label:'OpenRouter',group:'compatible',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free',tier:'Free models · availability varies',kind:'free',maxImages:3,
   note:'The free router selects an available free model. Vision support/quota can change; if a model rejects images, select a vision-capable model ID from OpenRouter.',
   models:[{id:'openrouter/free',label:'OpenRouter Free Router'},{id:'google/gemma-3-27b-it:free',label:'Gemma 3 27B · free vision (if available)'},{id:'qwen/qwen2.5-vl-72b-instruct:free',label:'Qwen VL 72B · free vision (if available)'}]},
