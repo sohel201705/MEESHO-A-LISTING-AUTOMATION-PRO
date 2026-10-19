@@ -919,7 +919,7 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
    await set({[ROT]:(start+i+1)%list.length});
   }
  }
- const quotaOnly=errors.length>0&&errors.every(e=>/quota\\/rate limit \\(429\\)/i.test(e));
+ const quotaOnly=errors.length>0&&errors.every(e=>/quota\/rate limit \(429\)/i.test(e));
  throw new Error((quotaOnly?'Provider quota exhausted. ':'All enabled API keys failed. ')+errors.join(' | '));
 }
 
