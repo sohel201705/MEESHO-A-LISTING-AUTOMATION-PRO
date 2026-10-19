@@ -1058,7 +1058,14 @@ function buildTitleChoices(raw,baseTitle,p,d){
   const packCount=Math.max(1,Math.floor(Number(p&&p.packQuantity)||1));
   raw=raw.replace(/(?:\s*\/\s*)?(?:pack|set)\s+of\s+\d+(?:\s+(?:pieces?|pcs?))?/ig,' ');
   raw=raw.replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').trim();
-  if(packCount)raw+=' / Pack of '+packCount;
+  const packSegment=' / Pack of '+packCount;
+  const maxBody=250-packSegment.length;
+  if(raw.length>maxBody){
+   let shortened=raw.slice(0,maxBody),space=shortened.lastIndexOf(' ');
+   if(space>Math.max(12,maxBody-28))shortened=shortened.slice(0,space);
+   raw=shortened.replace(/[ /]+$/,'').trim();
+  }
+  raw+=packSegment;
   let clean=cleanTitle(raw);if(!clean)return;
   if(!clean.includes(' / ')){
    const hyphenParts=clean.split(/\s+-\s+/).map(x=>x.trim()).filter(Boolean);
