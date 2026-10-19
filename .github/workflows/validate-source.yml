@@ -138,7 +138,7 @@ jobs:
           assert.ok(aiAssistant.includes('function updatePricePreview'));
           assert.ok(aiAssistant.includes('function mergeImageBatchResponses'));
           assert.ok(aiAssistant.includes('imgs.length>10'));
-          assert.ok(aiAssistant.includes("k.provider==='groq'?3:5"));
+          assert.ok(aiAssistant.includes("k.provider==='groq'||(k.provider==='openrouter'"));
           assert.ok(aiAssistant.includes("inventory:inventoryInput"));
           assert.ok(aiAssistant.includes("p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice)"));
           assert.ok(aiAssistant.includes("Meesho selling price must be greater than ₹5"));
