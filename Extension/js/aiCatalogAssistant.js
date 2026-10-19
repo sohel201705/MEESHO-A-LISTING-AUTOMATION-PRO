@@ -408,6 +408,7 @@ async function saveCategoryOverride(){
  else delete profile.categoryOverrides[category];
  db.activeId=profile.id;profileCache=db;
  await set({[PROFILE_DB]:db,[DEFAULTS]:profile.defaults});
+ renderProfileSelector(db);$('ai-profile-select').value=profile.id;$('ai-profile-name').value=profile.name;
  say('Saved category-specific overrides for '+($('ai-profile-category').selectedOptions[0]?.textContent||category)+'. Blank override fields use the profile base details.','success');
 }
 async function getActiveDefaultsForCategory(category){
