@@ -502,48 +502,44 @@
     return String(text || '').trim().toLowerCase();
   }
 
-  function findFrontImagePreviewUrl() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
+  function frontImageCandidates() {
+    const candidates = Array.from(document.querySelectorAll('img')).filter(img => {
+      if (!img || !img.src || img.closest('#' + BOX_ID)) return false;
       const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
+      return rect.width > 24 && rect.height > 24 && img.offsetParent !== null;
     });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
-      let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
+    return candidates.map(img => {
+      let score = 0, bestContext = '', bestContextLength = Infinity;
+      let node = img.parentElement;
+      for (let depth = 0; node && depth < 7 && !node.closest('#' + BOX_ID); depth++, node = node.parentElement) {
+        const text = getVisibleText(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length > 900) continue;
+        if (text.length < bestContextLength) { bestContext = text; bestContextLength = text.length; }
+        const lower = text.toLowerCase();
+        if (/uploaded images|uploaded product images|your uploaded images/.test(lower)) score = Math.max(score, 16 - depth);
+        if (/^front image$|^front image uploaded$|^front images$/.test(lower)) score = Math.max(score, 18 - depth);
+        else if (/\bfront image\b/.test(lower) && !/instruction|example|step \d|please add|how to/.test(lower)) score = Math.max(score, 9 - depth);
+        if (/relative images|size chart|how to add images|add images with|image upload instruction|example image|step \d/.test(lower)) score -= 10;
+        if (/\bchange\b|\breplace\b/.test(lower) && /\bimage\b|\bphoto\b/.test(lower) && text.length < 260) score += 2;
+      }
+      const alt = String(img.alt || '').toLowerCase();
+      if (/front image|front view|uploaded product/.test(alt)) score += 8;
+      if (/instruction|example|placeholder|size chart|relative/.test(alt)) score -= 15;
+      if (img.closest('[data-testid*="uploaded" i], [class*="uploaded-images" i], [class*="uploadedImages"]')) score += 7;
+      const rect = img.getBoundingClientRect();
+      if (rect.width < 42 || rect.height < 42) score -= 3;
+      return { img, score, bestContext };
     }).sort((a, b) => b.score - a.score);
+  }
 
-    return scored[0]?.img?.currentSrc || scored[0]?.img?.src || '';
+  function findFrontImagePreviewUrl() {
+    const best = frontImageCandidates()[0];
+    return best && best.score >= 6 ? (best.img.currentSrc || best.img.src || '') : '';
   }
 
   function findFrontImagePreviewElement() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
-      const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
-    });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
-      let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0]?.img || null;
+    const best = frontImageCandidates()[0];
+    return best && best.score >= 6 ? best.img : null;
   }
 
   async function fileFromUrl(url, filenamePrefix = 'meesho-front') {
@@ -620,26 +616,31 @@
   }
 
   function getMeeshoImageInput() {
-    const exact = document.querySelector('#changeFrontImage');
-    if (exact && !exact.closest(`#${BOX_ID}`)) return exact;
-
-    const contextual = findFrontImageInputByContext();
-    if (contextual) return contextual;
-
     const inputs = getPageFileInputs();
-    if (inputs.length === 0) return null;
-
-    const selected = inputs.find(input => input.files && input.files.length > 0);
-    if (selected) return selected;
-
+    const exact = document.querySelector('#changeFrontImage');
+    const selected = inputs.filter(input => input.files && input.files.length > 0);
+    const contextual = findFrontImageInputByContext();
+    if (contextual && contextual.files && contextual.files.length > 0) return contextual;
+    if (exact && !exact.closest('#' + BOX_ID) && exact.files && exact.files.length > 0) return exact;
+    const likelySelected = selected.find(isLikelyMeeshoImageInput);
+    if (likelySelected) return likelySelected;
+    if (selected.length === 1) return selected[0];
+    if (exact && !exact.closest('#' + BOX_ID)) return exact;
+    if (contextual) return contextual;
     const likely = inputs.find(isLikelyMeeshoImageInput);
-    if (likely) return likely;
-
-    return inputs[0] || null;
+    return likely || inputs[0] || null;
   }
 
   function currentSourceFile() {
-    return getMeeshoImageInput()?.files?.[0] || null;
+    const input = getMeeshoImageInput();
+    if (input && input.files && input.files.length) return input.files[0];
+    const inputs = getPageFileInputs();
+    const exact = document.querySelector('#changeFrontImage');
+    const selected = inputs.filter(x => x.files && x.files.length);
+    const contextual = findFrontImageInputByContext();
+    return (contextual && contextual.files && contextual.files[0]) ||
+      (exact && exact.files && exact.files[0]) ||
+      (selected.find(isLikelyMeeshoImageInput) || (selected.length === 1 ? selected[0] : null))?.files?.[0] || null;
   }
 
   function getSourceStrategyLabel() {
@@ -716,15 +717,23 @@
       sourceResolveState = manualSourceFile ? 'manual-ok' : 'manual-missing';
       return manualSourceFile || null;
     }
-
     const localFile = currentSourceFile();
     if (localFile) {
       sourceResolveState = 'current-file';
       return localFile;
     }
 
+    const apiUrl = String(draftInfo?.imageUrl || '').trim();
     const previewUrl = findFrontImagePreviewUrl();
     const previewElement = findFrontImagePreviewElement();
+    const preferredUrl = apiUrl || previewUrl;
+    if (preferredUrl) {
+      const file = await fileFromUrl(preferredUrl, 'meesho-front');
+      if (file) {
+        sourceResolveState = apiUrl ? 'saved-ok' : 'preview-url';
+        return file;
+      }
+    }
     if (previewElement) {
       const previewFile = await fileFromImageElement(previewElement, 'meesho-front');
       if (previewFile) {
@@ -732,25 +741,11 @@
         return previewFile;
       }
     }
-
-    if (!previewUrl && !draftInfo?.imageUrl) {
-      sourceResolveState = 'current-missing';
-      return null;
-    }
-
-    const preferredUrl = previewUrl || draftInfo.imageUrl;
-    const file = await fileFromUrl(preferredUrl, 'meesho-front');
-    if (file) {
-      sourceResolveState = previewUrl ? 'preview-url' : 'saved-ok';
-      return file;
-    }
-
     if (manualSourceFile) {
       sourceResolveState = 'manual-fallback';
       return manualSourceFile;
     }
-
-    sourceResolveState = 'saved-load-failed';
+    sourceResolveState = preferredUrl ? 'saved-load-failed' : 'current-missing';
     return null;
   }
 
@@ -1657,9 +1652,9 @@
           sourceState.classList.remove('mls-source-row__state--manual', 'mls-source-row__state--empty');
         }
       } else {
-        previewUrl = findFrontImagePreviewUrl() || draftInfo?.imageUrl || '';
+        previewUrl = draftInfo?.imageUrl || findFrontImagePreviewUrl() || '';
         if (previewUrl) {
-          displayName = 'Saved Meesho front image';
+          displayName = draftInfo?.imageUrl ? 'Current Meesho catalog front image' : 'Detected uploaded front image';
           sourceLabel = 'Current saved front image';
           if (sourceState) {
             sourceState.textContent = 'AUTO';
@@ -1781,6 +1776,10 @@
 
   const start = () => {
     inject();
+    // Request the page interceptor's saved catalog image even when its network
+    // event happened before the shipping optimizer mounted.
+    requestCatalogContext();
+    setTimeout(syncSourcePreview, 90);
     let injectTimer = null;
     new MutationObserver(() => {
       const box = document.getElementById(BOX_ID);
