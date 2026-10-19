@@ -708,7 +708,7 @@ function mergeImageBatchResponses(texts){
  });
  return JSON.stringify(combined);
 }
-async function callAI(prompt,imgs=[]){
+async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
  if(!Array.isArray(imgs)||!imgs.length)throw new Error('Product photos are missing. Upload at least one photo and try again.');
  if(imgs.length>10)throw new Error('Too many photos. Select up to 10 photos of this one product.');
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
@@ -721,8 +721,10 @@ async function callAI(prompt,imgs=[]){
    for(let b=0;b<batches.length;b++){
     const message='Analyzing photo batch '+(b+1)+'/'+batches.length+' via '+label(k.provider)+' ('+batches[b].length+' photo(s)).';
     say(message);
+    setProgress(progressBase+Math.round(progressSpan*(b/batches.length)),message);
     const text=k.provider==='gemini'?await gemini(k,prompt,batches[b]):await compatible(k,prompt,batches[b]);
     texts.push(text);
+    setProgress(progressBase+Math.round(progressSpan*((b+1)/batches.length)),message+' complete');
    }
    const resultText=texts.length===1?texts[0]:mergeImageBatchResponses(texts);
    await set({[ROT]:(start+i+1)%list.length});
