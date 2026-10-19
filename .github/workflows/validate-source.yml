@@ -311,7 +311,7 @@ jobs:
           assert.equal(classifyProviderFailure(new Error('HTTP 401: invalid API key')), 'auth');
           const packStart = aiAssistant.indexOf('function exactPackQuantityOption(field,count){');
           const packEnd = aiAssistant.indexOf('function exactCapacityOption', packStart);
-          const packOption = new Function('norm', aiAssistant.slice(packStart, packEnd) + '; return exactPackQuantityOption;')(value => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase());
+          const packOption = new Function('norm', aiAssistant.slice(packStart, packEnd) + '; return exactPackQuantityOption;')(value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase());
           assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2', 'Pack Of 4'] }, 2), 'Pack Of 2');
           assert.equal(packOption({ values: ['Pack Of 1', 'Pack Of 2'] }, 4), '');
           assert.equal(packOption({ values: [] }, 3), 'Pack Of 3');
@@ -323,7 +323,7 @@ jobs:
           const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
           assert.ok(titleHelpersStart >= 0);
           const titleBuilder = new Function('norm', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
-            value => String(value || '').replace(/[＊*]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase()
+            value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
           );
           const titleChoices = titleBuilder([
             { title: 'Bottle / Steel / Pack of 4', recommended: true },
