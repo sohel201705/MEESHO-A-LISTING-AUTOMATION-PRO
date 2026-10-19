@@ -634,6 +634,14 @@
   async function autofill(values) {
     let filled = 0;
     const failed = [];
+    const progressTotal=Math.max(1,Object.entries(values||{}).filter(([key,value])=>key!=='_variation_sizes'&&String(value||'').trim()!=='').length);
+    let progressDone=0;
+    const reportAutofillProgress=(label)=>{
+      progressDone=Math.min(progressTotal,progressDone+1);
+      const percent=Math.min(99,4+Math.round((progressDone/progressTotal)*94));
+      try{chrome.runtime.sendMessage({type:'AUTOFILL_PROGRESS',percent,label:String(label||'Filling field')+' ('+progressDone+'/'+progressTotal+')'},()=>{void chrome.runtime.lastError;});}catch(e){}
+    };
+    try{chrome.runtime.sendMessage({type:'AUTOFILL_PROGRESS',percent:3,label:'Starting on the active Meesho page'});}catch(e){}
 
     __apiAllowedValues = {};
     __fieldSectionMap = {};
@@ -673,6 +681,7 @@
       const value = regularValues[id];
       if (!value || String(value).trim() === '') continue;
 
+      reportAutofillProgress('Filling '+id);
       const field = findField(id);
       if (!field) { failed.push(id + ' not found on the Meesho page'); continue; }
 
@@ -704,6 +713,7 @@
         vField.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
         await sleep(30);
         const ok = await selectSizeDropdown(vField.triggerEl, variationSizes, failed);
+        reportAutofillProgress('Selecting size '+variationSizes);
         if (ok) filled++;
         await closeOpenDropdown();
         await sleep(50);
@@ -725,6 +735,7 @@
       if (!value || String(value).trim() === '') continue;
 
       const ok = await fillSizeTableField(id, value, failed);
+      reportAutofillProgress('Filling size field '+id);
       if (ok) {
         filled++;
       } else {
@@ -734,6 +745,8 @@
 
     if (Object.keys(sizeMeasures).length > 0) {
       const measureResult = await fillSizeMeasurements(sizeMeasures, failed);
+      const measureCount=Object.values(sizeMeasures).reduce((total,items)=>total+Object.keys(items||{}).length,0);
+      for(let i=0;i<measureCount;i++)reportAutofillProgress('Filling per-size measurement');
       filled += measureResult.filled;
       if (measureResult.stopped) {
         buildLabelCache();
@@ -749,7 +762,7 @@
       if (SKIP.has(id)) continue;
 
       const field = findField(id);
-      if (!field) { failed.push(id + ' not found on the Meesho page'); continue; }
+      if (!field) { failed.push(id + ' not found on the Meesho page'); reportAutofillProgress('Field not found: '+id); continue; }
 
       if (__fieldSectionMap[id] === 'other_data') {
         phase4Queue.push({ id, value, field });
@@ -788,12 +801,14 @@
           if (ok) filled++;
           else buildLabelCache();
         }
+        reportAutofillProgress('Filling '+id);
       }
       return true;
     };
 
     await fillAttrQueue(phase3Queue);
     await fillAttrQueue(phase4Queue);
+    try{chrome.runtime.sendMessage({type:'AUTOFILL_PROGRESS',percent:99,label:'All autofill tasks processed; reviewing results'});}catch(e){}
     return { filled, failed, stopped: failed.length > 0 };
   }
 
