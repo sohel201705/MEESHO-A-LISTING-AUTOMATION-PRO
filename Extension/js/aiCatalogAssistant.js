@@ -935,7 +935,11 @@ async function generate(googleAllowed){
   if(p.productMrp)liveLog('MRP · Using the seller-entered MRP ₹'+p.productMrp+'.','info');
   else liveLog('MRP · No verified MRP entered; will not invent one.','warn');
 
-  const dres=await get(DEFAULTS),d=dres[DEFAULTS]||{},imgs=await images();
+  const category=$('ai-profile-category')?$('ai-profile-category').value:'general';
+  const d=await getActiveDefaultsForCategory(category);
+  liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · category override: '+category+'.','ok');
+  const imgs=await images();
+  setProgress(18,'Photos ready · identify product and title');
   if(!p.productName){
    try{
     say('Identifying product title from the photos before Google Search…');
@@ -978,8 +982,14 @@ async function generate(googleAllowed){
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   let ai=0,presetCount=0,bad=0,generated=0;
   const titleField=s.fields.find(isProductNameField);
-  const draftTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
-  if(draftTitle&&!p.productName){p.productName=draftTitle;$('ai-product-name').value=draftTitle;}
+  activeTitleFieldId=titleField?titleField.identifier:'';
+  const baseSuggestedTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
+  titleChoices=buildTitleChoices(parsed.titleOptions,baseSuggestedTitle,p,d);
+  const recommendedTitle=(titleChoices.find(x=>x.recommended)||titleChoices[0]||{}).title||baseSuggestedTitle;
+  const draftTitle=cleanTitle(recommendedTitle||baseSuggestedTitle);
+  p.productName=draftTitle||p.productName;
+  if(p.productName&&$('ai-product-name'))$('ai-product-name').value=p.productName;
+  currentTitleProduct=Object.assign({},p);
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+draftTitle).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
@@ -994,7 +1004,7 @@ async function generate(googleAllowed){
    const fixed=preset(f,p,d);
    const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
-   if(old&&!isPriceOrInventory){values[f.identifier]=old;return;}
+   if(old&&!isPriceOrInventory&&!isDescriptionField(f)){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
    if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    if(isPriceOrInventory){
@@ -1028,6 +1038,18 @@ async function generate(googleAllowed){
    }
    values[f.identifier]=String(v).trim();ai++;
   });
+  const descriptionField=s.fields.find(isDescriptionField);
+  if(descriptionField){
+   const before=String(values[descriptionField.identifier]||proposed[descriptionField.identifier]||captured(scan,descriptionField.identifier)||'');
+   if(before){
+    const description=await refineDescriptionToBudget(before,draftTitle,p,imgs);
+    values[descriptionField.identifier]=description;
+    liveLog('DESCRIPTION FIELD · '+description.length+'/1000 characters prepared for '+descriptionField.label+'.','ok');
+   }else{
+    needs.push({identifier:descriptionField.identifier,reason:'AI did not return a supported description. Review the available product facts and retry.'});
+    liveLog('DESCRIPTION FIELD · no description returned by the model.','warn');
+   }
+  }
   if(p.productCapacity){
    const capacityFields=s.fields.filter(f=>/(capacity|volume)/i.test(f.label+' '+String(f.identifier||'').replace(/_/g,' ')));
    capacityFields.forEach(f=>{
@@ -1044,11 +1066,14 @@ async function generate(googleAllowed){
     needs.push({identifier:f.identifier,reason:'Required field is blank because a verified value was not found.'});
   });
   draft=values;pending=needs;
+  currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
+  renderTitleOptions();
   liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
   showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
   $('ai-autofill-btn').disabled=!Object.values(values).some(v=>String(v||'').trim());
   const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
   const researchNote=researchNow.results.length?' Google research added.':(' Google search unavailable: '+(researchNow.error||'no results')+'.');
+  setProgress(100,'Draft complete · choose a title and review unresolved fields');
   say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||researchNow.error?'warning':'success');
  }catch(e){liveLog('PIPELINE ERROR · '+redactSecrets(e,null),'error');say(redactSecrets(e,null),'error');}
 }
