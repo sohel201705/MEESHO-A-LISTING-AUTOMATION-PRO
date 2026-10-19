@@ -127,7 +127,7 @@ function slugCode(text,maxLen){
 }
 async function productCodes(title,p){
  const stableTitle=cleanSearchSeed(title)||'PRODUCT';
- const identity=[stableTitle,p.material||'',p.color||'',p.productFacts||''].join('|').toLowerCase().replace(/\s+/g,' ').trim();
+ const identity=[stableTitle,p.material||'',p.color||'',p.productFacts||'',p.packQuantity||'1'].join('|').toLowerCase().replace(/\s+/g,' ').trim();
  const h=hashText(identity),storageKey='ai_generated_product_codes_v1',res=await get(storageKey),map=res[storageKey]||{};
  if(map[h]&&map[h].styleCode&&map[h].skuCode)return map[h];
  const core=slugCode(stableTitle,16),short=slugCode(stableTitle,10);
@@ -215,6 +215,22 @@ function safeKeyName(k){
  const name=String(k&&k.name||'').trim(),key=String(k&&k.apiKey||'');
  if(!name||name===key||name.length>42||/^(AIzaSy|gsk_|xai-|sk-)/i.test(name))return label(k&&k.provider)+' key';
  return name;
+}
+function classifyProviderFailure(error){
+ const message=String(error&&error.message||error||'Unknown provider error');
+ if(/\b429\b|quota|resource_exhausted|rate.?limit|too many requests|billing/i.test(message))return 'quota';
+ if(/\b401\b|\b403\b|unauthorized|invalid api.?key|permission denied|forbidden/i.test(message))return 'auth';
+ if(/\b404\b|model.*not found|not found.*model/i.test(message))return 'model';
+ if(/\b5\d\d\b|temporarily unavailable|service unavailable|internal server error/i.test(message))return 'server';
+ return 'other';
+}
+function explainProviderFailure(provider,error,hasAlternative){
+ const kind=classifyProviderFailure(error),prefix=label(provider)+' ';
+ if(kind==='quota')return prefix+'quota/rate limit (429). '+(hasAlternative?'Skipping this key and trying the next enabled provider/key.':'No other enabled key/provider is available; add or enable another key/provider, or wait for this provider quota to reset. The extension cannot restore provider quota.');
+ if(kind==='auth')return prefix+'authentication/permission error. Check the API key, model access and provider permissions.';
+ if(kind==='model')return prefix+'model/endpoint not found. Check the model ID and endpoint for this provider.';
+ if(kind==='server')return prefix+'provider server error. It will be skipped for this request.';
+ return prefix+redactSecrets(error,null);
 }
 function redactSecrets(message,k){
  let out=String(message&&message.message||message||'Unknown error');
@@ -614,6 +630,16 @@ function exactUnitOption(field,candidates){
  }
  return options.length?'':String(candidates[0]||'');
 }
+function exactPackQuantityOption(field,count){
+ const n=Math.max(1,Math.floor(Number(count)||1)),options=Array.isArray(field.values)?field.values:[];
+ const aliases=new Set([
+  norm('Pack Of '+n),norm('Pack of '+n+' Pieces'),norm('Pack of '+n+' Pcs'),
+  norm('Pack of '+n+' piece'),norm('Set of '+n),norm(n+' Pieces'),norm(n+' Pcs'),norm(String(n))
+ ]);
+ const match=options.find(option=>aliases.has(norm(option)));
+ if(match!==undefined)return String(match);
+ return options.length?'':'Pack Of '+n;
+}
 function exactCapacityOption(field,ml,label){
  const options=Array.isArray(field.values)?field.values:[];
  const x=norm(label),isLitres=/capacity_in_l|capacity in l|\b(in l|litre|liter)\b/.test(x),isMl=/\bml\b|milliliter|millilitre/.test(x);
@@ -691,6 +717,11 @@ function preset(f,p,d){
  if(/\bhsn\b|hsn code/i.test(x)&&d.hsn)return d.hsn;if(/\bgst\b|gst rate|gst percentage/i.test(x)&&d.gst)return d.gst;
  if(/(wrong|defective|return)/.test(x)&&/price/.test(x)&&p.sellingPrice)return p.wrongReturnPrice||'';
  if(/\bmrp\b|maximum retail price/.test(x)&&p.productMrp)return p.productMrp;
+ if(/\b(net quantity|multipack|pack quantity|pack of|number of pieces|pieces per pack)\b/.test(x)&&p.packQuantity){
+  const count=Math.max(1,Math.floor(Number(p.packQuantity)||1));
+  const option=exactPackQuantityOption(f,count);
+  if(option)return option;
+ }
  if(/\binventory\b|stock quantity/.test(x))return String(p.inventory===undefined||p.inventory===null||p.inventory===''?100:p.inventory);
  if(p.sellingPrice&&/(meesho price|selling price|transfer price|meesho_price|selling_price)/.test(x)&&!/(\bmrp\b|wrong|defective|return)/.test(x))return p.sellingPrice;
  const capMl=capacityInMl(p.productCapacity);if(capMl!==null&&/(capacity|volume)/.test(x)){const option=exactCapacityOption(f,capMl,x);if(option)return option;}
@@ -785,6 +816,7 @@ function promptFor(scan,p,d,s,research){
  'You are an evidence-first Indian e-commerce catalog listing assistant. Inspect the attached product photos, user inputs, scanned form schema, and the supplied Google Search result snippets before drafting values.',
  'Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"titleOptions":[{"title":"slash-separated title under 250 characters","reason":"brief reason","recommended":true}],"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}],"evidence":{"hsn_code":{"url":"exact URL from googleSearchResults"},"supplier_gst_percent":{"url":"exact URL from googleSearchResults"}}}. Provide 4 unique titleOptions whenever the form contains a product title field. Exactly one is recommended. Do not return markdown.',
  'The user already selected the catalog/category on Meesho. Do not ask them to select a category again. Infer the product family from selected catalog context, schema field identifiers/labels, live selected values and photos. Fill only fields that exist in this selected Meesho form; use only its exact allowed dropdown options. Never invent field identifiers or category values.',
+ 'Pack quantity rule: productInputs.packQuantity is the seller-entered number of actual sale units/pieces in one pack. It is not the number of photos. Use this exact count in the title, description and any matching Net Quantity / Multipack form field; obey the form\'s exact allowed dropdown options. Never infer multi-pack quantity from a collage or multiple angles.',
  'Try every scanned field, not only obvious title/description fields. Prefer verified source facts, product image evidence, user inputs, and matching seller defaults. Never create field identifiers.',
  'If a product-name field exists, generate 4 distinct title options. Each title must be no longer than 250 characters and must use readable slash-separated segments (` / `): Product Type / Brand (if verified) / Capacity or Size / Material (if verified) / Color / Pack Quantity (if verified) / One verified feature. Omit unknown segments; do not use comma-separated keyword stuffing. Put the best search-friendly truthful option first and set recommended=true for exactly one. Do not repeat keywords or add unsupported claims.',
  'For every description field, aim for 950–1000 characters including spaces, and never exceed 1000 characters. Include only known product details, common use context, care/usage guidance only if appropriate, and a reminder to check dimensions/capacity where relevant. Never pad with repeated filler just to reach a count. Do not claim food-grade, insulation, hot/cold retention, leak-proof, BPA-free, certification, compatibility, or special construction unless verified by the photos/text or a relevant source.',
@@ -880,9 +912,15 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
    liveLog('All '+imgs.length+' photos were sent in '+batches.length+' batch(es) using '+label(k.provider)+'.','ok');
    return {text:resultText,name:safeKeyName(k),provider:k.provider,imagesUsed:imgs.length,imageBatches:batches.length};
   }
-  catch(e){errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));liveLog(label(k.provider)+' failed; trying next enabled key if available.','warn');}
+  catch(e){
+   const explanation=explainProviderFailure(k.provider,e,i<order.length-1);
+   errors.push(safeKeyName(k)+' — '+explanation);
+   liveLog(explanation,'warn');
+   await set({[ROT]:(start+i+1)%list.length});
+  }
  }
- throw new Error('All enabled API keys failed. '+errors.join(' | '));
+ const quotaOnly=errors.length>0&&errors.every(e=>/quota\\/rate limit \\(429\\)/i.test(e));
+ throw new Error((quotaOnly?'Provider quota exhausted. ':'All enabled API keys failed. ')+errors.join(' | '));
 }
 
 async function callTextAI(prompt){
@@ -896,8 +934,10 @@ async function callTextAI(prompt){
    await set({[ROT]:(start+i+1)%list.length});
    return {text,name:safeKeyName(k),provider:k.provider};
   }catch(e){
-   errors.push(label(k.provider)+' '+safeKeyName(k)+': '+redactSecrets(e,k));
-   liveLog('CHAT · '+label(k.provider)+' failed; trying the next enabled key.','warn');
+   const explanation=explainProviderFailure(k.provider,e,i<order.length-1);
+   errors.push(safeKeyName(k)+' — '+explanation);
+   liveLog('CHAT · '+explanation,'warn');
+   await set({[ROT]:(start+i+1)%list.length});
   }
  }
  throw new Error('AI Listing Chat providers failed. '+errors.join(' | '));
@@ -924,7 +964,7 @@ function chatContext(){
    material:$('ai-product-material')?.value||'',color:$('ai-product-color')?.value||'',
    capacity:$('ai-product-capacity')?.value||'',weight:$('ai-product-weight')?.value||'',
    sellingPrice:$('ai-product-price')?.value||'',mrp:$('ai-product-mrp')?.value||'',
-   inventory:$('ai-product-inventory')?.value||'100'
+   inventory:$('ai-product-inventory')?.value||'100',packQuantity:$('ai-product-pack-quantity')?.value||'1'
   },
   filledFields:Object.keys(values).length,values:Object.fromEntries(Object.entries(values).slice(0,35)),
   unresolved:(currentTitleNeeds||[]).slice(0,18),
@@ -1032,11 +1072,11 @@ function buildTitleChoices(raw,baseTitle,p,d){
   if(typeof x==='string')add(x,'AI-generated title option.',false);
   else if(x&&typeof x==='object')add(x.title||x.value||'',x.reason||x.rationale||'',x.recommended===true||String(x.recommended).toLowerCase()==='true');
  });
- const brand=String(d&&d.brand||'').trim(),capacity=String(p&&p.productCapacity||'').trim(),material=String(p&&p.material||'').trim(),color=String(p&&p.color||'').trim();
+ const brand=String(d&&d.brand||'').trim(),capacity=String(p&&p.productCapacity||'').trim(),material=String(p&&p.material||'').trim(),color=String(p&&p.color||'').trim(),pack=String(p&&p.packQuantity||'').trim();
  add(baseTitle,'Base searchable title from the product identification.',false);
- add([brand,baseTitle,capacity,material,color].filter(Boolean).join(' / '),'Brand and product details, only where supplied or verified.',false);
- add([baseTitle,capacity,material,color].filter(Boolean).join(' / '),'Product type followed by confirmed capacity/material/color.',false);
- add([baseTitle,color,capacity].filter(Boolean).join(' / '),'Shorter title prioritizing core product and variant.',false);
+ add([brand,baseTitle,capacity,material,color,pack?'Pack of '+pack:''].filter(Boolean).join(' / '),'Brand and product details, including seller-entered pack quantity.',false);
+ add([baseTitle,capacity,material,color,pack?'Pack of '+pack:''].filter(Boolean).join(' / '),'Product type followed by confirmed details and pack quantity.',false);
+ add([baseTitle,color,capacity,pack?'Pack of '+pack:''].filter(Boolean).join(' / '),'Shorter title prioritizing product, variant and pack quantity.',false);
  add([baseTitle,'Product Details as Shown'].filter(Boolean).join(' / '),'Conservative option without adding unverified technical claims.',false);
  while(choices.length<4){
   const n=choices.length+1;
@@ -1107,7 +1147,7 @@ async function refineDescriptionToBudget(raw,title,p,imgs){
   'Keep the description natural, specific to the product title and only grounded in the provided draft, confirmed seller inputs, and research snippets. Do not invent certifications, material grades, leak proofing, hot/cold retention, included accessories, measurements, package contents, warranty, brand claims or origin.',
   'Do not repeat filler. When technical facts are sparse, write useful neutral buying guidance and explain that shoppers should check the exact capacity/color/product images and supplied specifications.',
   'Product title: '+String(title||''),
-  'Confirmed seller details: '+JSON.stringify({material:p.material||'',color:p.color||'',capacity:p.productCapacity||'',weight:p.productWeight||'',length:p.productLength||'',width:p.productWidth||'',height:p.productHeight||'',facts:p.productFacts||''}),
+  'Confirmed seller details: '+JSON.stringify({material:p.material||'',color:p.color||'',capacity:p.productCapacity||'',packQuantity:p.packQuantity||'1',weight:p.productWeight||'',length:p.productLength||'',width:p.productWidth||'',height:p.productHeight||'',facts:p.productFacts||''}),
   'Google research snippets: '+JSON.stringify((researchNow.results||[]).slice(0,6).map(r=>({title:r.title,domain:r.domain,snippet:r.snippet}))),
   'Current description to improve: '+value,
   'Return only JSON, no markdown.'
@@ -1156,6 +1196,7 @@ async function generate(googleAllowed){
   const p={
    productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),
    color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),
+   packQuantity:$('ai-product-pack-quantity')?String(Math.max(1,Math.floor(Number($('ai-product-pack-quantity').value)||1))):'1',
    productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),
    productHeight:$('ai-product-height').value.trim(),productCapacity:$('ai-product-capacity')?$('ai-product-capacity').value.trim():'',
    sellingPrice:$('ai-product-price').value.trim(),productMrp:$('ai-product-mrp')?$('ai-product-mrp').value.trim():'',
