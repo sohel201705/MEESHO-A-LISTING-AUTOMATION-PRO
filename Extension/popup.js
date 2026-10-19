@@ -1449,7 +1449,7 @@ async function saveInitialSellerProfile() {
     let profile=db.profiles.find(p=>p.id===db.activeId)||db.profiles[0];
     if(!profile){profile={id:'seller-main-'+Date.now().toString(36),name,defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
     profile.name=name;profile.defaults=defaults;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;
-    await localSet({'ai_seller_profiles_v1':db,'ai_seller_defaults_v1':defaults,[sellerSetupFlagKey()]:true});
+    await localSet({'ai_seller_profiles_v1':db,'ai_seller_defaults_v1':defaults,'ai_seller_profile_owner_v1':sellerIdentity(),[sellerSetupFlagKey()]:true});
     if(status)status.textContent='Profile saved. Opening your workspace…';
     showStatus('Seller profile saved locally.','success');
     openLandingWorkspace();
@@ -1484,12 +1484,13 @@ function enterLandingView() {
     return;
   }
   const flagKey=sellerSetupFlagKey();
-  localGet([flagKey,'ai_seller_profiles_v1','ai_seller_defaults_v1']).then(data=>{
-    const db=data.ai_seller_profiles_v1||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+  localGet([flagKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']).then(data=>{
+    const sameOwner=!data.ai_seller_profile_owner_v1||data.ai_seller_profile_owner_v1===sellerIdentity();
+    const db=sameOwner?(data.ai_seller_profiles_v1||{}):{},profiles=Array.isArray(db.profiles)?db.profiles:[];
     const active=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
-    const defaults=Object.assign({},data.ai_seller_defaults_v1||{},active?.defaults||{});
-    const hasBasics=Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
-    if(data[flagKey]||hasBasics){
+    const defaults=sameOwner?Object.assign({},data.ai_seller_defaults_v1||{},active?.defaults||{}):{};
+    const hasBasics=sameOwner&&Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
+    if((data[flagKey]&&sameOwner)||hasBasics){
       if(hasBasics&&!data[flagKey])localSet({[flagKey]:true}).catch(()=>{});
       openLandingWorkspace();
       return;
