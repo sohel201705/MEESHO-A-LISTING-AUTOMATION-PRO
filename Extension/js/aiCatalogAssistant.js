@@ -389,7 +389,7 @@ const DEFAULT_FIELD_MAP={
  'ai-default-packer-address':'packerAddress','ai-default-packer-pincode':'packerPincode',
  'ai-default-country':'countryOfOrigin','ai-default-importer-name':'importerName',
  'ai-default-importer-address':'importerAddress','ai-default-importer-pincode':'importerPincode',
- 'ai-default-support-phone':'supportPhone','ai-default-support-email':'supportEmail','ai-default-hsn':'hsn','ai-default-gst':'gst'
+ 'ai-default-support-phone':'supportPhone','ai-default-support-email':'supportEmail'
 };
 const OVERRIDE_FIELD_MAP={
  'ai-override-brand':'brand','ai-override-country':'countryOfOrigin',
