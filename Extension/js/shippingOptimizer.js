@@ -502,48 +502,55 @@
     return String(text || '').trim().toLowerCase();
   }
 
+  function describeImageAncestors(img) {
+    const descriptions=[];
+    let parent=img&&img.parentElement;
+    for(let depth=0;parent&&depth<8;depth++,parent=parent.parentElement){
+      if(parent.closest&&parent.closest('#'+BOX_ID))break;
+      const text=String(parent.innerText||parent.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(text&&text.length<=1200)descriptions.push({depth,text,tag:parent.tagName,cls:String(parent.className||'').slice(0,100)});
+    }
+    return descriptions;
+  }
+
+  function scoreFrontImage(img) {
+    if(!img||!img.src||!img.isConnected||img.closest('#'+BOX_ID))return {score:-100,excluded:true};
+    const rect=img.getBoundingClientRect();
+    if(rect.width<25||rect.height<25||img.offsetParent===null)return {score:-100,excluded:true};
+    const ancestors=describeImageAncestors(img),texts=ancestors.map(x=>x.text),all=texts.join(' | '),alt=String(img.alt||'').toLowerCase();
+    const negative=/relative image|relative view|side view|back image|back view|size chart|size guide|image instruction|how to upload|image with|upload guidelines|step [123]|instructional image/.test(all.slice(0,5000));
+    if(negative)return {score:-50,excluded:true,reason:'non-front/reference image'};
+    let score=0;
+    const smallest=ancestors.slice(0,5).map(x=>x.text).join(' | ');
+    if(/uploaded images/.test(all))score+=5;
+    if(/front image/.test(smallest))score+=7;
+    else if(/front image/.test(all))score+=3;
+    if(/change image|change front image|replace image/.test(smallest))score+=3;
+    if(/\buploaded\b/.test(smallest))score+=2;
+    if(/\bfront\b/.test(alt))score+=4;
+    if(/\b(uploaded|catalog|product image)\b/.test(alt))score+=2;
+    if(img.currentSrc&&img.currentSrc===img.src)score+=1;
+    if(rect.width>=80&&rect.height>=80)score+=1;
+    // Thumbnails inside a labelled gallery beat tutorial images elsewhere on the page.
+    if(/uploaded images/.test(smallest)&&rect.width<500)score+=2;
+    if(/thumbnail|image-card|uploaded-image|product-image/i.test(String(img.className||'')))score+=1;
+    return {score,excluded:false,ancestors,alt,rect:{width:rect.width,height:rect.height}};
+  }
+
+  function bestFrontImageElement() {
+    const scored=Array.from(document.querySelectorAll('img')).map(img=>({img,meta:scoreFrontImage(img)}))
+      .filter(x=>!x.meta.excluded&&x.meta.score>=5)
+      .sort((a,b)=>b.meta.score-a.meta.score||((b.meta.rect.width*b.meta.rect.height)-(a.meta.rect.width*a.meta.rect.height)));
+    return scored[0]?.img||null;
+  }
+
   function findFrontImagePreviewUrl() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
-      const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
-    });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
-      let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0]?.img?.currentSrc || scored[0]?.img?.src || '';
+    const img=bestFrontImageElement();
+    return img?(img.currentSrc||img.src||''):'';
   }
 
   function findFrontImagePreviewElement() {
-    const candidates = [...document.querySelectorAll('img')].filter(img => {
-      if (!img || !img.src) return false;
-      if (img.closest(`#${BOX_ID}`)) return false;
-      const rect = img.getBoundingClientRect();
-      return rect.width > 20 && rect.height > 20 && img.offsetParent !== null;
-    });
-
-    const scored = candidates.map(img => {
-      const containerText = (img.closest('div, section, article, aside')?.textContent || '').toLowerCase();
-      let score = 0;
-      if (containerText.includes('uploaded images')) score += 3;
-      if (containerText.includes('front image')) score += 4;
-      if (containerText.includes('change')) score += 2;
-      if (containerText.includes('uploaded')) score += 1;
-      if (img.alt && /front|uploaded|catalog/i.test(img.alt)) score += 2;
-      return { img, score };
-    }).sort((a, b) => b.score - a.score);
-
-    return scored[0]?.img || null;
+    return bestFrontImageElement();
   }
 
   async function fileFromUrl(url, filenamePrefix = 'meesho-front') {
@@ -602,40 +609,46 @@
     }
   }
 
-  function findFrontImageInputByContext() {
-    const labels = [...document.querySelectorAll('*')].filter(el => {
-      if (!el || el.closest(`#${BOX_ID}`)) return false;
-      const text = getVisibleText(el.textContent);
-      return text === 'front image' || text.includes('front image') || text.includes('uploaded images');
-    });
-
-    for (const label of labels) {
-      const container = label.closest('div, section, article, aside') || label.parentElement;
-      if (!container) continue;
-      const input = container.querySelector('input[type="file"]');
-      if (input && !input.closest(`#${BOX_ID}`)) return input;
+  function scoreMeeshoImageInput(input) {
+    if(!input||!input.isConnected||input.closest('#'+BOX_ID))return -100;
+    const accept=String(input.accept||'').toLowerCase();
+    if(accept&&!accept.includes('image')&&!accept.includes('.jpg')&&!accept.includes('.png')&&!accept.includes('.webp'))return -50;
+    let score=0;
+    if(input.files&&input.files.length)score+=100;
+    if(input.id==='changeFrontImage')score+=60;
+    const ancestors=[];
+    let parent=input.parentElement;
+    for(let depth=0;parent&&depth<8;depth++,parent=parent.parentElement){
+      if(parent.closest&&parent.closest('#'+BOX_ID))break;
+      const text=String(parent.innerText||parent.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(text&&text.length<1000)ancestors.push(text);
     }
+    const near=ancestors.slice(0,5).join(' | '),all=ancestors.join(' | ');
+    if(/front image/.test(near))score+=24;
+    else if(/front image/.test(all))score+=12;
+    if(/uploaded images/.test(near))score+=12;
+    else if(/uploaded images/.test(all))score+=5;
+    if(/change front image|replace image/.test(near))score+=8;
+    if(/relative image|relative view|side image|side view|back image|back view|size chart|lifestyle image/.test(near))score-=35;
+    if(input.multiple)score-=2;
+    return score;
+  }
 
-    return null;
+  function findFrontImageInputByContext() {
+    const inputs=Array.from(document.querySelectorAll('input[type="file"]')).filter(input=>!input.closest('#'+BOX_ID));
+    const scored=inputs.map(input=>({input,score:scoreMeeshoImageInput(input)})).filter(x=>x.score>0)
+      .sort((a,b)=>b.score-a.score);
+    return scored[0]?.input||null;
   }
 
   function getMeeshoImageInput() {
-    const exact = document.querySelector('#changeFrontImage');
-    if (exact && !exact.closest(`#${BOX_ID}`)) return exact;
-
-    const contextual = findFrontImageInputByContext();
-    if (contextual) return contextual;
-
-    const inputs = getPageFileInputs();
-    if (inputs.length === 0) return null;
-
-    const selected = inputs.find(input => input.files && input.files.length > 0);
-    if (selected) return selected;
-
-    const likely = inputs.find(isLikelyMeeshoImageInput);
-    if (likely) return likely;
-
-    return inputs[0] || null;
+    const exact=document.querySelector('#changeFrontImage');
+    if(exact&&!exact.closest('#'+BOX_ID))return exact;
+    const inputs=Array.from(document.querySelectorAll('input[type="file"]')).filter(input=>!input.closest('#'+BOX_ID));
+    if(!inputs.length)return null;
+    const scored=inputs.map(input=>({input,score:scoreMeeshoImageInput(input)})).sort((a,b)=>b.score-a.score);
+    const best=scored[0];
+    return best&&best.score>0?best.input:null;
   }
 
   function currentSourceFile() {
@@ -1240,7 +1253,7 @@
       const sourceErrors = {
         'manual-missing': 'Choose a file in Upload own image, then run the optimizer.',
         'saved-load-failed': 'Could not load the current Meesho image. Switch to Upload own image and try again.',
-        'current-missing': 'No current Meesho image detected. Use Current image or switch to Upload own image.',
+        'current-missing': 'Could not read the current Meesho front image. Click “Upload own image” to select the same front photo manually.',
       };
       setStatus(
         sourceErrors[sourceResolveState] || 'No usable front image found. Use Current image or upload your own file.',
