@@ -1089,8 +1089,8 @@ async function generate(googleAllowed){
   say('Scanning the selected Meesho catalog…');
   const scan=await scanCurrentCatalog(false),s=schema(scan);
   if(!s.fields.length)throw new Error('No form fields found. Select the catalog and scan again.');
-  const detectedCatalog=detectMeeshoCatalog(scan);
-  const category=detectedCatalog.key||'general';
+  let detectedCatalog=detectMeeshoCatalog(scan);
+  let category=detectedCatalog.key||'general';
   scan.catalogContext=Object.assign({},scan.catalogContext||{},{detectedCategory:detectedCatalog.name,detectedCategoryKey:category,productType:detectedCatalog.type,confidence:detectedCatalog.confidence});
   liveLog('CATALOG SCAN · '+s.fields.length+' mapped fields; '+s.measurements.length+' per-size measurement fields.','ok');
   liveLog('AUTO CATEGORY · '+detectedCatalog.name+' · '+detectedCatalog.confidence+' confidence'+(detectedCatalog.evidence.length?' · signals: '+detectedCatalog.evidence.slice(0,3).join(', '):'')+'.','ok');
@@ -1129,7 +1129,7 @@ async function generate(googleAllowed){
   else liveLog('MRP · No verified MRP entered; will not invent one.','warn');
 
   setProgress(13,'Loading seller profile and matching '+detectedCatalog.name+' defaults');
-  const d=await getActiveDefaultsForCategory(category);
+  let d=await getActiveDefaultsForCategory(category);
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
   setProgress(18,'Photos ready · identify product and title');
@@ -1163,6 +1163,18 @@ async function generate(googleAllowed){
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
    if(capMatch)p.productCapacity=capMatch[1]+' '+capMatch[2];
+  }
+  // If schema-only evidence is ambiguous, refine from the photo-identified title or image filename.
+  if(detectedCatalog.confidence==='low'){
+   const visionRefined=detectMeeshoCatalog(scan);
+   if(visionRefined.key!=='general'&&visionRefined.confidence!=='low'){
+    detectedCatalog=visionRefined;category=visionRefined.key;
+    p.productCategory=category;p.productType=visionRefined.type;
+    scan.catalogContext=Object.assign({},scan.catalogContext||{},{detectedCategory:visionRefined.name,detectedCategoryKey:category,productType:visionRefined.type,confidence:visionRefined.confidence});
+    d=await getActiveDefaultsForCategory(category);
+    liveLog('AUTO CATEGORY REFINED · '+visionRefined.name+' using product title/image hints plus the selected catalog schema.','ok');
+    updateScanSummary(scan);
+   }
   }
   setProgress(31,'Searching product specifications and official tax sources');
   say('Searching Google for product specifications, category clues and official tax sources…');
