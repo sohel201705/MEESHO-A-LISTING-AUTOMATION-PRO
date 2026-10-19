@@ -55,26 +55,49 @@ async function searchGoogle(query){
 }
 async function researchProduct(p,imgs,allowed){
  const fileSeed=(imgs||[]).map(i=>cleanSearchSeed(i.name)).filter(Boolean).join(' ');
- const seed=cleanSearchSeed(p.productName)||cleanSearchSeed([p.material,p.color,p.productFacts,fileSeed].filter(Boolean).join(' '));
- const research={seed,queries:[],results:[],error:'',searchedAt:new Date().toISOString()};
+ const seed=cleanSearchSeed(p.productName)||cleanSearchSeed([p.productType,p.productCategory,p.material,p.color,p.productFacts,fileSeed].filter(Boolean).join(' '));
+ const classificationSeed=cleanSearchSeed([p.productName,p.productType,p.productCategory,p.material,p.productCapacity,p.productFacts,fileSeed].filter(Boolean).join(' '));
+ const research={seed,classificationSeed,queries:[],results:[],taxResults:[],error:'',searchedAt:new Date().toISOString()};
  if(!allowed){research.error='Google Search permission was not granted.';return research;}
  if(!seed){research.error='No product title or image filename available for Google Search.';return research;}
+ const quoted=String(classificationSeed||seed).replace(/"/g,' ').trim();
  const queries=[
   '"'+seed+'" official product specifications material capacity net weight dimensions India',
-  'site:cbic-gst.gov.in OR site:cbic.gov.in OR site:gst.gov.in "'+seed+'" HSN GST tariff rate India'
+  '"'+quoted+'" HSN code GST rate India tariff classification',
+  'site:cbic-gst.gov.in/hindi/gst-goods-services-rates.html "'+quoted+'" HSN heading GST rate',
+  'site:cbic.gov.in OR site:gst.gov.in "'+quoted+'" HSN tariff heading tax rate'
  ];
  research.queries=queries;
- const all=[];
- for(let i=0;i<queries.length;i++){
-  const q=queries[i];
-  setProgress(32+Math.round(12*(i/queries.length)),'Google Search · query '+(i+1)+'/'+queries.length);
-  liveLog('GOOGLE SEARCH · query '+(i+1)+'/'+queries.length+': '+q,'info');
-  try{const rows=await searchGoogle(q);rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:q},row));});liveLog('GOOGLE SEARCH · '+rows.length+' result(s) for query '+(i+1)+'.','ok');}
-  catch(e){research.error=research.error?research.error+' | '+String(e.message||e):String(e.message||e);liveLog('GOOGLE SEARCH · query '+(i+1)+' failed: '+redactSecrets(e,null),'warn');}
-  setProgress(32+Math.round(12*((i+1)/queries.length)),'Google Search · query '+(i+1)+' complete');
- }
- research.results=all.slice(0,10);
+ setProgress(32,'Google Research · checking product specs and official tax schedules in parallel');
+ liveLog('GOOGLE RESEARCH · '+queries.length+' focused searches running in parallel to reduce wait time.','info');
+ const settled=await Promise.allSettled(queries.map(q=>searchGoogle(q)));
+ const all=[],errors=[];
+ settled.forEach((result,index)=>{
+  const q=queries[index];
+  if(result.status==='fulfilled'){
+   const rows=result.value||[];
+   rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:q},row));});
+   liveLog('GOOGLE SEARCH · query '+(index+1)+' returned '+rows.length+' result(s).','ok');
+  }else{
+   const msg=String(result.reason&&result.reason.message||result.reason||'Search failed');
+   errors.push(msg);liveLog('GOOGLE SEARCH · query '+(index+1)+' failed: '+redactSecrets(msg,null),'warn');
+  }
+ });
+ research.error=errors.join(' | ');
+ const isOfficialUrl=url=>{
+  try{return OFFICIAL_TAX_HOST.test(new URL(url).hostname);}catch(e){return false;}
+ };
+ all.sort((a,b)=>{
+  const taxA=isOfficialUrl(a.url)?(a.domain&&/cbic|gst\.gov\.in/i.test(a.domain)?3:2):0;
+  const taxB=isOfficialUrl(b.url)?(b.domain&&/cbic|gst\.gov\.in/i.test(b.domain)?3:2):0;
+  return taxB-taxA;
+ });
+ research.results=all.slice(0,22);
+ research.taxResults=research.results.filter(r=>isOfficialUrl(r.url));
  if(!research.results.length&&!research.error)research.error='No usable Google results were found.';
+ if(!research.taxResults.length)liveLog('TAX RESEARCH · no official CBIC/GST result was captured; tax values will be left blank unless direct official support is found.','warn');
+ else liveLog('TAX RESEARCH · '+research.taxResults.length+' official CBIC/GST government result(s) available for HSN/GST verification.','ok');
+ setProgress(44,'Google Research complete · official tax evidence indexed');
  return research;
 }
 const OFFICIAL_TAX_HOST=/(^|\.)(cbic\.gov\.in|cbic-gst\.gov\.in|gst\.gov\.in)$/i;
