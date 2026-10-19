@@ -672,7 +672,8 @@ function detectMeeshoCatalog(scan){
  const selectedValues=Object.entries(scan&&scan.capturedValues||{}).filter(([,v])=>String(v||'').trim()).map(([k,v])=>k.replace(/_/g,' ')+' '+String(v)).join(' | ');
  const context=scan&&scan.catalogContext||{};
  const contextText=[context.pageTitle,...(context.headings||[]),context.breadcrumb,context.categoryName,context.subCategoryName,context.catalogType].filter(Boolean).join(' | ');
- const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value].filter(Boolean).join(' | ');
+ const imageNames=Array.from($('ai-product-images')?.files||[]).map(file=>String(file.name||'')).join(' | ');
+ const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value,imageNames].filter(Boolean).join(' | ');
  const allText=norm([contextText,labelText,selectedValues,enteredText].join(' | '));
  const fieldText=norm(labelText),visibleText=norm(contextText+' '+selectedValues+' '+enteredText);
  const rules=[
@@ -1129,7 +1130,6 @@ async function generate(googleAllowed){
 
   setProgress(13,'Loading seller profile and matching '+detectedCatalog.name+' defaults');
   const d=await getActiveDefaultsForCategory(category);
-  if($('ai-profile-category'))$('ai-profile-category').value=category;
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
   setProgress(18,'Photos ready · identify product and title');
