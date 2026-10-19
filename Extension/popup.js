@@ -1397,9 +1397,20 @@ const ONBOARD_DEFAULTS_MAP = {
   'onboard-country':'countryOfOrigin','onboard-importer-name':'importerName','onboard-importer-address':'importerAddress','onboard-importer-pincode':'importerPincode',
   'onboard-support-phone':'supportPhone','onboard-support-email':'supportEmail','onboard-hsn':'hsn','onboard-gst':'gst'
 };
+function sellerIdentity(user=currentUser) {
+  return String(user?.uid||user?.email||'').toLowerCase();
+}
+function sellerScopedStorageKey(base,user=currentUser) {
+  const identity=sellerIdentity(user)||'legacy';
+  const token=identity.replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+  return base+'__'+token;
+}
+function sellerProfileDbKey(user=currentUser) { return sellerScopedStorageKey('ai_seller_profiles_v1',user); }
+function sellerDefaultsStorageKey(user=currentUser) { return sellerScopedStorageKey('ai_seller_defaults_v1',user); }
 function sellerSetupFlagKey(user=currentUser) {
-  const identity=String(user?.uid||user?.email||'local-user').toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,120);
-  return 'ai_seller_setup_completed_v1_'+identity;
+  const identity=sellerIdentity(user)||'local-user';
+  const safe=identity.replace(/[^a-z0-9_-]/g,'_').slice(0,120);
+  return 'ai_seller_setup_completed_v1_'+safe;
 }
 function localGet(keys) {
   return new Promise(resolve=>chrome.storage.local.get(keys,result=>resolve(result||{})));
@@ -1420,10 +1431,16 @@ function fillOnboardingForm(defaults={},profileName='') {
   });
 }
 async function prefillOnboardingFromStorage() {
-  const data=await localGet(['ai_seller_profiles_v1','ai_seller_defaults_v1']);
-  const db=data.ai_seller_profiles_v1||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+  const dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+  const data=await localGet([dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']);
+  const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+  const db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null)||{};
+  const profiles=Array.isArray(db.profiles)?db.profiles:[];
   const profile=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
-  fillOnboardingForm(Object.assign({},data.ai_seller_defaults_v1||{},profile?.defaults||{}),profile?.name||'');
+  const defaults=Object.assign({},data[defaultsKey]||(legacyAllowed?data.ai_seller_defaults_v1:{})||{},profile?.defaults||{});
+  fillOnboardingForm(defaults,profile?.name||'Main Seller Profile');
+  const status=document.getElementById('onboard-status');
+  if(status)status.textContent=owner&&identity&&owner!==identity&&!data[dbKey]?'Create a profile for this signed-in account. Previous account details are not copied into this setup.':'Enter details you know; unconfirmed legal fields can stay blank.';
 }
 
 async function saveInitialSellerProfile() {
@@ -1442,14 +1459,19 @@ async function saveInitialSellerProfile() {
     if(document.getElementById('onboard-importer-na')?.checked){
       defaults.importerName='Not Required';defaults.importerAddress='Not Required';defaults.importerPincode='Not Required';
     }
-    const data=await localGet(['ai_seller_profiles_v1','ai_seller_defaults_v1']);
-    let db=data.ai_seller_profiles_v1;
+    const dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+    const data=await localGet([dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']);
+    const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+    let db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null);
+    const migratingLegacy=!data[dbKey]&&legacyAllowed&&(Boolean(data.ai_seller_profiles_v1)||Boolean(data.ai_seller_defaults_v1));
     if(!db||!Array.isArray(db.profiles))db={activeId:'',profiles:[]};
     const name=String(document.getElementById('onboard-profile-name')?.value||'').trim()||'Main Seller Profile';
     let profile=db.profiles.find(p=>p.id===db.activeId)||db.profiles[0];
     if(!profile){profile={id:'seller-main-'+Date.now().toString(36),name,defaults:{},categoryOverrides:{}};db.profiles.push(profile);}
     profile.name=name;profile.defaults=defaults;profile.categoryOverrides=profile.categoryOverrides||{};db.activeId=profile.id;
-    await localSet({'ai_seller_profiles_v1':db,'ai_seller_defaults_v1':defaults,'ai_seller_profile_owner_v1':sellerIdentity(),[sellerSetupFlagKey()]:true});
+    const storeValues={[dbKey]:db,[defaultsKey]:defaults,[sellerSetupFlagKey()]:true};
+    if(migratingLegacy&&!owner)storeValues.ai_seller_profile_owner_v1=identity;
+    await localSet(storeValues);
     if(status)status.textContent='Profile saved. Opening your workspace…';
     showStatus('Seller profile saved locally.','success');
     openLandingWorkspace();
@@ -1484,15 +1506,19 @@ function enterLandingView() {
     showView('pricing');
     return;
   }
-  const flagKey=sellerSetupFlagKey();
-  localGet([flagKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']).then(data=>{
-    const sameOwner=!data.ai_seller_profile_owner_v1||data.ai_seller_profile_owner_v1===sellerIdentity();
-    const db=sameOwner?(data.ai_seller_profiles_v1||{}):{},profiles=Array.isArray(db.profiles)?db.profiles:[];
+  const flagKey=sellerSetupFlagKey(),dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
+  localGet([flagKey,dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']).then(data=>{
+    const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
+    const db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null)||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
     const active=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
-    const defaults=sameOwner?Object.assign({},data.ai_seller_defaults_v1||{},active?.defaults||{}):{};
-    const hasBasics=sameOwner&&Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
-    if((data[flagKey]&&sameOwner)||hasBasics){
-      if(hasBasics&&!data[flagKey])localSet({[flagKey]:true}).catch(()=>{});
+    const defaults=Object.assign({},data[defaultsKey]||(legacyAllowed?data.ai_seller_defaults_v1:{})||{},active?.defaults||{});
+    const hasBasics=Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
+    if(data[flagKey]||hasBasics){
+      if(hasBasics&&!data[flagKey]){
+        const migrated={[dbKey]:db,[defaultsKey]:defaults,[flagKey]:true};
+        if(!data[dbKey]&&legacyAllowed&&!owner&&(data.ai_seller_profiles_v1||data.ai_seller_defaults_v1))migrated.ai_seller_profile_owner_v1=identity;
+        localSet(migrated).catch(()=>{});
+      }
       openLandingWorkspace();
       return;
     }
