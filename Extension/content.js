@@ -158,8 +158,7 @@
     if (input) {
       if (!input.checked) {
         input.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-        input.click();
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+        // HTMLElement.click() already emits the native click/input/change sequence. Do not dispatch a second change event; React-controlled checkboxes can toggle back off.
       }
       return input.checked ? 'checkbox-selected' : 'checkbox-failed';
     }
@@ -200,7 +199,7 @@
       const observer = new MutationObserver(check);
       observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-expanded', 'aria-checked'] });
       check();
-      setTimeout(() => done(null), 1400);
+      setTimeout(() => done(null), 750);
     });
     if (!menu) menu = findVisibleSizeMenu();
     if (!menu) {
@@ -209,45 +208,47 @@
     }
 
     const clicked = [];
-    for (const target of wantedSizes) {
-      const active = findVisibleSizeMenu() || (menu.isConnected ? menu : null);
-      if (!active) {
-        failed.push('Size selector closed before ' + target + ' was selected.');
-        break;
-      }
-      const options = Array.from(active.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, label, [data-value]'));
-      const option = options.find(el => norm(el.textContent) === norm(target)) ||
-        options.find(el => norm(el.getAttribute('data-value') || '') === norm(target));
-      if (!option) {
-        failed.push('Size option not found: ' + target);
-        continue;
-      }
-      const row = sizeOptionContainer(option, active);
-      const input = row && (row.matches?.('input[type="checkbox"],input[type="radio"]') ? row : row.querySelector?.('input[type="checkbox"],input[type="radio"]'));
-      if (input && input.checked) {
-        clicked.push(target);
-      } else {
-        const result = clickSizeRow(row);
-        await sleep(55);
-        const verifyInput = row && (row.matches?.('input[type="checkbox"],input[type="radio"]') ? row : row.querySelector?.('input[type="checkbox"],input[type="radio"]'));
-        const checked = Boolean(verifyInput && verifyInput.checked);
-        const ariaChecked = row?.getAttribute('aria-checked') === 'true' || row?.getAttribute('aria-selected') === 'true';
-        const classChecked = Boolean(row?.classList?.contains('Mui-checked') || row?.querySelector?.('.Mui-checked,[aria-checked="true"],input:checked'));
-        if (result === 'checkbox-failed' || (verifyInput && !checked) || (!verifyInput && !ariaChecked && !classChecked && result === 'none')) {
-          // Fallback click is on the full row only after the control click did not toggle.
-          realClick(row);
-          await sleep(45);
-        }
-        const verified = Boolean((verifyInput && verifyInput.checked) ||
-          row?.getAttribute('aria-checked') === 'true' ||
-          row?.getAttribute('aria-selected') === 'true' ||
-          row?.classList?.contains('Mui-checked') ||
-          row?.querySelector?.('.Mui-checked,[aria-checked="true"],input:checked'));
-        if (verified || (!verifyInput && result !== 'none')) clicked.push(target);
-        else failed.push('Could not confirm the checkbox for size: ' + target);
-      }
+    function locateSizeRow(activeMenu,target){
+      if(!activeMenu)return null;
+      const candidates=Array.from(activeMenu.querySelectorAll('p, li, [role="option"], [role="menuitem"], button, label, [data-value]'));
+      const option=candidates.find(el=>norm(el.textContent)===norm(target))||
+        candidates.find(el=>norm(el.getAttribute('data-value')||'')===norm(target));
+      return option?sizeOptionContainer(option,activeMenu):null;
     }
-
+    function rowIsSelected(row){
+      if(!row||!row.isConnected)return false;
+      const input=row.matches?.('input[type="checkbox"],input[type="radio"]')?row:row.querySelector?.('input[type="checkbox"],input[type="radio"]');
+      return Boolean((input&&input.checked)||
+        row.getAttribute('aria-checked')==='true'||
+        row.getAttribute('aria-selected')==='true'||
+        row.getAttribute('data-state')==='checked'||
+        row.classList?.contains('Mui-checked')||
+        row.querySelector?.('[aria-checked="true"],[aria-selected="true"],[data-state="checked"],.Mui-checked,input:checked'));
+    }
+    for (const target of wantedSizes) {
+      let active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
+      if(!active){failed.push('Size selector closed before '+target+' was selected.');break;}
+      let row=locateSizeRow(active,target);
+      if(!row){failed.push('Size option not found: '+target);continue;}
+      if(rowIsSelected(row)){clicked.push(target);continue;}
+      row.scrollIntoView({behavior:'auto',block:'nearest'});
+      clickSizeRow(row);
+      await sleep(60);
+      active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
+      row=locateSizeRow(active,target);
+      if(!rowIsSelected(row)&&row){
+        // The Meesho form can rerender its controlled checkbox after a React event.
+        // Re-query the fresh row, then perform one real pointer click only if still unchecked.
+        const input=row.matches?.('input[type="checkbox"],input[type="radio"]')?row:row.querySelector?.('input[type="checkbox"],input[type="radio"]');
+        if(input&&!input.checked)input.click();
+        else realClick(row);
+        await sleep(60);
+        active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
+        row=locateSizeRow(active,target);
+      }
+      if(rowIsSelected(row))clicked.push(target);
+      else failed.push('Could not confirm the Meesho checkbox for size: '+target+'. The option may have been highlighted but not applied.');
+    }
     if (!clicked.length) {
       await closeOpenDropdown();
       return false;
@@ -261,14 +262,19 @@
       applyBtn.scrollIntoView({ behavior: 'auto', block: 'center' });
       await sleep(25);
       if (!callReactOnClick(applyBtn)) realClick(applyBtn);
-      await sleep(180);
+      await sleep(120);
       await closeOpenDropdown();
-      // Verify Meesho actually committed Free Size / size selection to the trigger.
-      const label = norm(String(triggerEl?.textContent || '') + ' ' + String(triggerEl?.querySelector?.('input')?.value || ''));
-      const verified = clicked.every(target => label.includes(norm(target)));
-      if (!verified && !sizesStr.toLowerCase().includes('free size')) {
-        // For multi-select menus the selected chips can render elsewhere; an Apply click is still authoritative.
-        return true;
+      // Confirm that Meesho committed the selected size into the field trigger after Apply.
+      let label='';
+      for(let attempt=0;attempt<5;attempt++){
+        label=norm(String(triggerEl?.textContent||'')+' '+String(triggerEl?.querySelector?.('input')?.value||''));
+        if(clicked.every(target=>label.includes(norm(target))))break;
+        await sleep(35);
+      }
+      const verified=clicked.every(target=>label.includes(norm(target)));
+      if(!verified){
+        failed.push('The size checkbox was selected and Apply was clicked, but Meesho did not display the committed size. Check the Size field before saving.');
+        return false;
       }
       return true;
     }
