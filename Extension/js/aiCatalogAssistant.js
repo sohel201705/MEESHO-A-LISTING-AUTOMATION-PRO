@@ -1,7 +1,10 @@
 (function(){
 'use strict';
 const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1', PROFILE_OWNER='ai_seller_profile_owner_v1';
-let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''};
+let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''},currentTitleMeasurements=[];
+let workflowBundle=null,workflowBundlePromise=null,activePhotoConflicts=[],productIdentityScore=0,productIdentityStatus='UNASSESSED';
+const MASTER_RESOURCE_PATH='resources/MASTER_TEMPLATE_PRO_MAX_V26.md';
+const REFERENCE_RESOURCE_PATH='resources/COMPLETE_REFERENCE_JSON.json';
 let profileCache=null, titleChoices=[], activeTitleFieldId='', currentTitleProduct=null, currentTitleFields=[], currentTitleStats=null, currentTitleNeeds=[], chatHistory=[];
 let draftEditMode=false,draftBeforeEdit=null,draftEditedFields=new Set();
 const $=id=>document.getElementById(id);
@@ -109,11 +112,35 @@ function normalizePrimaryColor(value){
  for(const [pattern,label] of rules){const match=pattern.exec(raw);if(match&&(!best||match.index<best.index||(match.index===best.index&&match[0].length>best.length)))best={index:match.index,length:match[0].length,label};}
  return best?best.label:raw.split(/\s+(?:and|with|plus)\s+|[,/|;]/i)[0].trim().split(/\s+/).slice(0,2).join(' ');
 }
+function scoreProductIdentity(p,identified,sellerNameProvided){
+ if(!identified)return 0;
+ let score=0;
+ const confidence=String(identified.confidence||'low').toLowerCase();
+ score+=confidence==='high'?15:confidence==='medium'?10:0;
+ const name=String(p&&p.productName||identified.productName||'').trim();
+ const generic=/^(product|item|water bottle|bottle|plastic bottle|container|accessory|unknown)$/i.test(name);
+ if(name&&!generic)score+=sellerNameProvided?20:18;
+ if(String(identified.productType||p&&p.productType||'').trim().length>=5)score+=15;
+ if(String(p&&p.productTypeEvidence||'').trim().length>=15)score+=10;
+ if(String(p&&p.material||'').trim())score+=10;
+ if(String(p&&p.color||'').trim())score+=5;
+ if(capacityInMl(p&&p.productCapacity||'')!==null)score+=5;
+ if(String(identified.brandIfLegible||'').trim())score+=10;
+ if(String(identified.modelIfLegible||'').trim())score+=10;
+ if(Array.isArray(identified.visibleText)&&identified.visibleText.length)score+=5;
+ if(Array.isArray(identified.searchTerms)&&identified.searchTerms.length>=2)score+=5;
+ if(String(p&&p.productFacts||'').trim())score+=5;
+ return Math.min(100,score);
+}
+function productIdentityBand(score){
+ return score>=95?'VERIFIED':score>=85?'STRONG':score>=70?'POSSIBLE — APPROVAL':'BLOCKED — INPUT REQUIRED';
+}
+
 function categoryResearchTerms(p,scan,catalog){
  const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),categoryBits=[ctx.subCategoryName,ctx.categoryName,ctx.catalogType,ctx.breadcrumb,catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean);
  const fields=schema(scan||{}).fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
  const fieldBits=fields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).filter(Boolean);
- return cleanSearchSeed(categoryBits.concat(fieldBits,p&&p.material||'',p&&p.color||'',p&&p.productTypeEvidence||'',p&&p.imageResearchTerms||'',p&&p.productFacts||'').join(' ')).slice(0,160);
+ return cleanSearchSeed([p&&p.productName||'',p&&p.productTypeEvidence||'',p&&p.productType||'',p&&p.material||'',p&&p.color||'',p&&p.productCapacity||'',p&&p.imageResearchTerms||'',p&&p.productFacts||'',...categoryBits,...fieldBits].join(' ')).slice(0,220);
 }
 function taxResearchTerms(catalog,p){const key=String(catalog&&catalog.key||p&&p.productCategory||'general');if(key==='kitchen')return 'plastic tableware kitchenware food storage containers tariff classification HSN GST rate India';if(key==='bottles')return 'drinking bottles drinkware vacuum flask material tariff classification HSN GST rate India';if(key==='apparel')return 'garments clothing textile material tariff classification HSN GST rate India';if(key==='furniture')return 'chairs tables furniture material tariff classification HSN GST rate India';if(key==='electronics')return 'electrical electronic accessories product classification HSN GST rate India';return 'product category material use tariff classification HSN code GST goods rate India';}
 async function researchProduct(p,imgs,allowed,scan,catalog){
@@ -127,40 +154,25 @@ async function researchProduct(p,imgs,allowed,scan,catalog){
 }
 
 function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
- const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),formSchema=schema(scan||{});
- const relevantFields=formSchema.fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
- const formEvidence=relevantFields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).join(' ');
- const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
- const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText+' '+String(p&&p.productName||'')+' '+String(p&&p.productTypeEvidence||'')+' '+String(p&&p.imageResearchTerms||''));
- const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
- const plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/.test(materialText);
- const insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/.test(productText);
- const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
- if(vacuum){
-  const capacity=capacityInMl(p&&p.productCapacity)||capacityInMl(productText)||capacityInMl(research&&research.seed),hsn=capacity===null?'9617':(capacity<=750?'96170011':'96170012');
-  refs.push({kind:'hsn',title:'Government of India — India Tariff Schedule, heading 9617',url:'https://www.commerce.gov.in/wp-content/uploads/2022/11/02-Indias-Tariff-Schedule.pdf',domain:'commerce.gov.in',snippet:'Official Government of India tariff schedule: tariff item 9617 00 11 — vacuum flasks having a capacity not exceeding 0.75 litre; tariff item 9617 00 12 — vacuum flasks having a capacity exceeding 0.75 litre.'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 9617',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates, heading 9617: vacuum flasks and other vacuum vessels, complete; listed at 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
-  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'vacuum flask/vessel identified from category and product evidence',capacityMl:capacity,hsn,gst:'18%',hsnSourceUrl:refs[refs.length-2].url,gstSourceUrl:refs[refs.length-1].url,classificationBasis:'selected category, product use and capacity'};return research;
- }
- const reusablePlasticBottle=/\b(water|drinking|sports|travel|reusable)\s*bottles?\b/i.test(productText)&&plasticMaterial;
- if(reusablePlasticBottle){
-  const hsn=insulated?'39241010':'39241090';
-  const hsnUrl='https://commerce.gov.in/wp-content/uploads/2022/02/Merged-pdf.pdf';
-  const gstUrl='https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html';
-  refs.push({kind:'hsn',title:'Government of India — Customs Tariff, heading 3924.10',url:hsnUrl,domain:'commerce.gov.in',snippet:'India Customs Tariff lists heading 3924 for tableware, kitchenware and other household articles of plastics; tariff item 3924 10 10 covers insulated ware and tariff item 3924 10 90 covers other tableware and kitchenware of plastics. Candidate HSN '+hsn+'. Classification depends on principal material, product form and intended household use.'});
-  refs.push({kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:gstUrl,domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates lists heading 3924 — tableware, kitchenware and other household articles of plastics — at aggregate GST 18% (9% CGST plus 9% SGST/UTGST). Verify the exact tariff item and current applicable notification for the specific product.'});
-  research.officialTaxReferences=refs;
-  research.automaticTaxClassification={productType:'reusable plastic drinking water bottle',hsn,gst:'18%',insulated,hsnSourceUrl:hsnUrl,gstSourceUrl:gstUrl,classificationBasis:'selected Meesho category, photo-derived product form and plastic material',status:'category classification; seller should confirm exact material/use before submission'};
-  return research;
- }
- const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText);
- if(kitchenCategory&&lunchBoxContext&&plasticMaterial){
-  const hsn=insulated?'39241010':'39241090';
-  refs.push({kind:'hsn',title:'Government of India — DGFT tariff item listing for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Appendix%204RE%20RoDTEP.pdf',domain:'content.dgft.gov.in',snippet:'Official DGFT tariff table lists heading 3924 for tableware, kitchenware and other household articles of plastics; heading 392410 is tableware and kitchenware, tariff item 39241010 is insulated ware and tariff item 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
-  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'plastic lunch box / tableware and kitchenware of plastics',hsn,gst:'18%',insulated,hsnSourceUrl:refs[refs.length-3].url,gstSourceUrl:refs[refs.length-2].url,classificationBasis:'selected category + product form attributes + confirmed plastic material',status:'category-classified; verify seller-specific material and insulated/non-insulated construction'};
- }
+ const sourceRows=Array.isArray(research&&research.results)?research.results:[];
+ const seen=new Set();
+ const official=sourceRows.filter(row=>{
+  let host='';try{host=new URL(row.url||'').hostname;}catch(e){}
+  if(!OFFICIAL_TAX_HOST.test(host)||!row.url||seen.has(row.url))return false;
+  seen.add(row.url);return true;
+ }).map(row=>Object.assign({},row,{
+  kind:/\b(gst|tax|rate|slab|notification)\b/i.test(String(row.title||'')+' '+String(row.snippet||''))?'gst':'hsn',
+  sourceType:'live-official-search-result'
+ }));
+ research.officialTaxReferences=official;
+ // No hard-coded tax value may be produced from the category/material alone. AI-proposed
+ // values are accepted only after exact official-source matching; otherwise targeted
+ // Government searches run and the mandatory tax gate remains blocked.
+ research.automaticTaxClassification=null;
+ research.taxClassificationStatus=official.length?'official-sources-found-candidate-still-requires-exact-match':'no-live-official-source-found';
+ if(!official.length)liveLog('TAX HARD LOCK · no live official tax results were captured. HSN/GST will remain unresolved unless targeted official-source verification succeeds.','warn');
  return research;
 }
-
 async function enrichTaxEvidence(proposed,evidence,research,fields,p,scan,catalog){
  const targets=(fields||[]).filter(field=>isTaxField(field));
  const tasks=[];
@@ -262,6 +274,7 @@ function liveLog(message,level='info'){
  const state=$('ai-live-state');if(state)state.textContent=level==='error'?'ERROR':level==='warn'?'ATTENTION':level==='ok'?'COMPLETE':'RUNNING';
 }
 function clearLiveLog(){
+ resetWorkflowSteps();
  const host=$('ai-live-log');if(host)host.textContent='';
  const state=$('ai-live-state');if(state)state.textContent='READY';
  setProgress(0,'Ready · waiting for input');
@@ -1152,7 +1165,23 @@ function mergeImageBatchResponses(texts){
  });
  return JSON.stringify(combined);
 }
-async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
+function mergeProductIdentificationBatches(texts){
+ const batches=texts.map((text,index)=>{const obj=parseJson(text);if(!obj||typeof obj!=='object'||Array.isArray(obj))throw new Error('Photo identification batch '+(index+1)+' did not return a JSON object.');return obj;});
+ const result={productName:'',productType:'',brandIfLegible:'',modelIfLegible:'',colorIfClear:'',materialIfClear:'',capacityIfPrinted:'',visibleText:[],searchTerms:[],confidence:'low',visionConflicts:[]};
+ const fields=['productName','productType','brandIfLegible','modelIfLegible','colorIfClear','materialIfClear','capacityIfPrinted'];
+ const normal=v=>norm(String(v||''));
+ fields.forEach(field=>{const candidates=batches.map((obj,index)=>({value:String(obj[field]||'').trim(),index,confidence:String(obj.confidence||'low').toLowerCase()})).filter(x=>x.value);if(!candidates.length)return;
+  const counts=new Map();candidates.forEach(c=>{const key=normal(c.value),row=counts.get(key)||{value:c.value,count:0,high:0};row.count++;if(c.confidence==='high')row.high++;counts.set(key,row);});
+  const sorted=Array.from(counts.values()).sort((a,b)=>b.count-a.count||b.high-a.high||b.value.length-a.value.length);result[field]=sorted[0].value;
+  if(sorted.length>1&&sorted[0].count<sorted[1].count+Math.max(1,Math.floor(candidates.length/3)))result.visionConflicts.push({field,values:sorted.slice(0,3).map(x=>x.value),reason:'Product-photo batches disagreed. Confirm the variant before applying.'});
+ });
+ const union=field=>Array.from(new Set(batches.flatMap(obj=>Array.isArray(obj[field])?obj[field]:[]).map(x=>String(x||'').trim()).filter(Boolean))).slice(0,20);
+ result.visibleText=union('visibleText');result.searchTerms=union('searchTerms');
+ batches.flatMap(obj=>Array.isArray(obj.visionConflicts)?obj.visionConflicts:[]).forEach(conflict=>{if(conflict&&conflict.field&&!result.visionConflicts.some(x=>x.field===conflict.field&&JSON.stringify(x.values||[])===JSON.stringify(conflict.values||[])))result.visionConflicts.push(conflict);});
+ result.confidence=batches.some(obj=>String(obj.confidence||'').toLowerCase()==='high')?'high':batches.some(obj=>String(obj.confidence||'').toLowerCase()==='medium')?'medium':'low';
+ return JSON.stringify(result);
+}
+async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26,mergeMode='fields'){
  if(!Array.isArray(imgs)||!imgs.length)throw new Error('Product photos are missing. Upload at least one photo and try again.');
  if(imgs.length>10)throw new Error('Too many photos. Select up to 10 photos of this one product.');
  const list=(await keys()).filter(k=>k.enabled!==false&&k.apiKey&&k.model);if(!list.length)throw new Error('Add and enable at least one API key in Settings.');
@@ -1171,7 +1200,7 @@ async function callAI(prompt,imgs=[],progressBase=45,progressSpan=26){
     texts.push(text);
     setProgress(progressBase+Math.round(progressSpan*((b+1)/batches.length)),message+' complete');
    }
-   const resultText=texts.length===1?texts[0]:mergeImageBatchResponses(texts);
+   const resultText=texts.length===1?texts[0]:(mergeMode==='identity'?mergeProductIdentificationBatches(texts):mergeImageBatchResponses(texts));
    await set({[ROT]:(start+i+1)%list.length});
    liveLog('All '+imgs.length+' photos were sent in '+batches.length+' batch(es) using '+label(k.provider)+'.','ok');
    return {text:resultText,name:safeKeyName(k),provider:k.provider,imagesUsed:imgs.length,imageBatches:batches.length};
@@ -1629,18 +1658,118 @@ async function refineDescriptionToBudget(raw,title,p,imgs){
 }
 
 function isProductNameField(f){return /product_name/.test(String(f.identifier||''))||/^product name$/.test(norm(f.label));}
+
+const WORKFLOW_STEP_STATES={
+ waiting:{label:'WAITING',color:'#64748b',bg:'#0b1728'},
+ running:{label:'RUNNING',color:'#60a5fa',bg:'#102b49'},
+ done:{label:'DONE',color:'#86efac',bg:'#102d26'},
+ blocked:{label:'NEEDS REVIEW',color:'#fbbf24',bg:'#33260d'},
+ error:{label:'ERROR',color:'#fca5a5',bg:'#35191e'}
+};
+function setWorkflowStep(name,state,detail){
+ const row=document.querySelector('[data-workflow-step="'+name+'"]');if(!row)return;
+ const mode=WORKFLOW_STEP_STATES[state]||WORKFLOW_STEP_STATES.waiting;
+ row.style.borderColor=mode.color;row.style.background=mode.bg;
+ const status=row.querySelector('[data-step-status]'),note=row.querySelector('[data-step-detail]');
+ if(status){status.textContent=mode.label;status.style.color=mode.color;}
+ if(note)note.textContent=String(detail||'');
+}
+function resetWorkflowSteps(){
+ ['authority','photos','research','mapping','apply'].forEach(name=>setWorkflowStep(name,'waiting','Waiting for this stage.'));
+}
+function extractMasterDigest(masterText){
+ const markers=[
+  ['CRITICAL AUTHORITY RULE:',850],['HARD-LOCK PRINCIPLE:',420],
+  ['A. HARD-LOCK AUTHORITY MODEL',760],['D. RAW SCHEMA IMMUTABILITY LOCK',900],
+  ['E. OPTION VOCABULARY HARD LOCK',650],['F. PLATFORM + PROFILE LOCK',520],
+  ['G. PRODUCT IDENTITY HARD LOCK',720],['O. MINIMAL-DIFF AUTO-REPAIR LOCK',700],
+  ['R. BLANK-FIELD FAIL-SAFE LOCK',700],['U. VALUE SYNCHRONIZATION LOCK',540],
+  ['V. IMPORTABILITY DOUBLE-PASS LOCK',660],['X. BLOCKED STATE LOCK',480]
+ ];
+ return markers.map(([marker,limit])=>{const i=masterText.indexOf(marker);return i<0?'':masterText.slice(i,i+limit).trim();}).filter(Boolean).join('\n\n').slice(0,10000);
+}
+async function ensureWorkflowBundle(){
+ if(workflowBundle)return workflowBundle;
+ if(workflowBundlePromise)return workflowBundlePromise;
+ workflowBundlePromise=(async()=>{
+  const [masterResponse,referenceResponse]=await Promise.all([
+   fetch(chrome.runtime.getURL(MASTER_RESOURCE_PATH)),
+   fetch(chrome.runtime.getURL(REFERENCE_RESOURCE_PATH))
+  ]);
+  if(!masterResponse.ok)throw new Error('Bundled Master Template could not be read. Reload the extension files and retry.');
+  if(!referenceResponse.ok)throw new Error('Bundled Complete Reference JSON could not be read. Reload the extension files and retry.');
+  const [masterText,reference]=await Promise.all([masterResponse.text(),referenceResponse.json()]);
+  if(!masterText.includes('V26.1 HARD LOCK')||!masterText.includes('READ → VERIFY → PLAN → PATCH MINIMALLY → VALIDATE → SEAL'))
+   throw new Error('Bundled Master Template failed its integrity check; listing generation was stopped.');
+  if(!reference||!reference.profiles||!Object.keys(reference.profiles).length)
+   throw new Error('Bundled Reference JSON does not contain the expected profile map; listing generation was stopped.');
+  const masterDigest=extractMasterDigest(masterText);
+  if(!masterDigest)throw new Error('Master Template authority sections could not be extracted.');
+  return {masterText,reference,masterDigest,masterFingerprint:hashText(masterText),referenceFingerprint:hashText(JSON.stringify(reference)),masterChars:masterText.length,referenceProfiles:Object.keys(reference.profiles).length};
+ })();
+ try{workflowBundle=await workflowBundlePromise;return workflowBundle;}
+ catch(e){workflowBundlePromise=null;workflowBundle=null;throw e;}
+}
+function referenceTokenSet(value){
+ return new Set(norm(String(value||'').replace(/_/g,' ').replace(/[^\p{L}\p{N}]+/gu,' ')).split(/\s+/).filter(t=>t.length>=2||/^(hsn|gst|sku)$/.test(t)));
+}
+function referenceSimilarity(a,b){
+ const ta=referenceTokenSet(a),tb=referenceTokenSet(b);let overlap=0;
+ ta.forEach(token=>{if(tb.has(token))overlap+=/^(hsn|gst|sku|color|colour|material|weight|height|length|breadth|width|capacity|description|quantity|price|mrp|model)$/.test(token)?3:1;});
+ const aa=norm(a).replace(/_/g,' '),bb=norm(b).replace(/_/g,' ');
+ if(aa&&bb&&(aa.includes(bb)||bb.includes(aa)))overlap+=4;
+ return overlap;
+}
+function chooseReferenceProfile(p,catalog,bundle){
+ if(!bundle||!bundle.reference||!bundle.reference.profiles)return null;
+ const text=norm([p&&p.productName,p&&p.productType,p&&p.productFacts,p&&p.productTypeEvidence,catalog&&catalog.name,catalog&&catalog.key].join(' '));
+ const profiles=bundle.reference.profiles;let name='';
+ if(/\b(lunch box|lunchbox|tiffin|food container)\b/.test(text)||catalog&&catalog.key==='kitchen')name='lunch box';
+ else if(/\b(wiper|mop|squeegee|floor cleaner)\b/.test(text))name='wiper';
+ else if(/\b(water dispenser|electric dispenser|dispenser machine)\b/.test(text))name='Electric Water';
+ else if(/\b(water bottle|sipper bottle|drinking bottle|vacuum flask|thermos|water flask)\b/.test(text)){
+  const capacity=capacityInMl(p&&p.productCapacity||'');
+  name=/\b1\s*l\b|\b1l\b|\bone litre\b|\bone liter\b/.test(text)||capacity!==null&&capacity>=950?'WATER BATAL 1L':'WATER BATAL';
+ }
+ return name&&profiles[name]?{name,profile:profiles[name]}:null;
+}
+function buildReferencePlacementGuide(scan,p,catalog,bundle){
+ if(!bundle)return {status:'unavailable',rule:'Do not infer facts or fields from a missing reference.'};
+ const chosen=chooseReferenceProfile(p,catalog,bundle);
+ if(!chosen)return {status:'loaded-no-exact-profile-match',availableProfiles:Object.keys(bundle.reference.profiles),rule:'Use reference JSON only for representation; do not import its example values.'};
+ const profile=chosen.profile;
+ const entries=Array.isArray(profile.fields)&&profile.fields.length?profile.fields.map(f=>({
+  key:String(f.key||''),label:String(f.label||f.key||''),type:String(f.type||''),group:String(f.group||''),section:String(f.section||''),sectionKey:String(f.sectionKey||''),requirement:String(f.requirement||''),rowKey:String(f.rowKey||''),order:f.order
+ })):Object.keys(profile.values||{}).map((key,index)=>({
+  key,label:key.split('__').pop().replace(/_/g,' '),type:'value-key-only',group:'',section:key.split('__')[0]||'',sectionKey:key.split('__')[0]||'',requirement:'reference pattern only',rowKey:'',order:index
+ }));
+ const current=schema(scan||{}).fields,mapping=[];
+ current.forEach(field=>{
+  const target=String(field.identifier||'').replace(/_/g,' ')+' '+String(field.label||'');
+  const hits=entries.map(entry=>({entry,score:referenceSimilarity(target,entry.key+' '+entry.label+' '+entry.group+' '+entry.section)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,2);
+  if(hits.length)mapping.push({targetIdentifier:field.identifier,targetLabel:field.label,referenceCandidates:hits.map(hit=>({
+   key:hit.entry.key,label:hit.entry.label,type:hit.entry.type,section:hit.entry.section,sectionKey:hit.entry.sectionKey,requirement:hit.entry.requirement,matchScore:hit.score
+  }))});
+ });
+ mapping.sort((a,b)=>Math.max(...b.referenceCandidates.map(x=>x.matchScore))-Math.max(...a.referenceCandidates.map(x=>x.matchScore)));
+ return {status:'loaded-reference-only',selectedProfile:chosen.name,profileHasDetailedFields:Array.isArray(profile.fields)&&profile.fields.length>0,
+  referenceFieldCount:entries.length,referenceContainers:Object.keys(profile.tabBackups||{}),currentMeeshoScannedFieldCount:current.length,
+  semanticKeyMatches:mapping.slice(0,28),strictRule:'Reference field keys/sections/types guide placement only. Exclude all reference profile values and option lists. Current scanned Meesho schema controls identifiers, types, required status and allowed options.'};
+}
+
 async function identifyProductFromPhotos(imgs,providedFacts,catalog,context){
  const prompt=[
   'Identify the actual product type and clearly visible attributes from the supplied product photos. Use the already-selected Meesho category as primary context.',
-  'Return ONLY valid JSON: {"productName":"short product type, not a marketplace listing title","productType":"","brandIfLegible":"","modelIfLegible":"","colorIfClear":"one dominant primary product color only, e.g. Light Blue","materialIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"confidence":"high|medium|low"}.',
-  'Identify the one main product color covering the largest visible area; ignore the background, image collage borders, small accessories and accent colors. Return one color name only, not a list or a two-color combination. Prefer a specific single shade such as Light Blue over Blue when clearly visible. Do not copy or imitate any other marketplace listing title. Do not use image filenames or image metadata. Do not invent brand, model, capacity, material or features. Provide material only when the image or supplied details clearly support it. If unclear, leave colorIfClear empty rather than guess; use the selected category as a cautious product-type fallback and confidence low. searchTerms must be short visual/category/specification clues only, not another website title; they will be used to search for similar products and then cross-checked.',
+  'Return ONLY valid JSON: {"productName":"short product type, not a marketplace listing title","productType":"","brandIfLegible":"","modelIfLegible":"","colorIfClear":"one dominant primary product color only, e.g. Light Blue","materialIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"visionConflicts":[],"confidence":"high|medium|low"}.',
+  'Inspect every supplied product photo, not just the first view. Identify the one dominant product color from the item itself, ignoring backgrounds, collage borders and small accents. If different photos appear to show different variants or materially conflicting product facts, report the conflict rather than merging variants. Return one color name only. Do not copy marketplace titles or use image filenames as facts. Do not invent brand, model, capacity, material or features. The searchTerms must describe visible product identity/use/construction and be useful for exact-product web research.',
   'Selected Meesho category/type:',JSON.stringify({name:catalog&&catalog.name||'',type:catalog&&catalog.type||'',key:catalog&&catalog.key||'',context:context||{}}),
   'Seller-provided confirmed facts:',String(providedFacts||'none supplied')
  ].join('\n');
- return parseJson((await callAI(prompt,imgs.slice(0,3))).text);
+ return parseJson((await callAI(prompt,imgs,17,12,'identity')).text);
 }
 
 function promptFor(scan,p,d,s,research){
+ const bundle=workflowBundle;
  const data={
   platform:'Meesho supplier catalog listing form',
   selectedMeeshoCatalog:safeMeeshoCatalogContext(scan.catalogContext||{}),
@@ -1653,12 +1782,16 @@ function promptFor(scan,p,d,s,research){
   webResearchResults:(research.results||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet,query:r.query,searchProvider:r.searchProvider})),
   officialGovernmentTaxReferences:(research.officialTaxReferences||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet})),
   measurementEstimates:research.measurementEstimates||{},
-  preverifiedTaxClassification:research.automaticTaxClassification||null
+  preverifiedTaxClassification:research.automaticTaxClassification||null,
+  masterTemplateAuthority:bundle?{file:MASTER_RESOURCE_PATH,version:'V26.1 HARD LOCK',fingerprint:bundle.masterFingerprint,characters:bundle.masterChars,referenceFile:REFERENCE_RESOURCE_PATH,referenceFingerprint:bundle.referenceFingerprint,referenceProfiles:bundle.referenceProfiles,excerpts:bundle.masterDigest}:null,
+  completeReferencePlacementGuide:buildReferencePlacementGuide(scan,p,detectMeeshoCatalog(scan),bundle)
  };
  return [
   'You are an evidence-first Indian e-commerce catalog listing assistant. Inspect attached product photos, selected Meesho category, user inputs, scanned form schema and research evidence before drafting values.',
   'Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"titleOptions":[{"title":"original SEO title between 201 and 250 characters inclusive","reason":"brief reason","recommended":true}],"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}],"evidence":{"hsn_code":{"url":"exact URL from webResearchResults or officialGovernmentTaxReferences"},"supplier_gst_percent":{"url":"exact URL from webResearchResults or officialGovernmentTaxReferences"}}}. Provide 4 unique titleOptions whenever a product title field exists. Exactly one recommended=true. Do not return markdown.',
-  'The seller already selected the Meesho category. Use the category, photos and actual product attributes as primary evidence. Do not ask the seller to select the category again. Fill only fields existing in the scanned Meesho form; use only exact allowed dropdown options. Never invent field identifiers or category values.',
+  'EXECUTION AUTHORITY: Follow the bundled Master Template PRO MAX V26/V26.1 hard-lock excerpts in masterTemplateAuthority. Perform READ → VERIFY → PLAN → MAP/PATCH MINIMALLY → VALIDATE → APPLY. Do not claim completion while a required/legal/source gate is blocked.',
+  'REFERENCE JSON AUTHORITY: completeReferencePlacementGuide is placement/representation guidance only. Never copy its example field values, seller values, product facts, options or profile facts into this product. Current scanned Meesho fields, identifiers, types and allowed options are the only schema authority. Cross-platform keys may guide semantic mapping only; never create or rename Meesho fields.',
+  'The seller already selected the Meesho category. Inspect all uploaded product photos first, then use visual identity clues in web research, then map evidence to only the scanned Meesho fields, validate allowed options and mandatory fields, and wait for the seller to click Autofill to apply. Never skip research/mapping audit stages or claim a field was researched when it was not.',
   'TITLE CREATION RULE: Create original titles yourself from product photos, selected Meesho category, verified material/color/size/features and seller-entered pack quantity. Never copy, paraphrase or imitate another website title as a title template. Web result titles may help identify similar products and specifications, but must never be copied or used as a title template.',
   'Every title must be at least 201 and no more than 250 characters, counting spaces and punctuation. Return four intentionally different approaches in this order: (1) SEO keyword-first using natural high-intent product search terms; (2) feature-led highlighting one or two verified differentiators; (3) use-case-led focused on relevant everyday use; (4) clean structured buyer-friendly title emphasizing product type and confirmed attributes. Use clearly different openings and wording, not four near-duplicates or the same attribute sequence. No keyword stuffing, repetitive phrases, invented claims, image filenames or extensions such as .png, .jpg, .jpeg, .webp or .gif. IMPORTANT: Never put listing placeholders or internal metadata into customer-facing titles: do not write Not Branded, Non Branded, Unbranded, No Brand, Unknown, N/A, None, or Brand Not Specified. If the brand is not verified, omit the brand entirely. Use only slash-separated factual segments and exactly one recommended=true.',
   'Pack quantity is the seller-entered number of sale units/pieces in a pack, not the number of photos. Use the exact pack count in title, description and matching Net Quantity / Multipack form field, obeying exact dropdown values. Never infer multi-pack count from multiple images or angles.',
@@ -1677,8 +1810,12 @@ function promptFor(scan,p,d,s,research){
 
 async function generate(googleAllowed){
  try{
-  clearLiveLog();
-  liveLog('PIPELINE START · product research + catalog draft','info');
+  clearLiveLog();resetWorkflowSteps();activePhotoConflicts=[];productIdentityScore=0;productIdentityStatus='UNASSESSED';
+  setWorkflowStep('authority','running','Loading the bundled Master Template and complete reference JSON.');
+  workflowBundle=await ensureWorkflowBundle();
+  liveLog('MASTER AUTHORITY · bundled template verified · fingerprint '+workflowBundle.masterFingerprint+' · reference profiles '+workflowBundle.referenceProfiles+'.','ok');
+  setWorkflowStep('authority','done','Master V26.1 verified; '+workflowBundle.referenceProfiles+' reference profiles loaded without importing example values.');
+  liveLog('PIPELINE START · image analysis → web research → reference-guided field mapping → validation → manual Apply','info');
   setProgress(2,'Scanning Meesho catalog fields');
   say('Scanning the selected Meesho catalog…');
   const scan=await scanCurrentCatalog(false),s=schema(scan);
@@ -1727,15 +1864,22 @@ async function generate(googleAllowed){
   let d=await getActiveDefaultsForCategory(category);
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
+  let identified=null;
+  let sellerProductNameProvided=Boolean(String(p.productName||'').trim());
+  setWorkflowStep('photos','running','Analyzing '+imgs.length+' uploaded photo(s) individually across AI batches.');
   if(p.productName&&imgs.some(img=>norm(cleanSearchSeed(img.name))===norm(cleanSearchSeed(p.productName)))){
-   p.productName='';$('ai-product-name').value='';liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
+   p.productName='';$('ai-product-name').value='';sellerProductNameProvided=false;liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
   }
   setProgress(18,'Photos ready · identify product type and visual search clues');
   try{
    setProgress(19,'Reading product photos and selected catalog attributes');
    say('Analyzing product photos for category-specific research clues…');
    liveLog('VISION IDENTIFICATION · extracting visible attributes for targeted research; file names are excluded.','info');
-   const identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
+   identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
+   activePhotoConflicts=Array.isArray(identified.visionConflicts)?identified.visionConflicts:[];
+   setWorkflowStep('photos','done',imgs.length+' photo(s) analysed before research; visual identity clues captured.');
+   liveLog('PHOTO ANALYSIS · '+imgs.length+' of '+imgs.length+' supplied image(s) analysed before web search.','ok');
+   (identified.visionConflicts||[]).forEach(conflict=>liveLog('PHOTO CONFLICT · '+conflict.field+': '+conflict.values.join(' vs ')+'. Confirm this product/variant before applying.','warn'));
    const candidate=stripImageFilenameArtifacts(String(identified.productName||identified.productType||identified.title||'')).trim();
    const confidence=String(identified.confidence||'medium').toLowerCase();
    if(!p.productName&&candidate.length>=3&&confidence!=='low'){
@@ -1766,11 +1910,18 @@ async function generate(googleAllowed){
    const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];
    const facts=[String(p.productFacts||'').trim(),p.productTypeEvidence?'Photo-derived research clues (verify against sources): '+p.productTypeEvidence:'',visible.length?'Readable product text from photos (verify): '+visible.join('; '):''].filter(Boolean);
    p.productFacts=facts.join(' | ').slice(0,1000);
+   productIdentityScore=scoreProductIdentity(p,identified,sellerProductNameProvided);
+   productIdentityStatus=productIdentityBand(productIdentityScore);
+   p.productIdentityScore=productIdentityScore;p.productIdentityStatus=productIdentityStatus;
+   liveLog('PRODUCT IDENTITY LOCK · '+productIdentityScore+'/100 · '+productIdentityStatus+'. Exact external facts stay blocked below 70; scores 70–84 require seller approval.',''+(productIdentityScore<70?'warn':'info'));
+   setWorkflowStep('photos',productIdentityScore<70?'blocked':'done',imgs.length+' photo(s) analysed · identity '+productIdentityScore+'/100 ('+productIdentityStatus+').');
    if(identified.searchTerms&&identified.searchTerms.length)liveLog('VISION IDENTIFICATION · '+identified.searchTerms.length+' visual search term(s) will be used to find similar products, not to copy their titles.','ok');
   }catch(e){
+   productIdentityScore=0;productIdentityStatus='BLOCKED — INPUT REQUIRED';
+   setWorkflowStep('photos','blocked','AI photo identity analysis failed; exact-product identity is not established.');
    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
    if(!p.productName){p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;}
-   liveLog('VISION IDENTIFICATION · photo clue extraction failed; category and form fields will still be researched. Details: '+redactSecrets(e,null),'warn');
+   liveLog('VISION IDENTIFICATION · photo clue extraction failed; only the selected form/category remains. Research must not treat category fallback as exact product evidence. Details: '+redactSecrets(e,null),'warn');
   }
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
@@ -1788,18 +1939,23 @@ async function generate(googleAllowed){
     updateScanSummary(scan);
    }
   }
+  setWorkflowStep('research','running','Searching using photo-derived product name, color, material, capacity and selected Meesho form.');
   setProgress(31,'Searching product specifications and official tax sources');
   say('Researching category-based product specifications and official tax sources…');
   liveLog('WEB RESEARCH · queries are based on selected category, form attributes and photo context—not an external listing title.','info');
   researchNow=await researchProduct(p,imgs,googleAllowed,scan,detectedCatalog);
+  researchNow.photoAnalysis={imagesAnalysed:imgs.length,productName:p.productName,productType:p.productTypeEvidence||p.productType,color:p.color||'',material:p.material||'',capacity:p.productCapacity||'',confidence:identified&&identified.confidence||'unknown',identityScore:productIdentityScore,identityStatus:productIdentityStatus,conflicts:identified&&identified.visionConflicts||[]};
   attachOfficialTaxReferences(researchNow,p,imgs,scan,detectedCatalog);
   researchNow.measurementEstimates=buildMeasurementEstimates(researchNow,s.fields,scan);
   if(researchNow.automaticTaxClassification)liveLog('OFFICIAL TAX RULE · '+researchNow.automaticTaxClassification.productType+' · HSN '+researchNow.automaticTaxClassification.hsn+' · GST '+researchNow.automaticTaxClassification.gst+'. Official Government of India and CBIC references attached.','ok');
   renderResearchSources(researchNow);
   liveLog('WEB RESEARCH · '+researchNow.results.length+' result(s) captured from '+new Set(researchNow.results.map(r=>r.domain)).size+' domain(s).','ok');
+  if(researchNow.results.length){setWorkflowStep('research','done',researchNow.results.length+' web result(s) plus '+(researchNow.officialTaxReferences||[]).length+' official tax reference(s) recorded.');}
+  else{setWorkflowStep('research','blocked','No web results captured. Check Search permission/network; do not treat photo-only guesses as researched facts.');}
   if(researchNow.error)liveLog('WEB RESEARCH · '+researchNow.error,'warn');
   setProgress(45,'Analyzing product photos in batches');
   say('Analyzing all photos and matching values to the scanned field schema…');
+  setWorkflowStep('mapping','running','Matching evidence to the current Meesho form; Reference JSON is used only for semantic key/placement hints.');
   const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25);
   const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
   if(!p.color){
@@ -1809,8 +1965,12 @@ async function generate(googleAllowed){
    const detectedPrimary=modelColor||titleColor;
    if(detectedPrimary){p.color=detectedPrimary;const colorInput=$('ai-product-color');if(colorInput)colorInput.value=detectedPrimary;liveLog('PRIMARY COLOR · selected '+detectedPrimary+' as the single dominant product color.','ok');}
   }
-  await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
+  if(productIdentityScore>=70)await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
+  else liveLog('IDENTITY HARD LOCK · targeted exact-product HSN/GST candidate checks are not accepted below 70/100. Improve product identity evidence and re-run analysis.','warn');
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
+  if(productIdentityScore<70)needs.push({identifier:'product_identity',reason:'Identity score '+productIdentityScore+'/100 is below the Master Template minimum. Add a specific product name, clear product photos or verified product details, then regenerate before applying.'});
+  else if(productIdentityScore<85)needs.push({identifier:'product_identity_approval',reason:'Identity score '+productIdentityScore+'/100 is in the POSSIBLE — APPROVAL range. Verify that the photos, color, capacity and product name all describe the same item before applying.'});
+  (identified&&Array.isArray(identified.visionConflicts)?identified.visionConflicts:[]).forEach(conflict=>needs.push({identifier:'photo_identity_'+String(conflict.field||'conflict'),reason:'Photo analysis conflict for '+String(conflict.field||'product identity')+': '+(conflict.values||[]).join(' vs ')+'. Confirm that all photos show the same product variant before applying.'}));
   // Meesho's default GST "0" is a placeholder, not a researched product tax rate.
   // Remove only obvious placeholder values so the AI/research result can replace them.
   s.fields.forEach(f=>{
@@ -1842,6 +2002,7 @@ async function generate(googleAllowed){
   liveLog('VALUE MAPPING · applying title-based SKU/Style Code, seller defaults and explicit pricing rules.','info');
   s.fields.forEach(f=>{
    const old=captured(scan,f.identifier);
+   if(isTaxField(f)&&productIdentityScore<70){needs.push({identifier:f.identifier,reason:'HSN/GST exact classification is blocked because product identity is below 70/100. No category-only tax guess is allowed.'});return;}
    const fixed=isTaxField(f)?'':preset(f,p,d);
    const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
@@ -1949,28 +2110,37 @@ async function generate(googleAllowed){
    if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))
     needs.push({identifier:f.identifier,reason:'Required field is blank because a verified value was not found.'});
   });
-  const unresolvedTaxFields=s.fields.filter(f=>isTaxField(f)&&!String(values[f.identifier]||'').trim());
+  const unresolvedTaxFields=s.fields.filter(f=>isTaxField(f)&&(!String(values[f.identifier]||'').trim()||![...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])].some(row=>officialTaxEvidence(f,String(values[f.identifier]||'').trim(),{url:row.url},researchNow))));
   unresolvedTaxFields.forEach(f=>{
    if(!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Mandatory tax field unresolved. Add/confirm an official classification source before Autofill; the extension will not submit a blank or fabricated HSN/GST value.'});
   });
   draft=values;pending=needs;
-  currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
+  currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleMeasurements=s.measurements||[];currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
   renderTitleOptions();
   liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
   renderTaxApplicationSummary(values,s.fields,researchNow);
   showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
   const autofillButton=$('ai-autofill-btn');
   if(autofillButton){autofillButton.disabled=!Object.values(values).some(v=>String(v||'').trim());autofillButton.title=unresolvedTaxFields.length?'HSN/GST values are unresolved. Click for guidance or edit the tax fields in Draft.':'';}
+  const photoConflictNeeds=(identified&&identified.visionConflicts||[]).length;
+  const mappingBlocked=unresolvedTaxFields.length>0||photoConflictNeeds>0||productIdentityScore<70;
+  setWorkflowStep('mapping',mappingBlocked?'blocked':'done',Object.keys(values).filter(k=>String(values[k]||'').trim()).length+' mapped value(s); identity '+productIdentityScore+'/100 ('+productIdentityStatus+'); '+needs.length+' review item(s); '+unresolvedTaxFields.length+' unresolved tax field(s); '+photoConflictNeeds+' photo conflict(s).');
+  setWorkflowStep('apply',mappingBlocked?'blocked':'waiting',unresolvedTaxFields.length?'Review source-verified HSN/GST in Draft before applying.':photoConflictNeeds?'Conflicting photo identity must be resolved; do not apply this draft.':productIdentityScore<70?'Product identity score is below the Master Template minimum.':'Ready after seller review of the draft.');
   if(unresolvedTaxFields.length)liveLog('TAX REVIEW REQUIRED · HSN/GST remain mandatory. Autofill stays clickable, but listing fill is paused until verified values are supplied.','warn');
   const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
   const researchNote=researchNow.results.length?' Category-based web research added.':(' Web research unavailable: '+(researchNow.error||'no results')+'.');
   setProgress(100,'Draft complete · choose a title and review unresolved fields');
   say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||researchNow.error?'warning':'success');
- }catch(e){liveLog('PIPELINE ERROR · '+redactSecrets(e,null),'error');say(redactSecrets(e,null),'error');}
+ }catch(e){const message=redactSecrets(e,null);setWorkflowStep(workflowBundle?'mapping':'authority','error',message);setWorkflowStep('apply','blocked','Workflow failed before safe application. Check the message and retry.');liveLog('PIPELINE ERROR · '+message,'error');say(message,'error');}
 }
 async function autofill(){
  try{
   if(!draft||!scanNow)throw new Error('Generate a draft first.');
+  if(activePhotoConflicts.length){
+   setWorkflowStep('apply','blocked','Conflicting photo identity requires a new single-variant photo set.');
+   say('Autofill paused: product photos disagree about '+activePhotoConflicts.map(x=>x.field||'identity').join(', ')+'. Upload only photos of the same product variant, analyse again and review the new mapping. No field values were sent to Meesho.','warning');
+   return;
+  }
   const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
   const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
   if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho catalog tab again.');
@@ -1979,12 +2149,15 @@ async function autofill(){
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
   const payload=Object.assign({},draft);
   const fields=(scanNow.sections||[]).flatMap(section=>section.fields||[]);
-  const unresolvedTax=fields.filter(field=>isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  if(productIdentityScore<70){setWorkflowStep('apply','blocked','Product identity score '+productIdentityScore+'/100 is below the required threshold.');say('Autofill blocked by Master Template hard lock: product identity score is '+productIdentityScore+'/100. Add a specific product name or clearer photos/details, then run Analyze Images & Generate again.','warning');return;}
+  const unresolvedTax=fields.filter(field=>{if(!isTaxField(field))return false;const value=String(payload[field.identifier]||'').trim();return !value||![...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])].some(row=>officialTaxEvidence(field,value,{url:row.url},researchNow));});
   if(unresolvedTax.length){
    const names=unresolvedTax.map(field=>field.label||field.identifier).join(', ');
+   setWorkflowStep('apply','blocked','Required HSN/GST values must be verified before sending anything to Meesho.');
    say('Autofill is ready, but it was paused because required tax values are not verified: '+names+'. Edit Draft, enter HSN and GST from an official source, click Save Changes, then retry. No blank or guessed tax value was sent to Meesho.','warning');
    return;
-  }else if(pending.length&&!confirm('Some fields need confirmation. Estimated values are marked in Draft. Continue autofill with the values currently shown?'))return;
+  }else if(pending.length&&!confirm('Some fields need confirmation. Estimated values are marked in Draft. Continue autofill with the values currently shown?')){setWorkflowStep('apply','blocked','Seller cancelled because some fields need review.');return;}
+  setWorkflowStep('apply','running','Validating chosen size, required tax values and mapped fields before sending.');
   // Values explicitly typed/selected in the existing Step 2 form override AI suggestions.
   document.querySelectorAll('#dynamic-sections-container [id^="f_"]').forEach(input=>{
    const identifier=input.id.slice(2),value=String(input.value||'').trim();
@@ -1995,20 +2168,32 @@ async function autofill(){
    const value=String(input.value||'').trim();if(value)payload[input.id]=value;
   });
   if(selected.length)payload._variation_sizes=selected.join(',');
+  const missingRequired=(currentTitleFields||[]).filter(field=>field.mandatory&&!isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  const measureSizes=selected.length?selected:variationNames(scanNow);
+  const missingMeasurements=(currentTitleMeasurements||[]).filter(field=>field.mandatory&&measureSizes.some(size=>!String(payload[String(field.identifier)+'__'+String(size)]||'').trim()));
+  if(missingRequired.length||missingMeasurements.length){
+   const names=[...missingRequired.map(field=>field.label||field.identifier),...missingMeasurements.map(field=>(field.label||field.identifier)+' (per-size measurement)')].slice(0,12);
+   setWorkflowStep('apply','blocked',missingRequired.length+' required field(s) and '+missingMeasurements.length+' per-size measurement(s) remain blank.');
+   say('Autofill blocked by Master Template hard lock: required values are still blank: '+names.join(', ')+(missingRequired.length+missingMeasurements.length>12?'…':'')+'. Complete these in Draft/size measurements, save the Draft, then retry. The extension will not apply an incomplete required form.','warning');
+   return;
+  }
   await set({meesho_autofill_values:payload});
   setProgress(3,'Autofill · sending values to the active Meesho tab');
   say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
   const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the Meesho page and retry.'));if(!r)return reject(new Error('Meesho did not return an autofill result.'));resolve(r);}));
   const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
   if(filled===0){
+   setWorkflowStep('apply','error','Meesho did not confirm any filled fields.');
    setProgress(0,'Autofill failed · no fields matched');
    say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.')+' Inspect the failed-field list in the message, then retry.','error');return;
   }
   if(result.stopped||failed.length){
+   setWorkflowStep('apply','blocked',filled+' field(s) filled; '+failed.length+' field(s) need review. Check the size selector and Apply confirmation.');
    setProgress(85,'Partial autofill · inspect failed fields');
    const shown=failed.slice(0,6).join(', ')+(failed.length>6?'… and '+(failed.length-6)+' more':'');
    say('Partial autofill: '+filled+' field(s). '+shown+'. '+(result.stopped?'Some fields could not be filled. ':'')+'Review the remaining fields before saving.','warning');return;
   }
+  setWorkflowStep('apply','done',filled+' field(s) reported filled. Verify the visible Meesho fields before saving the catalog.');
   setProgress(100,'Autofill complete · verify Meesho values before saving');
   say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
  }catch(e){say(e.message||'Autofill failed.','error');}

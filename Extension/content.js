@@ -158,9 +158,12 @@
     if (input) {
       if (!input.checked) {
         input.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-        // HTMLElement.click() already emits the native click/input/change sequence. Do not dispatch a second change event; React-controlled checkboxes can toggle back off.
+        // The old implementation only scrolled the checkbox into view and returned
+        // without clicking it. Click the native input once so React's click/change
+        // handlers run, then let the caller re-query the controlled state after paint.
+        input.click();
       }
-      return input.checked ? 'checkbox-selected' : 'checkbox-failed';
+      return input.checked ? 'checkbox-selected' : 'checkbox-clicked-awaiting-state';
     }
     const isSelected = () =>
       row.getAttribute('aria-checked') === 'true' ||
