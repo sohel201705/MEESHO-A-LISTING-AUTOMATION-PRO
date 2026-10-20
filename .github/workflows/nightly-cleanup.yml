@@ -1,0 +1,75 @@
+name: Nightly transient log cleanup
+
+on:
+  schedule:
+    # 00:00 India Standard Time (18:30 UTC on the previous day)
+    - cron: '30 18 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup-transient-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Firebase service-account secret
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT_JSON repository secret is required."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install temporary Firestore Admin SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/firestore-cleanup" --no-audit --no-fund firebase-admin@13
+
+      - name: Delete transient log documents only
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          CLEANUP_NODE_MODULES: ${{ runner.temp }}/firestore-cleanup/node_modules
+          EXPECTED_FIREBASE_PROJECT: meesho-a-plus-listing-b5ea0
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const admin = require(process.env.CLEANUP_NODE_MODULES + '/firebase-admin');
+          const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
+          const expectedProject = process.env.EXPECTED_FIREBASE_PROJECT;
+          if (credentials.project_id !== expectedProject) {
+            throw new Error('Service-account project_id does not match the expected Firebase project.');
+          }
+          const app = admin.initializeApp({
+            credential: admin.credential.cert(credentials),
+            projectId: expectedProject
+          });
+          const db = admin.firestore(app);
+          (async () => {
+            const snapshot = await db.collection('logs').get();
+            const transientDocs = snapshot.docs.filter(doc => doc.id !== '_meta');
+            let deleted = 0;
+            for (let i = 0; i < transientDocs.length; i += 400) {
+              const batch = db.batch();
+              for (const doc of transientDocs.slice(i, i + 400)) batch.delete(doc.ref);
+              await batch.commit();
+              deleted += Math.min(400, transientDocs.length - i);
+            }
+            console.log('Nightly cleanup finished. Deleted ' + deleted + ' document(s) from logs; preserved logs/_meta.');
+            console.log('Protected collections were not queried or deleted.');
+            await app.delete();
+          })().catch(async error => {
+            console.error('Nightly transient-log cleanup failed:', error);
+            try { await app.delete(); } catch (_) {}
+            process.exitCode = 1;
+          });
+          NODE

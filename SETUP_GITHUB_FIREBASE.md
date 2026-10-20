@@ -47,7 +47,31 @@ Activation keys are redeemed with a single Firestore commit. Security Rules requ
 
 Keys currently use the start/expiry dates set when the Admin generates them. To avoid shortening an active membership, the extension refuses a key whose expiry precedes the member's current expiry; generate renewal keys after the existing expiry or manage a longer expiry from the Admin Panel.
 
-## 7. Security
+## 7. FreeLLMAPI local router and 24-hour trial
+
+### Per-user local AI router
+Each user must run their own FreeLLMAPI instance on the same computer as Chrome and enter their own router API key in the extension's AI settings. The extension does not provide a shared central token pool or host anyone else's router.
+
+- Default endpoint: `http://127.0.0.1:31415/v1/chat/completions`
+- Compatibility fallback: `http://127.0.0.1:3001/v1/chat/completions`
+- Use **Test Connection** before generating a listing. For FreeLLMAPI, the test sends a tiny image as well as text; a successful text-only connection is not enough for product-photo research.
+- Configure a vision-capable model in the local router's fallback chain. If no vision model is available, image-based listing generation may return `no_vision_model`.
+- Keep the router bound to loopback / localhost. Do not expose its port to a public interface or the internet. Provider access, rate limits and free quotas are controlled by the user's own router/providers and can change.
+
+### One-time 24-hour trial
+The extension starts a trial the first time an authenticated user reaches the access check without an active membership. Firestore stores `trials/{uid}` with a server-generated `startedAt` timestamp. Rules allow the owner to read it but do not allow a user to update or delete it; the trial expires 24 hours after that timestamp. An active membership takes precedence over the trial.
+
+After updating rules, deploy them using the existing GitHub Actions workflow (or your established Firebase Rules deployment method) before testing the first trial. If a user's trial cannot start, the extension displays a setup error instead of silently granting access.
+
+**Important limitation:** this no-VPS design does not create a trusted server that authorizes every AI request. Firestore Rules protect the one-time trial record, but an advanced user who modifies the local extension or changes the computer clock may bypass a client-side expiry check. Strong tamper-resistant enforcement requires a trusted backend / server-side verification, which is intentionally outside this no-backend option.
+
+## 8. Nightly transient-log cleanup
+
+The `.github/workflows/nightly-cleanup.yml` workflow runs daily at **midnight India time** using GitHub Actions and the existing `FIREBASE_SERVICE_ACCOUNT_JSON` repository secret. It deletes documents from the Firestore `logs` collection only, preserving the `_meta` collection marker. It does **not** delete users, memberships, product memberships, plans, activation keys, payments, devices, trial records, system settings or seller profile data.
+
+The cleanup is scoped this way so that routine diagnostics are cleared without removing business/account records. If the repository secret is absent or the service account cannot access the project, the workflow fails visibly instead of using client credentials.
+
+## 9. Security
 - Firestore Rules are the permission boundary.
 - Never store service-account private keys in client-side code, public files or browser storage.
 - Keep downloaded backup files private because they contain user names, email addresses, memberships and key records.

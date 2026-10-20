@@ -104,6 +104,7 @@ async function initializeDatabase() {
     ['devices','Legacy Device Metadata','Device limits are not enforced'],
     ['payments','Payments','UPI/manual payment records'],
     ['logs','Logs','Admin activity and system audit logs'],
+    ['trials','Trials','One-time authenticated 24-hour trial records'],
     ['settings','Settings','Support, tutorial and master download URLs'],
     ['combinedPlans','Combined Plans','Bundles containing both products']
   ];
@@ -114,8 +115,8 @@ async function initializeDatabase() {
   const membershipSnap=await getDocs(collection(db,'memberships'));
   for(const member of membershipSnap.docs) if(member.id!=='_meta' && member.data()?.deviceLimit!==undefined) await updateDoc(member.ref,{deviceLimit:deleteField()});
 
-  await setDoc(doc(db,'system','collections'),{users:true,plans:true,memberships:true,productMemberships:true,activationKeys:true,devices:true,payments:true,settings:true,combinedPlans:true,logs:true,admins:true,initializedAt:now,initializedBy:currentUser.uid},{merge:true});
-  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.16.5',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
+  await setDoc(doc(db,'system','collections'),{users:true,plans:true,memberships:true,productMemberships:true,activationKeys:true,devices:true,payments:true,settings:true,combinedPlans:true,logs:true,trials:true,admins:true,initializedAt:now,initializedBy:currentUser.uid},{merge:true});
+  await setDoc(doc(db,'system','meta'),{name:'MEESHO A+ LISTING AUTOMATION PRO',version:'3.18.3',model:'SHARED_ADMIN_PRODUCT_MEMBERSHIPS',initializedAt:now,initializedBy:currentUser.uid,database:'FIRESTORE',collectionsReady:true},{merge:true});
   await syncCombinedPlanPrices();
   toast('Firebase integration completed. Missing collections were created; existing prices and settings were preserved.','success');
   await loadAll();

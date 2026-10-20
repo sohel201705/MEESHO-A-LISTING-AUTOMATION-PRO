@@ -71,8 +71,9 @@ jobs:
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
+          const cleanupWorkflow = fs.readFileSync('.github/workflows/nightly-cleanup.yml', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.9');
+          assert.equal(manifest.version, '3.18.3');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -87,6 +88,16 @@ jobs:
           assert.ok(!manifest.host_permissions.some(x => x.includes('cloudfunctions.net')));
           assert.match(rules, /YnfQtmTpm9asdR0izeWuMwmX3Sw1/);
           assert.match(rules, /canRedeemProductMembership/);
+          assert.match(rules, /match \/trials\/\{uid\}/);
+          assert.ok(rules.includes('request.resource.data.startedAt == request.time'));
+          assert.ok(rules.includes('allow update: if false;'));
+          assert.ok(admin.includes("['trials','Trials','One-time authenticated 24-hour trial records']"));
+          assert.ok(admin.includes('trials:true'));
+          assert.ok(cleanupWorkflow.includes("cron: '30 18 * * *'"));
+          assert.ok(cleanupWorkflow.includes("db.collection('logs')"));
+          assert.ok(cleanupWorkflow.includes("doc.id !== '_meta'"));
+          assert.ok(!cleanupWorkflow.includes("db.collection('users')"));
+          assert.ok(!cleanupWorkflow.includes("db.collection('memberships')"));
           assert.match(rules, /match \/flipkartProfiles\/\{profileId\} \{\s*allow read, create, update, delete: if isAdmin\(\);/);
           assert.ok(admin.includes('downloadLocalBackup'));
           assert.ok(admin.includes('restoreLocalBackupFile'));
@@ -106,6 +117,9 @@ jobs:
           assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25)'));
           assert.ok(aiAssistant.includes('Array.isArray(imgs)'));
           assert.ok(aiAssistant.includes('function explainProviderFailure(provider,error,hasAlternative)'));
+          assert.ok(aiAssistant.includes('async function testApiConnection()'));
+          assert.ok(aiAssistant.includes("const endpoints=k.provider==='freellmapi'?connectionTestCandidates(k.provider,url):[url]"));
+          assert.ok(aiAssistant.includes("for(const port of [url.port,'31415','3001'])"));
           assert.ok(aiAssistant.includes('explainProviderFailure(k.provider,e,i<order.length-1)'));
           assert.ok(aiAssistant.includes('Provider quota exhausted.'));
           assert.ok(aiAssistant.includes('imgs.slice(0,3)'));
@@ -123,7 +137,7 @@ jobs:
           assert.ok(aiAssistant.includes('function productCodes'));
           assert.ok(aiAssistant.includes('function generatedCodeForField'));
           assert.ok(aiAssistant.includes('function exactCapacityOption'));
-          assert.ok(aiAssistant.includes('Google Research Sources'));
+          assert.ok(aiAssistant.includes('function renderResearchSources'));
           assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25)'));
           assert.ok(aiAssistant.includes("payload._variation_sizes=selected.join(',')"));
           assert.ok(aiAssistant.includes('#dynamic-sections-container [id^="f_"]'));
@@ -145,7 +159,7 @@ jobs:
           assert.ok(aiAssistant.includes("p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice)"));
           assert.ok(aiAssistant.includes("Meesho selling price must be greater than ₹5"));
           assert.ok(aiAssistant.includes("Entered MRP is lower than the selling price"));
-          assert.ok(aiAssistant.includes("maxEdge=1600"));
+          assert.ok(aiAssistant.includes('maxEdge=1024'));
           assert.ok(!aiAssistant.includes("'image/gif'"));
           assert.ok(!popupHtml.includes('image/gif'));
           assert.ok(aiAssistant.includes("All '+imgs.length+' photos were sent"));
@@ -165,7 +179,7 @@ jobs:
           assert.ok(aiAssistant.includes('ai-override-importer-pincode'));
           assert.ok(aiAssistant.includes('function buildTitleChoices'));
           assert.ok(aiAssistant.includes('slice(0,250)'));
-          assert.ok(aiAssistant.includes('recommended=true for exactly one'));
+          assert.ok(aiAssistant.includes('Exactly one recommended=true'));
           assert.ok(aiAssistant.includes('function renderTitleOptions'));
           assert.ok(aiAssistant.includes('async function applyTitleChoice(index)'));
           assert.ok(aiAssistant.includes('function isDescriptionField(f)'));
@@ -233,7 +247,11 @@ jobs:
           const detectorEnd = aiAssistant.indexOf('function promptFor(scan,p,d,s,research)', detectorStart);
           assert.ok(detectorStart >= 0 && detectorEnd > detectorStart);
           const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-          const detectCatalog = new Function("$", "norm", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise);
+          const sanitizerStart = aiAssistant.indexOf('function stripImageFilenameArtifacts(value){');
+          const sanitizerEnd = aiAssistant.indexOf('function cleanSearchSeed(value){', sanitizerStart);
+          assert.ok(sanitizerStart >= 0 && sanitizerEnd > sanitizerStart);
+          const stripImageFilenameArtifacts = new Function(aiAssistant.slice(sanitizerStart, sanitizerEnd) + '; return stripImageFilenameArtifacts;')();
+          const detectCatalog = new Function("$", "norm", "stripImageFilenameArtifacts", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise, stripImageFilenameArtifacts);
           const fixture = (fields, capturedValues = {}, catalogContext = {}) => ({
             sections: [{ id: 'product_data', fields }],
             capturedValues,
@@ -275,7 +293,7 @@ jobs:
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
           assert.ok(aiAssistant.includes('const outcomes=await Promise.all(queries.map'));
-          assert.ok(aiAssistant.includes('MANDATORY HSN/GST CHECK'));
+          assert.ok(aiAssistant.includes('Autofill blocked: '));
           assert.ok(aiAssistant.includes('function officialTaxEvidence'));
           assert.ok(aiAssistant.includes('if(!OFFICIAL_TAX_HOST.test(host))return null'));
           assert.ok(aiAssistant.includes("['0','0%','--','select','not selected'].includes(norm(oldTax))"));
@@ -299,8 +317,8 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-product-pack-quantity"'));
           assert.ok(aiAssistant.includes("packQuantity:$('ai-product-pack-quantity')"));
           assert.ok(aiAssistant.includes('function exactPackQuantityOption(field,count)'));
-          assert.ok(aiAssistant.includes('productInputs.packQuantity'));
-          assert.ok(aiAssistant.includes("const packSegment=' / Pack of '+packCount") && aiAssistant.includes('raw+=packSegment'));
+          assert.ok(aiAssistant.includes('Pack quantity is the seller-entered number of sale units/pieces in a pack'));
+          assert.ok(aiAssistant.includes("packSegment=' / Pack of '+packCount") && aiAssistant.includes('clean.length<201||clean.length>250'));
           assert.ok(aiAssistant.includes('function classifyProviderFailure(error)'));
           assert.ok(aiAssistant.includes('quota/rate limit (429)'));
           assert.ok(aiAssistant.includes("Provider quota exhausted."));
@@ -321,11 +339,12 @@ jobs:
           const titleEnd = aiAssistant.indexOf('function renderTitleOptions()', titleStart);
           const titleCode = aiAssistant.slice(titleStart, titleEnd);
           assert.ok(titleStart >= 0 && titleEnd > titleStart);
-          assert.ok(titleCode.includes("const packSegment=' / Pack of '+packCount") && titleCode.includes('raw+=packSegment'));
+          assert.ok(titleCode.includes("packSegment=' / Pack of '+packCount") && titleCode.includes('clean.length<201||clean.length>250'));
           const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
           assert.ok(titleHelpersStart >= 0);
-          const titleBuilder = new Function('norm', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
-            value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+          const titleBuilder = new Function('norm','stripImageFilenameArtifacts', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
+            value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(),
+            value => String(value || '').replace(/(?:^|[\s/])[^/\s]+\.(?:jpe?g|png|webp|gif|bmp|avif)\b/gi,' ').replace(/\s+/g, ' ').trim()
           );
           const titleChoices = titleBuilder([
             { title: 'Bottle / Steel / Pack of 4', recommended: true },
@@ -334,7 +353,35 @@ jobs:
             { title: 'Travel Bottle / Metal', recommended: false }
           ], 'Water Bottle', { packQuantity: '2', productCapacity: '750 ml', material: 'Steel', color: 'Silver' }, { brand: 'Eagle' });
           assert.equal(titleChoices.length, 4);
-          assert.ok(titleChoices.every(x => x.title.length <= 250 && /pack of 2/i.test(x.title)));
+          assert.ok(titleChoices.every(x => x.title.length >= 201 && x.title.length <= 250 && /pack of 2/i.test(x.title)));
+          assert.equal(new Set(titleChoices.map(x => x.title)).size, 4);
+          assert.ok(titleChoices.every(x => !/\.(?:jpe?g|png|webp|gif)\b/i.test(x.title)));
+          assert.ok(titleChoices.every(x => !x.title.includes(' / / ')));
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
-          console.log('v3.17.9 checks passed: pack quantity, Gemini quota fallback diagnostics, verified Free Size selection, shipping photo capture, and nine provider cards.');
+          const filenameTitleChoices = titleBuilder([
+            { title: 'Lunch Boxes / Orange / With Cutlery / Pack of 1.jpg', recommended: true },
+            { title: 'Lunch Boxes / Plastic / Orange / Pack of 1.png' },
+            { title: 'Lunch Boxes / With Cutlery / Orange / Pack of 1' },
+            { title: 'Lunch Boxes / Orange / Pack of 1' }
+          ], 'Lunch Boxes', { packQuantity: '1', productCategory: 'kitchen', productType: 'Kitchenware / Food Storage', material: 'Plastic', color: 'Orange' }, { brand: '' });
+          assert.equal(filenameTitleChoices.length, 4);
+          assert.ok(filenameTitleChoices.every(x => x.title.length >= 201 && x.title.length <= 250));
+          assert.ok(filenameTitleChoices.every(x => x.title.includes('Lunch Boxes') && !x.title.includes(' / / ')));
+          assert.ok(filenameTitleChoices.every(x => /Pack of 1$/i.test(x.title)));
+
+          assert.ok(aiAssistant.includes('function stripImageFilenameArtifacts'));
+          assert.ok(aiAssistant.includes('function categoryResearchTerms'));
+          assert.ok(aiAssistant.includes('async function enrichTaxEvidence'));
+          assert.ok(aiAssistant.includes('function buildMeasurementEstimates'));
+          assert.ok(aiAssistant.includes('function makeDraftControl'));
+          assert.ok(aiAssistant.includes('function commitDraftEdits'));
+          assert.ok(aiAssistant.includes('Seller-edited tax value; confirm its exact HSN/GST rate'));
+          assert.ok(popupHtml.includes('.ai-preview-toolbar'));
+          assert.ok(popupHtml.includes('.ai-draft-field-status'));
+          assert.ok(aiAssistant.includes('function promptFor('));
+          assert.ok(aiAssistant.includes('TITLE CREATION RULE'));
+          assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
+          assert.ok(aiAssistant.includes('DuckDuckGo'));
+          assert.ok(aiAssistant.includes('39241090'));
+          console.log('v3.18.3 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
           NODE
