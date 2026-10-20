@@ -86,7 +86,7 @@ jobs:
           assert.ok(html.includes('run-firebase-integration'));
           assert.ok(admin.includes("$('run-firebase-integration')?.addEventListener('click', runFirebaseIntegration)"));
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.18.3');
+          assert.equal(manifest.version, '3.18.4');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -191,6 +191,13 @@ jobs:
           assert.ok(aiAssistant.includes('ai-default-manufacturer-pincode'));
           assert.ok(aiAssistant.includes('ai-override-importer-pincode'));
           assert.ok(aiAssistant.includes('function buildTitleChoices'));
+          assert.ok(aiAssistant.includes('function stripBrandPlaceholders(value)'));
+          assert.ok(aiAssistant.includes('function renderTaxApplicationSummary'));
+          assert.ok(aiAssistant.includes('function unwrapSearchResultUrl'));
+          assert.ok(aiAssistant.includes('clearNeedsForField(needs,f.identifier)'));
+          assert.ok(popupHtml.includes('id="ai-tax-summary"'));
+          assert.ok(popupHtml.includes('ai-core-product-inputs'));
+          assert.ok(popupHtml.indexOf('id="ai-product-name"') < popupHtml.indexOf('id="ai-product-price"'));
           assert.ok(aiAssistant.includes('slice(0,250)'));
           assert.ok(aiAssistant.includes('Exactly one recommended=true'));
           assert.ok(aiAssistant.includes('function renderTitleOptions'));
@@ -353,7 +360,7 @@ jobs:
           const titleCode = aiAssistant.slice(titleStart, titleEnd);
           assert.ok(titleStart >= 0 && titleEnd > titleStart);
           assert.ok(titleCode.includes("packSegment=' / Pack of '+packCount") && titleCode.includes('clean.length<201||clean.length>250'));
-          const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
+          const titleHelpersStart = aiAssistant.indexOf('function stripBrandPlaceholders(value)');
           assert.ok(titleHelpersStart >= 0);
           const titleBuilder = new Function('norm','stripImageFilenameArtifacts', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
             value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(),
@@ -371,6 +378,8 @@ jobs:
           assert.ok(titleChoices.every(x => !/\.(?:jpe?g|png|webp|gif)\b/i.test(x.title)));
           assert.ok(titleChoices.every(x => !x.title.includes(' / / ')));
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
+          assert.ok(titleChoices.every(x => !/\\b(?:not branded|non[- ]?branded|unbranded|no brand|unknown brand|brand not specified)\\b/i.test(x.title)));
+          assert.equal(new Set(titleChoices.map(x => x.strategy)).size, 4);
           const filenameTitleChoices = titleBuilder([
             { title: 'Lunch Boxes / Orange / With Cutlery / Pack of 1.jpg', recommended: true },
             { title: 'Lunch Boxes / Plastic / Orange / Pack of 1.png' },
@@ -396,5 +405,5 @@ jobs:
           assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
           assert.ok(aiAssistant.includes('DuckDuckGo'));
           assert.ok(aiAssistant.includes('39241090'));
-          console.log('v3.18.3 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
+          console.log('v3.18.4 checks passed: robust research parsing, automatic evidence-backed tax/measurement application, four distinct clean title styles, core product fields and existing extension safeguards.');
           NODE
