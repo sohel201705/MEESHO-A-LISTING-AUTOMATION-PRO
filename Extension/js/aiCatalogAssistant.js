@@ -1020,7 +1020,7 @@ async function compatible(k,prompt,imgs=[]){
  const originalUrl=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();
  if(!originalUrl)throw new Error('Enter the HTTPS API endpoint for '+label(k.provider)+'.');
  let url=originalUrl;
- if(!/\\/chat\\/completions\\/?$/i.test(url))url=url.replace(/\\/$/,'')+'/chat/completions';
+ if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
  const endpoints=k.provider==='freellmapi'?connectionTestCandidates(k.provider,url):[url];
  const requestOptions={method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})};
  let r=null,raw='',data={},lastError='';const routeErrors=[];
