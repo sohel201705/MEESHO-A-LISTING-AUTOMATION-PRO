@@ -92,7 +92,7 @@ function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
  const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText),plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/i.test(materialText),insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/i.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/i.test(productText);
  if(kitchenCategory&&lunchBoxContext&&plasticMaterial){
   const hsn=insulated?'39241010':'39241090';
-  refs.push({kind:'hsn',title:'Government of India — DGFT ITC(HS) classification for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Notification_ITCHS.pdf',domain:'content.dgft.gov.in',snippet:'Official Government of India ITC(HS) classification: heading 3924 covers tableware, kitchenware and other household articles of plastics; 392410 is tableware and kitchenware; tariff item 39241010 is insulated ware and 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
+  refs.push({kind:'hsn',title:'Government of India — DGFT tariff item listing for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Appendix%204RE%20RoDTEP.pdf',domain:'content.dgft.gov.in',snippet:'Official DGFT tariff table lists heading 3924 for tableware, kitchenware and other household articles of plastics; heading 392410 is tableware and kitchenware, tariff item 39241010 is insulated ware and tariff item 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
   research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'plastic lunch box / tableware and kitchenware of plastics',hsn,gst:'18%',insulated,hsnSourceUrl:refs[refs.length-3].url,gstSourceUrl:refs[refs.length-2].url,classificationBasis:'selected category + product form attributes + confirmed plastic material',status:'category-classified; verify seller-specific material and insulated/non-insulated construction'};
  }
  return research;
@@ -1621,7 +1621,7 @@ async function generate(googleAllowed){
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
    if(old&&!isPriceOrInventory&&!isDescriptionField(f)&&!isTaxField(f)){values[f.identifier]=old;return;}
    if(old&&isPriceOrInventory&&!fixed){values[f.identifier]=old;return;}
-   if(fixed){if(allowed(fixed,f)){values[f.identifier]=String(fixed);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
+   if(fixed){const fixedOption=dropdownEquivalent(fixed,f);if(fixedOption&&allowed(fixedOption,f)){values[f.identifier]=String(fixedOption);presetCount++;}else{needs.push({identifier:f.identifier,reason:'Seller-entered price/default does not exactly match the allowed dropdown options.'});bad++;}return;}
    if(isPriceOrInventory){
     if(old){values[f.identifier]=old;return;}
     if(f.mandatory&&!needs.some(n=>n&&n.identifier===f.identifier)){
@@ -1659,24 +1659,40 @@ async function generate(googleAllowed){
     return;
    }
    const v=proposed[f.identifier];if(v===undefined||v===null||!String(v).trim())return;
-   if(!allowed(String(v),f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option.'});bad++;return;}
-   if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,String(v),researchNow)){
+   const mappedValue=dropdownEquivalent(String(v),f);
+   if(!mappedValue||!allowed(mappedValue,f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option. Choose the matching Meesho option in Edit Draft.'});bad++;return;}
+   if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,mappedValue,researchNow)){
     const estimate=researchNow.measurementEstimates&&researchNow.measurementEstimates[f.identifier];
     if(estimate&&estimate.value){values[f.identifier]=String(estimate.value);ai++;liveLog('MEASUREMENT ESTIMATE · '+f.label+' = '+estimate.value+' '+(estimate.unit||'')+' · '+(estimate.sourceCount||1)+' related source(s); editable in Draft.','warn');return;}
     needs.push({identifier:f.identifier,reason:'Research checked same-category measurement sources but found no usable exact value or supported estimate. This field remains unresolved.'});return;
    }
    if(isTaxField(f)){
-    const src=officialTaxEvidence(f,String(v),evidence[f.identifier],researchNow);
+    const src=officialTaxEvidence(f,mappedValue,evidence[f.identifier],researchNow);
     if(!src){
      needs.push({identifier:f.identifier,reason:'AI suggested candidate "'+String(v)+'", but Google results did not contain a directly matching official CBIC/GST source for this exact code/rate. It was not filled. Verify the product classification before use.'});
      return;
     }
-    values[f.identifier]=String(v).trim();ai++;
+    values[f.identifier]=String(mappedValue).trim();ai++;
     needs.push({identifier:f.identifier,reason:'Official result matched this candidate: '+src.url+'. Confirm the exact classification applies to this product before submitting.'});
     return;
    }
-   values[f.identifier]=String(v).trim();ai++;
+   values[f.identifier]=String(mappedValue).trim();ai++;
   });
+  Object.entries(researchNow.measurementEstimates||{}).forEach(([identifier,estimate])=>{
+   if(!estimate||!estimate.value||String(values[identifier]||'').trim())return;
+   values[identifier]=String(estimate.value);
+   liveLog('MEASUREMENT ESTIMATE · '+identifier+' = '+estimate.value+' '+(estimate.unit||'')+' from '+(estimate.sourceCount||1)+' similar-product source(s); edit in Draft if your item differs.','warn');
+  });
+  const estimates=Object.values(researchNow.measurementEstimates||{});
+  const hasDimensionEstimate=estimates.some(x=>x&&x.kind!=='weight');
+  const hasWeightEstimate=estimates.some(x=>x&&x.kind==='weight');
+  const autoUnit=(field,unit)=>{
+   if(!field||String(values[field.identifier]||captured(scan,field.identifier)||'').trim())return;
+   const option=dropdownEquivalent(unit,field);
+   if(option&&allowed(option,field))values[field.identifier]=option;
+  };
+  if(hasDimensionEstimate)autoUnit(s.fields.find(f=>/\b(product unit|dimension unit|measurement unit)\b/.test(fieldText(f))),'cm');
+  if(hasWeightEstimate)autoUnit(s.fields.find(f=>/\b(product weight unit|weight unit)\b/.test(fieldText(f))),'G');
   setProgress(77,'Preparing a 950–1000 character description');
   const descriptionField=s.fields.find(isDescriptionField);
   if(descriptionField){
