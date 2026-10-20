@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1', PROFILE_OWNER='ai_seller_profile_owner_v1';
-let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''};
+let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''},currentTitleMeasurements=[];
 let workflowBundle=null,workflowBundlePromise=null,activePhotoConflicts=[],productIdentityScore=0,productIdentityStatus='UNASSESSED';
 const MASTER_RESOURCE_PATH='resources/MASTER_TEMPLATE_PRO_MAX_V26.md';
 const REFERENCE_RESOURCE_PATH='resources/COMPLETE_REFERENCE_JSON.json';
@@ -2115,7 +2115,7 @@ async function generate(googleAllowed){
    if(!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Mandatory tax field unresolved. Add/confirm an official classification source before Autofill; the extension will not submit a blank or fabricated HSN/GST value.'});
   });
   draft=values;pending=needs;
-  currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
+  currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleMeasurements=s.measurements||[];currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
   renderTitleOptions();
   liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
   renderTaxApplicationSummary(values,s.fields,researchNow);
@@ -2168,6 +2168,15 @@ async function autofill(){
    const value=String(input.value||'').trim();if(value)payload[input.id]=value;
   });
   if(selected.length)payload._variation_sizes=selected.join(',');
+  const missingRequired=(currentTitleFields||[]).filter(field=>field.mandatory&&!isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  const measureSizes=selected.length?selected:variationNames(scanNow);
+  const missingMeasurements=(currentTitleMeasurements||[]).filter(field=>field.mandatory&&measureSizes.some(size=>!String(payload[String(field.identifier)+'__'+String(size)]||'').trim()));
+  if(missingRequired.length||missingMeasurements.length){
+   const names=[...missingRequired.map(field=>field.label||field.identifier),...missingMeasurements.map(field=>(field.label||field.identifier)+' (per-size measurement)')].slice(0,12);
+   setWorkflowStep('apply','blocked',missingRequired.length+' required field(s) and '+missingMeasurements.length+' per-size measurement(s) remain blank.');
+   say('Autofill blocked by Master Template hard lock: required values are still blank: '+names.join(', ')+(missingRequired.length+missingMeasurements.length>12?'…':'')+'. Complete these in Draft/size measurements, save the Draft, then retry. The extension will not apply an incomplete required form.','warning');
+   return;
+  }
   await set({meesho_autofill_values:payload});
   setProgress(3,'Autofill · sending values to the active Meesho tab');
   say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
