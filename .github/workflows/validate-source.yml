@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.18.2');
+          assert.equal(manifest.version, '3.18.3');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -369,5 +369,5 @@ jobs:
           assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
           assert.ok(aiAssistant.includes('DuckDuckGo'));
           assert.ok(aiAssistant.includes('39241090'));
-          console.log('v3.18.2 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
+          console.log('v3.18.3 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
           NODE
