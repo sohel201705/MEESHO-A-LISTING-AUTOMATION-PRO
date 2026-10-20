@@ -1017,12 +1017,40 @@ async function gemini(k,prompt,imgs=[]){
 async function compatible(k,prompt,imgs=[]){
  if(!Array.isArray(imgs))throw new Error('Image list is missing. Please choose product photos again.');
  const parts=[{type:'text',text:prompt}];imgs.forEach(i=>parts.push({type:'image_url',image_url:{url:i.dataUrl}}));
- let url=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();if(!url)throw new Error('Enter the HTTPS API endpoint for '+label(k.provider)+'.');if(!/\/chat\/completions\/?$/i.test(url))url=url.replace(/\/$/,'')+'/chat/completions';
- const r=await post(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})});
- const raw=await r.text();let data={};try{data=JSON.parse(raw);}catch(e){}
- if(!r.ok)throw new Error((k.provider==='groq'?'Groq ':'Provider ')+r.status+': '+((data.error||{}).message||raw.slice(0,180)));
+ const originalUrl=String(k.endpoint||(k.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'')).trim();
+ if(!originalUrl)throw new Error('Enter the HTTPS API endpoint for '+label(k.provider)+'.');
+ let url=originalUrl;
+ if(!/\\/chat\\/completions\\/?$/i.test(url))url=url.replace(/\\/$/,'')+'/chat/completions';
+ const endpoints=k.provider==='freellmapi'?connectionTestCandidates(k.provider,url):[url];
+ const requestOptions={method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k.apiKey},body:JSON.stringify({model:k.model,messages:[{role:'user',content:parts}],temperature:0.2,max_tokens:3500,response_format:{type:'json_object'}})};
+ let r=null,raw='',data={},lastError='';const routeErrors=[];
+ for(let i=0;i<endpoints.length;i++){
+  const candidate=endpoints[i];
+  let response;
+  try{response=await post(candidate,requestOptions);}
+  catch(e){
+   lastError=String(e&&e.message||e||'Unknown connection error');routeErrors.push(candidate+': '+lastError);
+   if(k.provider==='freellmapi'&&i<endpoints.length-1)continue;
+   throw new Error(k.provider==='freellmapi'?'FreeLLMAPI local endpoints failed: '+routeErrors.join(' | '):lastError);
+  }
+  const responseText=await response.text();let responseData={};try{responseData=JSON.parse(responseText);}catch(_){}
+  if(!response.ok){
+   const details='HTTP '+response.status+': '+((responseData.error||{}).message||responseText.slice(0,180));
+   routeErrors.push(candidate+': '+details);lastError=details;
+   const canFallback=k.provider==='freellmapi'&&i<endpoints.length-1&&(response.status===404||response.status>=500||/no_vision_model|no vision/i.test(details));
+   if(canFallback)continue;
+   throw new Error((k.provider==='freellmapi'?'FreeLLMAPI ':'Provider ')+details);
+  }
+  r=response;raw=responseText;data=responseData;url=candidate;break;
+ }
+ if(!r)throw new Error('FreeLLMAPI local endpoints failed: '+(routeErrors.join(' | ')||lastError||'No endpoint responded.'));
+ if(k.provider==='freellmapi'&&url!==originalUrl){
+  try{const all=await keys();await set({[KEY]:all.map(x=>x.id===k.id?Object.assign({},x,{endpoint:url}):x)});k.endpoint=url;}catch(_){}
+ }
  const message=((((data.choices||[])[0]||{}).message||{}).content);
- const out=Array.isArray(message)?message.map(x=>x.text||'').join('\n').trim():String(message||'').trim();if(!out)throw new Error('Provider returned empty response.');return out;
+ const out=Array.isArray(message)?message.map(x=>x.text||'').join('\\n').trim():String(message||'').trim();
+ if(!out)throw new Error('Provider returned empty response.');
+ return out;
 }
 
 function mergeImageBatchResponses(texts){
