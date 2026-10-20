@@ -1,6 +1,16 @@
 name: Validate Free Admin and Extension Source
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'Extension/**'
+      - 'admin/**'
+      - 'firebase/**'
+      - '.github/workflows/validate-source.yml'
+      - '.github/workflows/nightly-cleanup.yml'
+      - 'README.md'
+      - 'SETUP_GITHUB_FIREBASE.md'
   pull_request:
     branches: [main]
     paths:
@@ -8,6 +18,7 @@ on:
       - 'admin/**'
       - 'firebase/**'
       - '.github/workflows/validate-source.yml'
+      - '.github/workflows/nightly-cleanup.yml'
       - 'README.md'
       - 'SETUP_GITHUB_FIREBASE.md'
 
@@ -72,6 +83,8 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           const cleanupWorkflow = fs.readFileSync('.github/workflows/nightly-cleanup.yml', 'utf8');
+          assert.ok(html.includes('run-firebase-integration'));
+          assert.ok(admin.includes("$('run-firebase-integration')?.addEventListener('click', runFirebaseIntegration)"));
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
           assert.equal(manifest.version, '3.18.3');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
