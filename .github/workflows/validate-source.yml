@@ -165,7 +165,7 @@ jobs:
           assert.ok(aiAssistant.includes('ai-override-importer-pincode'));
           assert.ok(aiAssistant.includes('function buildTitleChoices'));
           assert.ok(aiAssistant.includes('slice(0,250)'));
-          assert.ok(aiAssistant.includes('recommended=true for exactly one'));
+          assert.ok(aiAssistant.includes('Exactly one recommended=true'));
           assert.ok(aiAssistant.includes('function renderTitleOptions'));
           assert.ok(aiAssistant.includes('async function applyTitleChoice(index)'));
           assert.ok(aiAssistant.includes('function isDescriptionField(f)'));
