@@ -353,6 +353,9 @@ jobs:
 
           assert.ok(aiAssistant.includes('function stripImageFilenameArtifacts'));
           assert.ok(aiAssistant.includes('function categoryResearchTerms'));
+          assert.ok(aiAssistant.includes('function promptFor('));
+          assert.ok(aiAssistant.includes('TITLE CREATION RULE'));
+          assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
           assert.ok(aiAssistant.includes('DuckDuckGo'));
           assert.ok(aiAssistant.includes('39241090'));
           console.log('v3.18.2 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
