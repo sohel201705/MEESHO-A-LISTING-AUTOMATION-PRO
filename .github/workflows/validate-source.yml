@@ -299,7 +299,7 @@ jobs:
           assert.ok(popupHtml.includes('id="ai-product-pack-quantity"'));
           assert.ok(aiAssistant.includes("packQuantity:$('ai-product-pack-quantity')"));
           assert.ok(aiAssistant.includes('function exactPackQuantityOption(field,count)'));
-          assert.ok(aiAssistant.includes('productInputs.packQuantity'));
+          assert.ok(aiAssistant.includes('Pack quantity is the seller-entered number of sale units/pieces in a pack'));
           assert.ok(aiAssistant.includes("const packSegment=' / Pack of '+packCount") && aiAssistant.includes('raw+=packSegment'));
           assert.ok(aiAssistant.includes('function classifyProviderFailure(error)'));
           assert.ok(aiAssistant.includes('quota/rate limit (429)'));
