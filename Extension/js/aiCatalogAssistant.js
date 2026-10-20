@@ -1165,19 +1165,79 @@ function mergeImageBatchResponses(texts){
  });
  return JSON.stringify(combined);
 }
+function imageFactComparable(field,a,b){
+ const left=String(a||'').trim(),right=String(b||'').trim();
+ if(!left||!right)return false;
+ if(field==='colorIfClear'){
+  const family=value=>{
+   const color=normalizePrimaryColor(value).toLowerCase();
+   if(/\bblue\b/.test(color))return 'blue';
+   if(/\bgreen\b/.test(color))return 'green';
+   if(/\bred\b/.test(color))return 'red';
+   if(/\bpink\b/.test(color))return 'pink';
+   if(/\bpurple\b|\bviolet\b/.test(color))return 'purple';
+   if(/\bblack\b/.test(color))return 'black';
+   if(/\bwhite\b/.test(color))return 'white';
+   if(/\bgrey\b|\bgray\b/.test(color))return 'grey';
+   if(/\bbrown\b/.test(color))return 'brown';
+   if(/\bbeige\b|\bcream\b/.test(color))return 'neutral-light';
+   if(/\bsilver\b/.test(color))return 'silver';
+   if(/\bgold\b/.test(color))return 'gold';
+   if(/\borange\b/.test(color))return 'orange';
+   if(/\byellow\b/.test(color))return 'yellow';
+   if(/\bmaroon\b/.test(color))return 'maroon';
+   if(/\bteal\b/.test(color))return 'teal';
+   if(/\btransparent\b/.test(color))return 'transparent';
+   return color;
+  };
+  return family(left)===family(right);
+ }
+ if(field==='capacityIfPrinted'){
+  const leftMl=capacityInMl(left),rightMl=capacityInMl(right);
+  if(leftMl!==null&&rightMl!==null)return Math.abs(leftMl-rightMl)<0.01;
+ }
+ const clean=value=>norm(value).replace(/[^a-z0-9]+/g,' ').split(/\s+/).filter(token=>token.length>1&&!['the','and','with','for','from','product','actual','main'].includes(token));
+ const ta=new Set(clean(left)),tb=new Set(clean(right));
+ if(!ta.size||!tb.size)return norm(left)===norm(right);
+ const common=Array.from(ta).filter(token=>tb.has(token));
+ if(field==='productName'||field==='productType'){
+  const core=['bottle','flask','tumbler','jug','dispenser','lunch','box','tiffin','chair','table','kurti','shirt','dress','wiper','mop','bag','phone','charger'];
+  const coreOverlap=common.some(token=>core.includes(token));
+  const jaccard=common.length/new Set([...ta,...tb]).size;
+  return jaccard>=0.45||(coreOverlap&&jaccard>=0.3);
+ }
+ if(field==='materialIfClear'){
+  return norm(left)===norm(right)||(common.length/Math.max(ta.size,tb.size))>=0.8;
+ }
+ return norm(left)===norm(right);
+}
 function mergeProductIdentificationBatches(texts){
  const batches=texts.map((text,index)=>{const obj=parseJson(text);if(!obj||typeof obj!=='object'||Array.isArray(obj))throw new Error('Photo identification batch '+(index+1)+' did not return a JSON object.');return obj;});
  const result={productName:'',productType:'',brandIfLegible:'',modelIfLegible:'',colorIfClear:'',materialIfClear:'',capacityIfPrinted:'',visibleText:[],searchTerms:[],confidence:'low',visionConflicts:[]};
  const fields=['productName','productType','brandIfLegible','modelIfLegible','colorIfClear','materialIfClear','capacityIfPrinted'];
- const normal=v=>norm(String(v||''));
- fields.forEach(field=>{const candidates=batches.map((obj,index)=>({value:String(obj[field]||'').trim(),index,confidence:String(obj.confidence||'low').toLowerCase()})).filter(x=>x.value);if(!candidates.length)return;
-  const counts=new Map();candidates.forEach(c=>{const key=normal(c.value),row=counts.get(key)||{value:c.value,count:0,high:0};row.count++;if(c.confidence==='high')row.high++;counts.set(key,row);});
-  const sorted=Array.from(counts.values()).sort((a,b)=>b.count-a.count||b.high-a.high||b.value.length-a.value.length);result[field]=sorted[0].value;
-  if(sorted.length>1&&sorted[0].count<sorted[1].count+Math.max(1,Math.floor(candidates.length/3)))result.visionConflicts.push({field,values:sorted.slice(0,3).map(x=>x.value),reason:'Product-photo batches disagreed. Confirm the variant before applying.'});
+ fields.forEach(field=>{
+  const candidates=batches.map((obj,index)=>({value:String(obj[field]||'').trim(),index,confidence:String(obj.confidence||'low').toLowerCase()})).filter(x=>x.value);
+  if(!candidates.length)return;
+  const groups=[];
+  candidates.forEach(candidate=>{
+   const match=groups.find(row=>imageFactComparable(field,row.value,candidate.value));
+   if(match){
+    match.count++;if(candidate.confidence==='high')match.high++;
+    if(candidate.value.length>match.value.length&&candidate.confidence!=='low')match.value=candidate.value;
+    match.variants.push(candidate.value);
+   }else groups.push({value:candidate.value,count:1,high:candidate.confidence==='high'?1:0,variants:[candidate.value]});
+  });
+  const sorted=groups.sort((a,b)=>b.count-a.count||b.high-a.high||b.value.length-a.value.length);
+  result[field]=sorted[0].value;
+  if(sorted.length>1&&sorted[0].count<sorted[1].count+Math.max(1,Math.floor(candidates.length/3))){
+   result.visionConflicts.push({field,values:sorted.slice(0,3).map(x=>x.value),reason:'Product-photo batches disagree on a material identity/variant field. Confirm the exact item before applying.'});
+  }
  });
  const union=field=>Array.from(new Set(batches.flatMap(obj=>Array.isArray(obj[field])?obj[field]:[]).map(x=>String(x||'').trim()).filter(Boolean))).slice(0,20);
  result.visibleText=union('visibleText');result.searchTerms=union('searchTerms');
- batches.flatMap(obj=>Array.isArray(obj.visionConflicts)?obj.visionConflicts:[]).forEach(conflict=>{if(conflict&&conflict.field&&!result.visionConflicts.some(x=>x.field===conflict.field&&JSON.stringify(x.values||[])===JSON.stringify(conflict.values||[])))result.visionConflicts.push(conflict);});
+ batches.flatMap(obj=>Array.isArray(obj.visionConflicts)?obj.visionConflicts:[]).forEach(conflict=>{
+  if(conflict&&conflict.field&&!result.visionConflicts.some(x=>x.field===conflict.field&&JSON.stringify(x.values||[])===JSON.stringify(conflict.values||[])))result.visionConflicts.push(conflict);
+ });
  result.confidence=batches.some(obj=>String(obj.confidence||'').toLowerCase()==='high')?'high':batches.some(obj=>String(obj.confidence||'').toLowerCase()==='medium')?'medium':'low';
  return JSON.stringify(result);
 }
