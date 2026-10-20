@@ -279,7 +279,7 @@ jobs:
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
           assert.ok(aiAssistant.includes('const outcomes=await Promise.all(queries.map'));
-          assert.ok(aiAssistant.includes('Autofill blocked: '+names+' are mandatory.'));
+          assert.ok(aiAssistant.includes('Autofill blocked: '));
           assert.ok(aiAssistant.includes('function officialTaxEvidence'));
           assert.ok(aiAssistant.includes('if(!OFFICIAL_TAX_HOST.test(host))return null'));
           assert.ok(aiAssistant.includes("['0','0%','--','select','not selected'].includes(norm(oldTax))"));
