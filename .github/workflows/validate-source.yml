@@ -279,7 +279,7 @@ jobs:
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
           assert.ok(aiAssistant.includes('const outcomes=await Promise.all(queries.map'));
-          assert.ok(aiAssistant.includes('MANDATORY HSN/GST CHECK'));
+          assert.ok(aiAssistant.includes('Autofill blocked: '+names+' are mandatory.'));
           assert.ok(aiAssistant.includes('function officialTaxEvidence'));
           assert.ok(aiAssistant.includes('if(!OFFICIAL_TAX_HOST.test(host))return null'));
           assert.ok(aiAssistant.includes("['0','0%','--','select','not selected'].includes(norm(oldTax))"));
@@ -357,6 +357,13 @@ jobs:
 
           assert.ok(aiAssistant.includes('function stripImageFilenameArtifacts'));
           assert.ok(aiAssistant.includes('function categoryResearchTerms'));
+          assert.ok(aiAssistant.includes('async function enrichTaxEvidence'));
+          assert.ok(aiAssistant.includes('function buildMeasurementEstimates'));
+          assert.ok(aiAssistant.includes('function makeDraftControl'));
+          assert.ok(aiAssistant.includes('function commitDraftEdits'));
+          assert.ok(aiAssistant.includes('Seller-edited tax value; confirm its exact HSN/GST rate'));
+          assert.ok(popupHtml.includes('.ai-preview-toolbar'));
+          assert.ok(popupHtml.includes('.ai-draft-field-status'));
           assert.ok(aiAssistant.includes('function promptFor('));
           assert.ok(aiAssistant.includes('TITLE CREATION RULE'));
           assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
