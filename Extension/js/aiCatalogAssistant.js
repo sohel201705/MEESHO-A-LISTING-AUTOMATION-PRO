@@ -95,6 +95,20 @@ async function searchGoogle(query){
  }catch(e){failures.push(String(e.message||e));}}
  throw new Error('Search providers returned no parseable results. '+failures.join(' | '));
 }
+function normalizePrimaryColor(value){
+ const raw=String(value||'').replace(/[|/;,]+/g,' ').replace(/\s+/g,' ').trim();
+ if(!raw)return '';
+ const rules=[
+  [/\blight\s+blue\b/i,'Light Blue'],[/\bsky\s+blue\b/i,'Sky Blue'],[/\bbaby\s+blue\b/i,'Light Blue'],[/\bnavy\s+blue\b/i,'Navy Blue'],[/\bdark\s+blue\b/i,'Dark Blue'],
+  [/\blight\s+green\b/i,'Light Green'],[/\bdark\s+green\b/i,'Dark Green'],[/\bforest\s+green\b/i,'Forest Green'],[/\bsea\s+green\b/i,'Sea Green'],
+  [/\bblue\b/i,'Blue'],[/\bgreen\b/i,'Green'],[/\bred\b/i,'Red'],[/\bpink\b/i,'Pink'],[/\bpurple\b/i,'Purple'],[/\bviolet\b/i,'Violet'],
+  [/\bblack\b/i,'Black'],[/\bwhite\b/i,'White'],[/\bgrey\b/i,'Grey'],[/\bgray\b/i,'Grey'],[/\bsilver\b/i,'Silver'],[/\bgold(?:en)?\b/i,'Gold'],
+  [/\bbeige\b/i,'Beige'],[/\bbrown\b/i,'Brown'],[/\borange\b/i,'Orange'],[/\byellow\b/i,'Yellow'],[/\bcream\b/i,'Cream'],[/\bmaroon\b/i,'Maroon'],[/\bteal\b/i,'Teal'],[/\btransparent\b/i,'Transparent']
+ ];
+ let best=null;
+ for(const [pattern,label] of rules){const match=pattern.exec(raw);if(match&&(!best||match.index<best.index||(match.index===best.index&&match[0].length>best.length)))best={index:match.index,length:match[0].length,label};}
+ return best?best.label:raw.split(/\s+(?:and|with|plus)\s+|[,/|;]/i)[0].trim().split(/\s+/).slice(0,2).join(' ');
+}
 function categoryResearchTerms(p,scan,catalog){
  const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),categoryBits=[ctx.subCategoryName,ctx.categoryName,ctx.catalogType,ctx.breadcrumb,catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean);
  const fields=schema(scan||{}).fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
@@ -119,13 +133,26 @@ function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
  const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
  const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText+' '+String(p&&p.productName||'')+' '+String(p&&p.productTypeEvidence||'')+' '+String(p&&p.imageResearchTerms||''));
  const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
+ const plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/.test(materialText);
+ const insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/.test(productText);
  const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
  if(vacuum){
   const capacity=capacityInMl(p&&p.productCapacity)||capacityInMl(productText)||capacityInMl(research&&research.seed),hsn=capacity===null?'9617':(capacity<=750?'96170011':'96170012');
   refs.push({kind:'hsn',title:'Government of India — India Tariff Schedule, heading 9617',url:'https://www.commerce.gov.in/wp-content/uploads/2022/11/02-Indias-Tariff-Schedule.pdf',domain:'commerce.gov.in',snippet:'Official Government of India tariff schedule: tariff item 9617 00 11 — vacuum flasks having a capacity not exceeding 0.75 litre; tariff item 9617 00 12 — vacuum flasks having a capacity exceeding 0.75 litre.'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 9617',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates, heading 9617: vacuum flasks and other vacuum vessels, complete; listed at 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
   research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'vacuum flask/vessel identified from category and product evidence',capacityMl:capacity,hsn,gst:'18%',hsnSourceUrl:refs[refs.length-2].url,gstSourceUrl:refs[refs.length-1].url,classificationBasis:'selected category, product use and capacity'};return research;
  }
- const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText),plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/i.test(materialText),insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/i.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/i.test(productText);
+ const reusablePlasticBottle=/\b(water|drinking|sports|travel|reusable)\s*bottles?\b/i.test(productText)&&plasticMaterial;
+ if(reusablePlasticBottle){
+  const hsn=insulated?'39241010':'39241090';
+  const hsnUrl='https://commerce.gov.in/wp-content/uploads/2022/02/Merged-pdf.pdf';
+  const gstUrl='https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html';
+  refs.push({kind:'hsn',title:'Government of India — Customs Tariff, heading 3924.10',url:hsnUrl,domain:'commerce.gov.in',snippet:'India Customs Tariff lists heading 3924 for tableware, kitchenware and other household articles of plastics; tariff item 3924 10 10 covers insulated ware and tariff item 3924 10 90 covers other tableware and kitchenware of plastics. Candidate HSN '+hsn+'. Classification depends on principal material, product form and intended household use.'});
+  refs.push({kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:gstUrl,domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates lists heading 3924 — tableware, kitchenware and other household articles of plastics — at aggregate GST 18% (9% CGST plus 9% SGST/UTGST). Verify the exact tariff item and current applicable notification for the specific product.'});
+  research.officialTaxReferences=refs;
+  research.automaticTaxClassification={productType:'reusable plastic drinking water bottle',hsn,gst:'18%',insulated,hsnSourceUrl:hsnUrl,gstSourceUrl:gstUrl,classificationBasis:'selected Meesho category, photo-derived product form and plastic material',status:'category classification; seller should confirm exact material/use before submission'};
+  return research;
+ }
+ const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText);
  if(kitchenCategory&&lunchBoxContext&&plasticMaterial){
   const hsn=insulated?'39241010':'39241090';
   refs.push({kind:'hsn',title:'Government of India — DGFT tariff item listing for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Appendix%204RE%20RoDTEP.pdf',domain:'content.dgft.gov.in',snippet:'Official DGFT tariff table lists heading 3924 for tableware, kitchenware and other household articles of plastics; heading 392410 is tableware and kitchenware, tariff item 39241010 is insulated ware and tariff item 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
@@ -1363,7 +1390,8 @@ function updateDraftValue(field,value){
  const button=$('ai-autofill-btn');
  if(button){
   const missingTax=currentTitleFields.filter(f=>f.mandatory&&isTaxField(f)&&!String(draft[f.identifier]||'').trim());
-  button.disabled=missingTax.length>0||!Object.values(draft).some(v=>String(v||'').trim());
+  button.disabled=!Object.values(draft).some(v=>String(v||'').trim());
+  button.title=missingTax.length?'HSN/GST is required. Enter verified tax values in Edit Draft, save, then retry Autofill.':'';
  }
 }
 function showPreview(fields,values,needs,stats,research){
@@ -1418,8 +1446,9 @@ function showPreview(fields,values,needs,stats,research){
 }
 function setDraftButtonAvailability(){
  const button=$('ai-autofill-btn');if(!button)return;
- const missingTax=(currentTitleFields||[]).filter(f=>f.mandatory&&isTaxField(f)&&!String(draft&&draft[f.identifier]||'').trim());
- button.disabled=missingTax.length>0||!Object.values(draft||{}).some(v=>String(v||'').trim());
+ const missingTax=(currentTitleFields||[]).filter(f=>isTaxField(f)&&!String(draft&&draft[f.identifier]||'').trim());
+ button.disabled=!Object.values(draft||{}).some(v=>String(v||'').trim());
+ button.title=missingTax.length?'HSN/GST is required. Enter verified tax values in Edit Draft, save, then retry Autofill.':'';
 }
 async function commitDraftEdits(){
  if(!draft||!currentTitleFields.length)return;
@@ -1603,8 +1632,8 @@ function isProductNameField(f){return /product_name/.test(String(f.identifier||'
 async function identifyProductFromPhotos(imgs,providedFacts,catalog,context){
  const prompt=[
   'Identify the actual product type and clearly visible attributes from the supplied product photos. Use the already-selected Meesho category as primary context.',
-  'Return ONLY valid JSON: {"productName":"short product type, not a marketplace listing title","productType":"","brandIfLegible":"","modelIfLegible":"","colorIfClear":"","materialIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"confidence":"high|medium|low"}.',
-  'Do not copy or imitate any other marketplace listing title. Do not use image filenames or image metadata. Do not invent brand, model, capacity, material or features. Provide material only when the image or supplied details clearly support it. If unclear, use the selected category as a cautious product-type fallback and confidence low. searchTerms must be short visual/category/specification clues only, not another website title; they will be used to search for similar products and then cross-checked.',
+  'Return ONLY valid JSON: {"productName":"short product type, not a marketplace listing title","productType":"","brandIfLegible":"","modelIfLegible":"","colorIfClear":"one dominant primary product color only, e.g. Light Blue","materialIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"confidence":"high|medium|low"}.',
+  'Identify the one main product color covering the largest visible area; ignore the background, image collage borders, small accessories and accent colors. Return one color name only, not a list or a two-color combination. Prefer a specific single shade such as Light Blue over Blue when clearly visible. Do not copy or imitate any other marketplace listing title. Do not use image filenames or image metadata. Do not invent brand, model, capacity, material or features. Provide material only when the image or supplied details clearly support it. If unclear, leave colorIfClear empty rather than guess; use the selected category as a cautious product-type fallback and confidence low. searchTerms must be short visual/category/specification clues only, not another website title; they will be used to search for similar products and then cross-checked.',
   'Selected Meesho category/type:',JSON.stringify({name:catalog&&catalog.name||'',type:catalog&&catalog.type||'',key:catalog&&catalog.key||'',context:context||{}}),
   'Seller-provided confirmed facts:',String(providedFacts||'none supplied')
  ].join('\n');
@@ -1666,7 +1695,7 @@ async function generate(googleAllowed){
   if(inventoryInput&&!String(inventoryInput.value||'').trim())inventoryInput.value='100';
   const p={
    productName:stripImageFilenameArtifacts($('ai-product-name').value).trim(),material:$('ai-product-material').value.trim(),
-   color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),
+   color:normalizePrimaryColor($('ai-product-color').value),productWeight:$('ai-product-weight').value.trim(),
    packQuantity:$('ai-product-pack-quantity')?String(Math.max(1,Math.floor(Number($('ai-product-pack-quantity').value)||1))):'1',
    productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),
    productHeight:$('ai-product-height').value.trim(),productCapacity:$('ai-product-capacity')?$('ai-product-capacity').value.trim():'',
@@ -1721,7 +1750,9 @@ async function generate(googleAllowed){
    }
    const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();
    if(brand||model)liveLog('VISION IDENTIFICATION · readable brand/model clues detected; these are research hints until corroborated.','info');
-   const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
+   const color=normalizePrimaryColor(identified.colorIfClear||'');
+   if(!p.color&&color){p.color=color;const colorInput=$('ai-product-color');if(colorInput)colorInput.value=color;liveLog('PRIMARY COLOR · photo analysis selected '+color+' as the single dominant product color.','ok');}
+   else if(p.color){p.color=normalizePrimaryColor(p.color);const colorInput=$('ai-product-color');if(colorInput)colorInput.value=p.color;}
    const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;
    const cap=String(identified.capacityIfPrinted||'').trim();if(!p.productCapacity&&capacityInMl(cap)!==null)p.productCapacity=cap;
    const visualTerms=[
@@ -1771,6 +1802,13 @@ async function generate(googleAllowed){
   say('Analyzing all photos and matching values to the scanned field schema…');
   const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25);
   const parsed=parseJson(answer.text),proposed=parsed&&parsed.values&&typeof parsed.values==='object'?parsed.values:{},evidence=parsed&&parsed.evidence&&typeof parsed.evidence==='object'?parsed.evidence:{};
+  if(!p.color){
+   const colorField=s.fields.find(f=>/\bcolor\b/.test(norm(fieldText(f))));
+   const modelColor=normalizePrimaryColor(colorField&&proposed[colorField.identifier]||'');
+   const titleColor=normalizePrimaryColor((Array.isArray(parsed.titleOptions)?parsed.titleOptions:[]).map(x=>x&&x.title||'').join(' ')+' '+p.productName);
+   const detectedPrimary=modelColor||titleColor;
+   if(detectedPrimary){p.color=detectedPrimary;const colorInput=$('ai-product-color');if(colorInput)colorInput.value=detectedPrimary;liveLog('PRIMARY COLOR · selected '+detectedPrimary+' as the single dominant product color.','ok');}
+  }
   await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
   // Meesho's default GST "0" is a placeholder, not a researched product tax rate.
@@ -1921,8 +1959,9 @@ async function generate(googleAllowed){
   liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
   renderTaxApplicationSummary(values,s.fields,researchNow);
   showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
-  $('ai-autofill-btn').disabled=unresolvedTaxFields.length>0||!Object.values(values).some(v=>String(v||'').trim());
-  if(unresolvedTaxFields.length)liveLog('AUTOFILL BLOCKED · unresolved mandatory tax fields: '+unresolvedTaxFields.map(f=>f.label).join(', ')+'. HSN/GST will not be silently left blank or guessed.','warn');
+  const autofillButton=$('ai-autofill-btn');
+  if(autofillButton){autofillButton.disabled=!Object.values(values).some(v=>String(v||'').trim());autofillButton.title=unresolvedTaxFields.length?'HSN/GST values are unresolved. Click for guidance or edit the tax fields in Draft.':'';}
+  if(unresolvedTaxFields.length)liveLog('TAX REVIEW REQUIRED · HSN/GST remain mandatory. Autofill stays clickable, but listing fill is paused until verified values are supplied.','warn');
   const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
   const researchNote=researchNow.results.length?' Category-based web research added.':(' Web research unavailable: '+(researchNow.error||'no results')+'.');
   setProgress(100,'Draft complete · choose a title and review unresolved fields');
@@ -1940,10 +1979,10 @@ async function autofill(){
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
   const payload=Object.assign({},draft);
   const fields=(scanNow.sections||[]).flatMap(section=>section.fields||[]);
-  const unresolvedTax=fields.filter(field=>field.mandatory&&isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  const unresolvedTax=fields.filter(field=>isTaxField(field)&&!String(payload[field.identifier]||'').trim());
   if(unresolvedTax.length){
    const names=unresolvedTax.map(field=>field.label||field.identifier).join(', ');
-   say('Autofill blocked: '+names+' are mandatory. Research again or edit these tax values in Draft, then Save Changes.','warning');
+   say('Autofill is ready, but it was paused because required tax values are not verified: '+names+'. Edit Draft, enter HSN and GST from an official source, click Save Changes, then retry. No blank or guessed tax value was sent to Meesho.','warning');
    return;
   }else if(pending.length&&!confirm('Some fields need confirmation. Estimated values are marked in Draft. Continue autofill with the values currently shown?'))return;
   // Values explicitly typed/selected in the existing Step 2 form override AI suggestions.
