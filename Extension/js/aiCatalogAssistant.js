@@ -1476,12 +1476,12 @@ function isDescriptionField(f){
 }
 function stripBrandPlaceholders(value){
  const placeholders=/^(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided|n\/?a)|unknown\s+brand|n\/?a|na|not\s+applicable|not\s+provided|not\s+specified|unknown)$/i;
- let parts=stripImageFilenameArtifacts(String(value||'')).split(/\s*\/\s*/).map(x=>x.trim()).filter(x=>x&&!placeholders.test(x));
+ const parts=stripImageFilenameArtifacts(String(value||'')).split(/\s*\/\s*/).map(x=>x.trim()).filter(x=>x&&!placeholders.test(x));
  let text=parts.join(' / ');
  text=text.replace(/\b(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided)|unknown\s+brand)\b/ig,' ');
  return text.replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*){2,}/g,' / ').replace(/^\s*\/\s*|\s*\/\s*$/g,'').replace(/\s+/g,' ').trim();
 }
-function cleanTitle(title){return stripBrandPlaceholders(stripImageFilenameArtifacts(title)).replace(/\s+/g,' ').replace(/^\\s*\\/+\\s*|\\s*\\/+\\s*$/g,'').trim().slice(0,250).trim();}
+function cleanTitle(title){return stripBrandPlaceholders(stripImageFilenameArtifacts(title)).replace(/\s+/g,' ').replace(/^\s*\/+\s*|\s*\/+\s*$/g,'').trim().slice(0,250).trim();}
 function titleExpansionPhrases(p,index){
  const text=norm([p&&p.productCategory,p&&p.productType,p&&p.productName].filter(Boolean).join(' '));
  if(/\b(kitchen|lunch|tiffin|food storage|food container)\b/.test(text))return ['Suitable for packed meals at school, office, travel and picnics','Useful for organizing rice, snacks, fruits and side dishes during everyday meal planning','A practical option for daily lunch preparation, carrying meals and convenient on-the-go dining','Designed around everyday food storage needs for home meals, work lunches and short outings','For regular meal packing routines, helping keep different food items arranged for carrying and serving'];
