@@ -770,7 +770,7 @@ function detectMeeshoCatalog(scan){
  const selectedValues=Object.entries(scan&&scan.capturedValues||{}).filter(([,v])=>String(v||'').trim()).map(([k,v])=>k.replace(/_/g,' ')+' '+String(v)).join(' | ');
  const context=scan&&scan.catalogContext||{};
  const contextText=[context.pageTitle,...(context.headings||[]),context.breadcrumb,context.categoryName,context.subCategoryName,context.catalogType].filter(Boolean).join(' | ');
- const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value].filter(Boolean).join(' | ');
+ const enteredText=[stripImageFilenameArtifacts($('ai-product-name')?.value),$('ai-product-facts')?.value,$('ai-product-material')?.value].filter(Boolean).join(' | ');
   const allText=norm([contextText,labelText,selectedValues,enteredText].join(' | '));
  const fieldText=norm(labelText),visibleText=norm(contextText+' '+selectedValues+' '+enteredText);
  const rules=[
@@ -1190,7 +1190,7 @@ async function generate(googleAllowed){
   const inventoryInput=$('ai-product-inventory');
   if(inventoryInput&&!String(inventoryInput.value||'').trim())inventoryInput.value='100';
   const p={
-   productName:$('ai-product-name').value.trim(),material:$('ai-product-material').value.trim(),
+   productName:stripImageFilenameArtifacts($('ai-product-name').value).trim(),material:$('ai-product-material').value.trim(),
    color:$('ai-product-color').value.trim(),productWeight:$('ai-product-weight').value.trim(),
    packQuantity:$('ai-product-pack-quantity')?String(Math.max(1,Math.floor(Number($('ai-product-pack-quantity').value)||1))):'1',
    productLength:$('ai-product-length').value.trim(),productWidth:$('ai-product-width').value.trim(),
@@ -1223,32 +1223,34 @@ async function generate(googleAllowed){
   let d=await getActiveDefaultsForCategory(category);
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
-  setProgress(18,'Photos ready · identify product and title');
+  if(p.productName&&imgs.some(img=>norm(cleanSearchSeed(img.name))===norm(cleanSearchSeed(p.productName)))){
+   p.productName='';$('ai-product-name').value='';liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
+  }
+  setProgress(18,'Photos ready · identify product type and attributes');
   if(!p.productName){
    try{
-    setProgress(19,'Identifying product title from photos');
-    say('Identifying product title from the photos before Google Search…');
-    liveLog('VISION IDENTIFICATION · inferring a cautious searchable title from the first 3 photos.','info');
-    const identified=await identifyProductFromPhotos(imgs,p.productFacts);
-    const candidate=String(identified.productName||identified.title||'').trim();
-    if(candidate.length>=4&&String(identified.confidence||'medium').toLowerCase()!=='low'){
+    setProgress(19,'Identifying product from photos and selected category');
+    say('Identifying the product from photos and the selected Meesho category…');
+    liveLog('VISION IDENTIFICATION · reading product type and visible attributes; image filenames are excluded.','info');
+    const identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
+    const candidate=stripImageFilenameArtifacts(String(identified.productName||identified.productType||identified.title||'')).trim();
+    if(candidate.length>=3&&String(identified.confidence||'medium').toLowerCase()!=='low'){
      p.productName=candidate;$('ai-product-name').value=candidate;
-     const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();
-     if(brand||model)liveLog('VISION IDENTIFICATION · legible brand/model hints detected; checking them against Google results.','info');
+     const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();if(brand||model)liveLog('VISION IDENTIFICATION · readable brand/model clues detected in the photos.','info');
      const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
+     const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;
      const cap=String(identified.capacityIfPrinted||'').trim();if(!p.productCapacity&&capacityInMl(cap)!==null)p.productCapacity=cap;
-     const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];
-     if(visible.length&&!p.productFacts)p.productFacts='Visible text from product photos (verify): '+visible.join('; ');
-     liveLog('VISION IDENTIFICATION · proposed title: '+candidate+'.','ok');
+     const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];if(visible.length&&!p.productFacts)p.productFacts='Visible text from product photos (verify): '+visible.join('; ');
+     liveLog('VISION IDENTIFICATION · product type identified from the supplied photos.','ok');
     }else{
-     const fallback=cleanSearchSeed(imgs.map(i=>i.name).join(' '));
-     if(fallback){p.productName=fallback;$('ai-product-name').value=fallback;}
-     liveLog('VISION IDENTIFICATION · confidence low; using conservative filename/title hint: '+(p.productName||'unidentified product')+'.','warn');
+     const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
+     p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;
+     const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
+     liveLog('VISION IDENTIFICATION · using selected catalog/type as cautious product label; file names were not used.','warn');
     }
    }catch(e){
-    const fallback=cleanSearchSeed(imgs.map(i=>i.name).join(' '));
-    if(fallback){p.productName=fallback;$('ai-product-name').value=fallback;}
-    liveLog('VISION IDENTIFICATION · failed; continuing with '+(p.productName||'the image filename')+'. Details: '+redactSecrets(e,null),'warn');
+    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;
+    liveLog('VISION IDENTIFICATION · photo analysis failed; continuing with selected Meesho category, not image filenames. Details: '+redactSecrets(e,null),'warn');
    }
   }
   if(!p.productCapacity){
@@ -1268,14 +1270,14 @@ async function generate(googleAllowed){
    }
   }
   setProgress(31,'Searching product specifications and official tax sources');
-  say('Searching Google for product specifications, category clues and official tax sources…');
-  liveLog('GOOGLE RESEARCH · query based on the identified/seller-provided product title.','info');
-  researchNow=await researchProduct(p,imgs,googleAllowed);
-  attachOfficialTaxReferences(researchNow,p,imgs);
+  say('Researching category-based product specifications and official tax sources…');
+  liveLog('WEB RESEARCH · queries are based on selected category, form attributes and photo context—not an external listing title.','info');
+  researchNow=await researchProduct(p,imgs,googleAllowed,scan,detectedCatalog);
+  attachOfficialTaxReferences(researchNow,p,imgs,scan,detectedCatalog);
   if(researchNow.automaticTaxClassification)liveLog('OFFICIAL TAX RULE · '+researchNow.automaticTaxClassification.productType+' · HSN '+researchNow.automaticTaxClassification.hsn+' · GST '+researchNow.automaticTaxClassification.gst+'. Official Government of India and CBIC references attached.','ok');
   renderResearchSources(researchNow);
-  liveLog('GOOGLE RESEARCH · '+researchNow.results.length+' result(s) captured from '+new Set(researchNow.results.map(r=>r.domain)).size+' domain(s).','ok');
-  if(researchNow.error)liveLog('GOOGLE RESEARCH · '+researchNow.error,'warn');
+  liveLog('WEB RESEARCH · '+researchNow.results.length+' result(s) captured from '+new Set(researchNow.results.map(r=>r.domain)).size+' domain(s).','ok');
+  if(researchNow.error)liveLog('WEB RESEARCH · '+researchNow.error,'warn');
   setProgress(45,'Analyzing product photos in batches');
   say('Analyzing all photos and matching values to the scanned field schema…');
   const answer=await callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25);
@@ -1291,7 +1293,8 @@ async function generate(googleAllowed){
   let ai=0,presetCount=0,bad=0,generated=0;
   const titleField=s.fields.find(isProductNameField);
   activeTitleFieldId=titleField?titleField.identifier:'';
-  const baseSuggestedTitle=p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||cleanSearchSeed(imgs.map(i=>i.name).join(' '));
+  const titleContext=safeMeeshoCatalogContext(scan.catalogContext||{});
+  const baseSuggestedTitle=stripImageFilenameArtifacts(p.productName||(titleField&&String(proposed[titleField.identifier]||'').trim())||titleContext.subCategoryName||titleContext.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');
   titleChoices=buildTitleChoices(parsed.titleOptions,baseSuggestedTitle,p,d);
   const recommendedTitle=(titleChoices.find(x=>x.recommended)||titleChoices[0]||{}).title||baseSuggestedTitle;
   const draftTitle=cleanTitle(recommendedTitle||baseSuggestedTitle);
@@ -1410,7 +1413,7 @@ async function generate(googleAllowed){
   $('ai-autofill-btn').disabled=unresolvedTaxFields.length>0||!Object.values(values).some(v=>String(v||'').trim());
   if(unresolvedTaxFields.length)liveLog('AUTOFILL BLOCKED · unresolved mandatory tax fields: '+unresolvedTaxFields.map(f=>f.label).join(', ')+'. HSN/GST will not be silently left blank or guessed.','warn');
   const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
-  const researchNote=researchNow.results.length?' Google research added.':(' Google search unavailable: '+(researchNow.error||'no results')+'.');
+  const researchNote=researchNow.results.length?' Category-based web research added.':(' Web research unavailable: '+(researchNow.error||'no results')+'.');
   setProgress(100,'Draft complete · choose a title and review unresolved fields');
   say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||researchNow.error?'warning':'success');
  }catch(e){liveLog('PIPELINE ERROR · '+redactSecrets(e,null),'error');say(redactSecrets(e,null),'error');}
