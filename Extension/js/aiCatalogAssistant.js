@@ -1729,7 +1729,8 @@ const WORKFLOW_STEP_STATES={
 function setWorkflowStep(name,state,detail){
  const row=document.querySelector('[data-workflow-step="'+name+'"]');if(!row)return;
  const mode=WORKFLOW_STEP_STATES[state]||WORKFLOW_STEP_STATES.waiting;
- row.style.borderColor=mode.color;row.style.background=mode.bg;
+ row.style.setProperty('border-color',mode.color,'important');
+ row.style.setProperty('background',mode.bg,'important');
  const status=row.querySelector('[data-step-status]'),note=row.querySelector('[data-step-detail]');
  if(status){status.textContent=mode.label;status.style.color=mode.color;}
  if(note)note.textContent=String(detail||'');
