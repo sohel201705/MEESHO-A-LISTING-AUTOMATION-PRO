@@ -518,78 +518,159 @@
     }
   }
 
-  async function selectMuiDropdown(triggerEl, inputEl, value) {
-    await closeOpenDropdown();
+  function fieldValueEquivalent(actual, expected) {
+    const a = norm(String(actual ?? '').replace(/\u00a0/g, ' '));
+    const e = norm(String(expected ?? '').replace(/\u00a0/g, ' '));
+    if (a === e) return true;
+    const cleanNumber = value => {
+      const cleaned = String(value ?? '').replace(/[₹,%\s,]/g, '').replace(/[^0-9.+-]/g, '');
+      if (!cleaned || !/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(cleaned)) return null;
+      const number = Number(cleaned);
+      return Number.isFinite(number) ? number : null;
+    };
+    const an = cleanNumber(actual), en = cleanNumber(expected);
+    return an !== null && en !== null && Math.abs(an - en) < 0.0001;
+  }
 
+  function visibleEnabled(el) {
+    if (!el || !el.isConnected || el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+      style.visibility !== 'hidden' && Number(style.opacity || 1) > 0;
+  }
+
+  async function selectMuiDropdown(triggerEl, inputEl, value, identifier = 'dropdown', failed = []) {
+    await closeOpenDropdown();
+    if (!triggerEl || !triggerEl.isConnected) {
+      failed.push(identifier + ' (dropdown trigger is no longer available)');
+      return false;
+    }
+    triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
+    await sleep(25);
     realClick(triggerEl);
     const targetText = norm(value);
+    const menuSelector = '[role="listbox"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root, [data-radix-popper-content-wrapper]';
     let opt = null;
-
-    for (let i = 0; i < 12; i++) {
-      await sleep(25);
-      const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root');
-      if (portal) {
-        const items = Array.from(portal.querySelectorAll('li, [role="option"]'));
+    let activeMenu = null;
+    for (let i = 0; i < 18; i++) {
+      await sleep(30);
+      const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
+      for (const menu of menus) {
+        const items = Array.from(menu.querySelectorAll('li, [role="option"], [role="menuitem"], [data-value], button'));
         opt = items.find(el => norm(el.textContent) === targetText) ||
-          items.find(el => norm(el.textContent).startsWith(targetText)) ||
-          items.find(el => norm(el.textContent).includes(targetText));
-        if (opt) break;
+          items.find(el => norm(el.getAttribute('data-value') || '') === targetText) ||
+          items.find(el => norm(el.textContent).startsWith(targetText));
+        if (opt) { activeMenu = menu; break; }
       }
+      if (opt) break;
     }
-
     if (!opt) {
-      const searchBox = document.querySelector('.MuiPopover-root input, .MuiModal-root input, .MuiDialog-root input');
+      const searchBox = Array.from(document.querySelectorAll(menuSelector + ' input')).find(visibleEnabled);
       if (searchBox) {
         searchBox.focus();
         setReactInputValue(searchBox, value);
-        await sleep(150);
-        const portal = document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root');
-        if (portal) {
-          const items = Array.from(portal.querySelectorAll('li, [role="option"]'));
+        await sleep(140);
+        const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
+        for (const menu of menus) {
+          const items = Array.from(menu.querySelectorAll('li, [role="option"], [role="menuitem"], [data-value], button'));
           opt = items.find(el => norm(el.textContent) === targetText) ||
-            items.find(el => norm(el.textContent).startsWith(targetText)) ||
-            items[0];
+            items.find(el => norm(el.textContent).startsWith(targetText));
+          if (opt) { activeMenu = menu; break; }
         }
       }
     }
-
-    if (opt) {
-      realClick(opt);
-      for (let i = 0; i < 15; i++) {
-        if (!document.querySelector('.MuiPopover-root, .MuiModal-root, .MuiDialog-root')) break;
-        await sleep(25);
-      }
-      return true;
+    if (!opt) {
+      failed.push(identifier + ' ("' + value + '") option not found in the visible Meesho dropdown');
+      await closeOpenDropdown();
+      return false;
     }
-
+    opt.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+    realClick(opt);
+    await sleep(80);
+    if (activeMenu && activeMenu.isConnected && visibleEnabled(activeMenu)) await sleep(90);
+    const observed = String(inputEl && inputEl.value || '') + ' ' + String(triggerEl && triggerEl.textContent || '');
+    if (fieldValueEquivalent(inputEl && inputEl.value, value) || norm(observed).includes(targetText)) return true;
+    await closeOpenDropdown();
+    realClick(triggerEl);
+    await sleep(100);
+    const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
+    let retry = null;
+    for (const menu of menus) {
+      retry = Array.from(menu.querySelectorAll('li, [role="option"], [role="menuitem"], [data-value], button'))
+        .find(el => norm(el.textContent) === targetText);
+      if (retry) break;
+    }
+    if (retry) { realClick(retry); await sleep(100); }
+    const afterRetry = String(inputEl && inputEl.value || '') + ' ' + String(triggerEl && triggerEl.textContent || '');
+    if (fieldValueEquivalent(inputEl && inputEl.value, value) || norm(afterRetry).includes(targetText)) return true;
+    failed.push(identifier + ' ("' + value + '") was clicked but Meesho did not retain the selected value');
     await closeOpenDropdown();
     return false;
   }
 
   async function fillFieldDirect(field, value, identifier, failed = []) {
-    if (!value || String(value).trim() === '') return false;
+    const expected = String(value ?? '').trim();
+    if (!expected) return false;
+    if (!field || !field.triggerEl || !field.triggerEl.isConnected) {
+      failed.push(identifier + ' (field control not found or no longer connected)');
+      return false;
+    }
     try {
-
-      if (field.type === 'mui') {
-        return await selectMuiDropdown(field.triggerEl, field.inputEl, value);
-      }
+      field.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
+      await sleep(20);
+      if (field.type === 'mui') return await selectMuiDropdown(field.triggerEl, field.inputEl, expected, identifier, failed);
       if (field.type === 'select') {
-        const options = Array.from(field.triggerEl.options);
-        const match = options.find(o => norm(o.text) === norm(value)) ||
-          options.find(o => norm(o.text).includes(norm(value)));
-
-        if (!match) {
-          failed.push(`${identifier} ("${value}") not in dropdown`);
+        const select = field.triggerEl;
+        if (!visibleEnabled(select)) {
+          failed.push(identifier + ' (select is hidden or disabled)');
           return false;
         }
-        field.triggerEl.value = match.value;
-        field.triggerEl.dispatchEvent(new Event('change', { bubbles: true }));
+        const options = Array.from(select.options || []);
+        const match = options.find(o => norm(o.text) === norm(expected)) ||
+          options.find(o => norm(o.value) === norm(expected));
+        if (!match) {
+          failed.push(identifier + ' ("' + expected + '") not in dropdown options');
+          return false;
+        }
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+        if (setter && setter.set) setter.set.call(select, match.value);
+        else select.value = match.value;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(70);
+        const selectedText = select.options[select.selectedIndex]?.text || '';
+        if (String(select.value) === String(match.value) &&
+            (fieldValueEquivalent(selectedText, expected) || fieldValueEquivalent(select.value, expected))) return true;
+        failed.push(identifier + ' ("' + expected + '") was selected but did not persist');
+        return false;
+      }
+      const input = field.triggerEl;
+      if (!visibleEnabled(input)) {
+        failed.push(identifier + ' (input is hidden or disabled)');
+        return false;
+      }
+      if (input.readOnly) {
+        failed.push(identifier + ' (input is read-only and has no mapped dropdown handler)');
+        return false;
+      }
+      input.focus();
+      setReactInputValue(input, expected);
+      await sleep(65);
+      if (fieldValueEquivalent(input.value, expected)) {
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
         return true;
       }
-      setReactInputValue(field.triggerEl, value);
-      return true;
+      setReactInputValue(input, expected);
+      await sleep(100);
+      if (fieldValueEquivalent(input.value, expected)) {
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+        return true;
+      }
+      failed.push(identifier + ' did not retain "' + expected + '" (current value: "' + String(input.value || '').slice(0, 60) + '")');
+      return false;
     } catch (err) {
-      failed.push(`${identifier} error`);
+      failed.push(identifier + ' error (' + String(err && err.message || 'unknown').slice(0, 80) + ')');
       return false;
     }
   }
