@@ -130,31 +130,25 @@ async function researchProduct(p,imgs,allowed,scan,catalog){
 }
 
 function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
- const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),formSchema=schema(scan||{});
- const relevantFields=formSchema.fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
- const formEvidence=relevantFields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).join(' ');
- const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
- const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText+' '+String(p&&p.productName||'')+' '+String(p&&p.productTypeEvidence||'')+' '+String(p&&p.imageResearchTerms||''));
- const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
- const plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/.test(materialText);
- const insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/.test(productText);
- const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
- if(vacuum){
-  const capacity=capacityInMl(p&&p.productCapacity)||capacityInMl(productText)||capacityInMl(research&&research.seed),hsn=capacity===null?'9617':(capacity<=750?'96170011':'96170012');
-  refs.push({kind:'hsn',title:'Government of India — India Tariff Schedule, heading 9617',url:'https://www.commerce.gov.in/wp-content/uploads/2022/11/02-Indias-Tariff-Schedule.pdf',domain:'commerce.gov.in',snippet:'Official Government of India tariff schedule: tariff item 9617 00 11 — vacuum flasks having a capacity not exceeding 0.75 litre; tariff item 9617 00 12 — vacuum flasks having a capacity exceeding 0.75 litre.'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 9617',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates, heading 9617: vacuum flasks and other vacuum vessels, complete; listed at 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
-  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'vacuum flask/vessel identified from category and product evidence',capacityMl:capacity,hsn,gst:'18%',hsnSourceUrl:refs[refs.length-2].url,gstSourceUrl:refs[refs.length-1].url,classificationBasis:'selected category, product use and capacity'};return research;
- }
- // Do not classify a generic drinking bottle as plastic tableware. Use exact product form,
- // material/use evidence and targeted official-source HSN/GST research instead.
- const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText);
- if(kitchenCategory&&lunchBoxContext&&plasticMaterial){
-  const hsn=insulated?'39241010':'39241090';
-  refs.push({kind:'hsn',title:'Government of India — DGFT tariff item listing for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Appendix%204RE%20RoDTEP.pdf',domain:'content.dgft.gov.in',snippet:'Official DGFT tariff table lists heading 3924 for tableware, kitchenware and other household articles of plastics; heading 392410 is tableware and kitchenware, tariff item 39241010 is insulated ware and tariff item 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
-  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'plastic lunch box / tableware and kitchenware of plastics',hsn,gst:'18%',insulated,hsnSourceUrl:refs[refs.length-3].url,gstSourceUrl:refs[refs.length-2].url,classificationBasis:'selected category + product form attributes + confirmed plastic material',status:'category-classified; verify seller-specific material and insulated/non-insulated construction'};
- }
+ const sourceRows=Array.isArray(research&&research.results)?research.results:[];
+ const seen=new Set();
+ const official=sourceRows.filter(row=>{
+  let host='';try{host=new URL(row.url||'').hostname;}catch(e){}
+  if(!OFFICIAL_TAX_HOST.test(host)||!row.url||seen.has(row.url))return false;
+  seen.add(row.url);return true;
+ }).map(row=>Object.assign({},row,{
+  kind:/\b(gst|tax|rate|slab|notification)\b/i.test(String(row.title||'')+' '+String(row.snippet||''))?'gst':'hsn',
+  sourceType:'live-official-search-result'
+ }));
+ research.officialTaxReferences=official;
+ // No hard-coded tax value may be produced from the category/material alone. AI-proposed
+ // values are accepted only after exact official-source matching; otherwise targeted
+ // Government searches run and the mandatory tax gate remains blocked.
+ research.automaticTaxClassification=null;
+ research.taxClassificationStatus=official.length?'official-sources-found-candidate-still-requires-exact-match':'no-live-official-source-found';
+ if(!official.length)liveLog('TAX HARD LOCK · no live official tax results were captured. HSN/GST will remain unresolved unless targeted official-source verification succeeds.','warn');
  return research;
 }
-
 async function enrichTaxEvidence(proposed,evidence,research,fields,p,scan,catalog){
  const targets=(fields||[]).filter(field=>isTaxField(field));
  const tasks=[];
