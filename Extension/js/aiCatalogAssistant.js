@@ -1069,7 +1069,7 @@ function buildTitleChoices(raw,baseTitle,p,d){
  const add=(title,reason,recommended,optionIndex)=>{
   let body=stripImageFilenameArtifacts(String(title||'')).replace(/\s+/g,' ').trim();if(!body)return;
   body=body.replace(/(?:\s*\/\s*)?(?:pack|set)\s+of\s+\d+(?:\s+(?:pieces?|pcs?))?/ig,' ').replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').replace(/\s+/g,' ').trim();
-  body=body.replace(/\b(?:title|option)\s*[#-]?\s*\d+\b/ig,' ').replace(/\s*\/\s*/g,' / ').replace(/\s+/g,' ').trim();
+  body=body.replace(/\b(?:title|option)\s*[#-]?\s*\d+\b/ig,' ').replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').replace(/\s+/g,' ').trim();
   if(!body)body=stripImageFilenameArtifacts(baseTitle)||String(p&&p.productType||'Product');
   const phraseList=titleExpansionPhrases(p,Number(optionIndex)||0);let phraseIndex=((Number(optionIndex)||0)%phraseList.length+phraseList.length)%phraseList.length,attempts=0;
   while(body.length<minBody&&attempts<phraseList.length*2){
