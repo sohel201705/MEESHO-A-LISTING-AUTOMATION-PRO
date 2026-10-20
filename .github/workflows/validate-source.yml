@@ -233,7 +233,11 @@ jobs:
           const detectorEnd = aiAssistant.indexOf('function promptFor(scan,p,d,s,research)', detectorStart);
           assert.ok(detectorStart >= 0 && detectorEnd > detectorStart);
           const normalise = value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-          const detectCatalog = new Function("$", "norm", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise);
+          const sanitizerStart = aiAssistant.indexOf('function stripImageFilenameArtifacts(value){');
+          const sanitizerEnd = aiAssistant.indexOf('function cleanSearchSeed(value){', sanitizerStart);
+          assert.ok(sanitizerStart >= 0 && sanitizerEnd > sanitizerStart);
+          const stripImageFilenameArtifacts = new Function(aiAssistant.slice(sanitizerStart, sanitizerEnd) + '; return stripImageFilenameArtifacts;')();
+          const detectCatalog = new Function("$", "norm", "stripImageFilenameArtifacts", aiAssistant.slice(detectorStart, detectorEnd) + "; return detectMeeshoCatalog;")(() => null, normalise, stripImageFilenameArtifacts);
           const fixture = (fields, capturedValues = {}, catalogContext = {}) => ({
             sections: [{ id: 'product_data', fields }],
             capturedValues,
