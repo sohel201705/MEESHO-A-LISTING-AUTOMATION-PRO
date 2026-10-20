@@ -378,7 +378,7 @@ jobs:
           assert.ok(titleChoices.every(x => !/\.(?:jpe?g|png|webp|gif)\b/i.test(x.title)));
           assert.ok(titleChoices.every(x => !x.title.includes(' / / ')));
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
-          assert.ok(titleChoices.every(x => !/\\b(?:not branded|non[- ]?branded|unbranded|no brand|unknown brand|brand not specified)\\b/i.test(x.title)));
+          assert.ok(titleChoices.every(x => !/\b(?:not branded|non[- ]?branded|unbranded|no brand|unknown brand|brand not specified)\b/i.test(x.title)));
           assert.equal(new Set(titleChoices.map(x => x.strategy)).size, 4);
           const filenameTitleChoices = titleBuilder([
             { title: 'Lunch Boxes / Orange / With Cutlery / Pack of 1.jpg', recommended: true },
