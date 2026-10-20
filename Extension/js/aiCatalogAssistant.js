@@ -63,7 +63,7 @@ function categoryResearchTerms(p,scan,catalog){
  const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),categoryBits=[ctx.subCategoryName,ctx.categoryName,ctx.catalogType,ctx.breadcrumb,catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean);
  const fields=schema(scan||{}).fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
  const fieldBits=fields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).filter(Boolean);
- return cleanSearchSeed(categoryBits.concat(fieldBits,p&&p.material||'',p&&p.color||'',p&&p.productFacts||'').join(' ')).slice(0,160);
+ return cleanSearchSeed(categoryBits.concat(fieldBits,p&&p.material||'',p&&p.color||'',p&&p.productTypeEvidence||'',p&&p.imageResearchTerms||'',p&&p.productFacts||'').join(' ')).slice(0,160);
 }
 function taxResearchTerms(catalog,p){const key=String(catalog&&catalog.key||p&&p.productCategory||'general');if(key==='kitchen')return 'plastic tableware kitchenware food storage containers tariff classification HSN GST rate India';if(key==='bottles')return 'drinking bottles drinkware vacuum flask material tariff classification HSN GST rate India';if(key==='apparel')return 'garments clothing textile material tariff classification HSN GST rate India';if(key==='furniture')return 'chairs tables furniture material tariff classification HSN GST rate India';if(key==='electronics')return 'electrical electronic accessories product classification HSN GST rate India';return 'product category material use tariff classification HSN code GST goods rate India';}
 async function researchProduct(p,imgs,allowed,scan,catalog){
@@ -1431,7 +1431,7 @@ async function identifyProductFromPhotos(imgs,providedFacts,catalog,context){
  const prompt=[
   'Identify the actual product type and clearly visible attributes from the supplied product photos. Use the already-selected Meesho category as primary context.',
   'Return ONLY valid JSON: {"productName":"short product type, not a marketplace listing title","productType":"","brandIfLegible":"","modelIfLegible":"","colorIfClear":"","materialIfClear":"","capacityIfPrinted":"","visibleText":[],"searchTerms":[],"confidence":"high|medium|low"}.',
-  'Do not copy or imitate any other marketplace listing title. Do not use image filenames or image metadata. Do not invent brand, model, capacity, material or features. Provide material only when the image or supplied details clearly support it. If unclear, use the selected category as a cautious product-type fallback and confidence low.',
+  'Do not copy or imitate any other marketplace listing title. Do not use image filenames or image metadata. Do not invent brand, model, capacity, material or features. Provide material only when the image or supplied details clearly support it. If unclear, use the selected category as a cautious product-type fallback and confidence low. searchTerms must be short visual/category/specification clues only, not another website title; they will be used to search for similar products and then cross-checked.',
   'Selected Meesho category/type:',JSON.stringify({name:catalog&&catalog.name||'',type:catalog&&catalog.type||'',key:catalog&&catalog.key||'',context:context||{}}),
   'Seller-provided confirmed facts:',String(providedFacts||'none supplied')
  ].join('\n');
@@ -1528,32 +1528,45 @@ async function generate(googleAllowed){
   if(p.productName&&imgs.some(img=>norm(cleanSearchSeed(img.name))===norm(cleanSearchSeed(p.productName)))){
    p.productName='';$('ai-product-name').value='';liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
   }
-  setProgress(18,'Photos ready · identify product type and attributes');
-  if(!p.productName){
-   try{
-    setProgress(19,'Identifying product from photos and selected category');
-    say('Identifying the product from photos and the selected Meesho category…');
-    liveLog('VISION IDENTIFICATION · reading product type and visible attributes; image filenames are excluded.','info');
-    const identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
-    const candidate=stripImageFilenameArtifacts(String(identified.productName||identified.productType||identified.title||'')).trim();
-    if(candidate.length>=3&&String(identified.confidence||'medium').toLowerCase()!=='low'){
-     p.productName=candidate;$('ai-product-name').value=candidate;
-     const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();if(brand||model)liveLog('VISION IDENTIFICATION · readable brand/model clues detected in the photos.','info');
-     const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
-     const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;
-     const cap=String(identified.capacityIfPrinted||'').trim();if(!p.productCapacity&&capacityInMl(cap)!==null)p.productCapacity=cap;
-     const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];if(visible.length&&!p.productFacts)p.productFacts='Visible text from product photos (verify): '+visible.join('; ');
-     liveLog('VISION IDENTIFICATION · product type identified from the supplied photos.','ok');
-    }else{
-     const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
-     p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;
-     const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
-     liveLog('VISION IDENTIFICATION · using selected catalog/type as cautious product label; file names were not used.','warn');
-    }
-   }catch(e){
-    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;
-    liveLog('VISION IDENTIFICATION · photo analysis failed; continuing with selected Meesho category, not image filenames. Details: '+redactSecrets(e,null),'warn');
+  setProgress(18,'Photos ready · identify product type and visual search clues');
+  try{
+   setProgress(19,'Reading product photos and selected catalog attributes');
+   say('Analyzing product photos for category-specific research clues…');
+   liveLog('VISION IDENTIFICATION · extracting visible attributes for targeted research; file names are excluded.','info');
+   const identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
+   const candidate=stripImageFilenameArtifacts(String(identified.productName||identified.productType||identified.title||'')).trim();
+   const confidence=String(identified.confidence||'medium').toLowerCase();
+   if(!p.productName&&candidate.length>=3&&confidence!=='low'){
+    p.productName=candidate;$('ai-product-name').value=candidate;
+    liveLog('VISION IDENTIFICATION · identified the product type from photos.','ok');
+   }else if(!p.productName){
+    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
+    p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;
+    liveLog('VISION IDENTIFICATION · low confidence; using selected Meesho catalog as product-type fallback, not image filenames.','warn');
+   }else{
+    liveLog('VISION IDENTIFICATION · seller product name retained; photo clues will improve research and matching.','info');
    }
+   const brand=String(identified.brandIfLegible||'').trim(),model=String(identified.modelIfLegible||'').trim();
+   if(brand||model)liveLog('VISION IDENTIFICATION · readable brand/model clues detected; these are research hints until corroborated.','info');
+   const color=String(identified.colorIfClear||'').trim();if(!p.color&&color)p.color=color;
+   const material=String(identified.materialIfClear||'').trim();if(!p.material&&material)p.material=material;
+   const cap=String(identified.capacityIfPrinted||'').trim();if(!p.productCapacity&&capacityInMl(cap)!==null)p.productCapacity=cap;
+   const visualTerms=[
+    identified.productType,identified.brandIfLegible,identified.modelIfLegible,
+    identified.colorIfClear,identified.materialIfClear,identified.capacityIfPrinted,
+    ...(Array.isArray(identified.searchTerms)?identified.searchTerms:[]),
+    ...(Array.isArray(identified.visibleText)?identified.visibleText:[]
+   ].map(x=>String(x||'').trim()).filter(Boolean);
+   p.productTypeEvidence=stripImageFilenameArtifacts(visualTerms.join(' ')).slice(0,500);
+   p.imageResearchTerms=p.productTypeEvidence;
+   const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];
+   const facts=[String(p.productFacts||'').trim(),p.productTypeEvidence?'Photo-derived research clues (verify against sources): '+p.productTypeEvidence:'',visible.length?'Readable product text from photos (verify): '+visible.join('; '):''].filter(Boolean);
+   p.productFacts=facts.join(' | ').slice(0,1000);
+   if(identified.searchTerms&&identified.searchTerms.length)liveLog('VISION IDENTIFICATION · '+identified.searchTerms.length+' visual search term(s) will be used to find similar products, not to copy their titles.','ok');
+  }catch(e){
+   const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
+   if(!p.productName){p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;}
+   liveLog('VISION IDENTIFICATION · photo clue extraction failed; category and form fields will still be researched. Details: '+redactSecrets(e,null),'warn');
   }
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
