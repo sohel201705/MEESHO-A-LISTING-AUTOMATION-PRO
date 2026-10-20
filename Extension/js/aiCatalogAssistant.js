@@ -224,7 +224,7 @@ const PROVIDERS={
  fireworks:{label:'Fireworks AI',endpoint:'https://api.fireworks.ai/inference/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a supported vision model ID; free credits/promotions vary.'},
  mistral:{label:'Mistral AI',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'',kind:'compatible',hint:'Enter a vision-capable model ID supported by your Mistral account; availability/pricing vary.'},
  huggingface:{label:'Hugging Face Router',endpoint:'https://router.huggingface.co/v1/chat/completions',model:'',kind:'compatible',hint:'Use a compatible vision model and provider token available to your account; free credits/rates vary.'},
- freellmapi:{label:'FreeLLMAPI Local Router',endpoint:'http://127.0.0.1:31415/v1/chat/completions',model:'auto',kind:'compatible',hint:'Uses your local FreeLLMAPI server at 127.0.0.1:31415. Ensure a vision-capable model is enabled in the router fallback chain.'},
+ freellmapi:{label:'FreeLLMAPI Local Router',endpoint:'http://127.0.0.1:31415/v1/chat/completions',model:'auto',kind:'compatible',hint:'Uses your own local FreeLLMAPI router. Auto-tests port 31415 first, then 3001. For product photos, configure a vision-capable fallback model; free quotas and provider limits can change.'},
  custom:{label:'Custom OpenAI-Compatible',endpoint:'',model:'',kind:'compatible',hint:'Enter an HTTPS endpoint, or HTTP only for localhost/127.0.0.1, and a compatible vision model ID.'}
 };
 function label(p){return (PROVIDERS[p]&&PROVIDERS[p].label)||'OpenAI-compatible API';}
@@ -353,6 +353,61 @@ function makeKey(p,model,endpoint,apiKey,name){
 async function checkProviderPermission(p,endpoint){
  if(isNativeProvider(p))return true;
  return await askPermission(endpoint||endpointDefault(p));
+}
+function connectionTestCandidates(provider,endpoint){
+ const url=new URL(endpoint);
+ let path=url.pathname;
+ while(path.endsWith('/'))path=path.slice(0,-1);
+ if(!path.toLowerCase().endsWith('/chat/completions'))url.pathname=path+'/chat/completions';
+ const candidates=[url.toString()];
+ const isLoopback=['localhost','127.0.0.1'].includes(url.hostname);
+ if(provider==='freellmapi'&&url.protocol==='http:'&&isLoopback){
+  for(const port of [url.port,'31415','3001']){
+   if(!port)continue;
+   const candidate=new URL(url.toString());candidate.port=port;
+   candidates.push(candidate.toString());
+  }
+ }
+ return [...new Set(candidates)];
+}
+async function testApiConnection(){
+ const button=$('ai-test-api-btn'),provider=$('ai-provider-type').value;
+ const apiKey=$('ai-key-value').value.trim();
+ const model=$('ai-key-model').value.trim()||modelDefault(provider);
+ const rawEndpoint=$('ai-key-endpoint').value.trim()||endpointDefault(provider);
+ if(isNativeProvider(provider))return say('Choose an OpenAI-compatible provider to test its endpoint.','warning');
+ if(!apiKey)return say('Enter your own provider / FreeLLMAPI API key before testing.','error');
+ if(!model)return say('Enter a model ID first.','error');
+ if(!rawEndpoint)return say('Enter the API endpoint first.','error');
+ let candidates;
+ try{candidates=connectionTestCandidates(provider,rawEndpoint);}catch(e){return say('Endpoint is not valid: '+(e.message||'check the URL'),'error');}
+ let permission=false;
+ try{permission=await askPermission(candidates[0]);}catch(e){return say(e.message||'Could not request API-host permission.','error');}
+ if(!permission)return say('API-host permission denied; connection was not tested.','error');
+ if(button){button.disabled=true;button.textContent='Testing…';}
+ const testImage='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/9ioAAAAASUVORK5CYII=';
+ let lastError='';
+ try{
+  for(const endpoint of candidates){
+   try{
+    const content=[{type:'text',text:provider==='freellmapi'?'Inspect the attached tiny test image and reply with the words: connection ok.':'Reply with the words: connection ok.'}];
+    if(provider==='freellmapi')content.push({type:'image_url',image_url:{url:testImage}});
+    const response=await post(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},body:JSON.stringify({model,messages:[{role:'user',content}],temperature:0,max_tokens:32})},12000);
+    const raw=await response.text();let data={};try{data=JSON.parse(raw);}catch(_){}
+    if(!response.ok)throw new Error('HTTP '+response.status+': '+((data.error||{}).message||raw.slice(0,180)));
+    const message=((((data.choices||[])[0]||{}).message||{}).content);
+    const reply=Array.isArray(message)?message.map(x=>x.text||'').join(' ').trim():String(message||'').trim();
+    if(!reply)throw new Error('The endpoint responded, but returned no chat content.');
+    $('ai-key-endpoint').value=endpoint;$('ai-key-endpoint').dataset.provider=provider;
+    return say((provider==='freellmapi'?'FreeLLMAPI connected; chat + image-input test passed at ':'API connection test passed at ')+endpoint+(provider==='freellmapi'?' · model '+model:''),'success');
+   }catch(e){lastError=String(e&&e.message||e||'Unknown connection error');}
+  }
+  if(provider==='freellmapi'&&/no_vision_model|vision model|vision-capable/i.test(lastError)){
+   throw new Error('The local router responded, but no vision-capable model is available. Enable a vision model in FreeLLMAPI fallback settings, then test again. Details: '+lastError);
+  }
+  throw new Error('Connection test failed. Check that FreeLLMAPI is running, the local API key is correct, and the endpoint/port is reachable. Details: '+lastError);
+ }catch(e){say(e.message||'Connection test failed.','error');}
+ finally{if(button){button.disabled=false;button.textContent='Test Connection';}}
 }
 async function addKey(){
  const selectedProvider=$('ai-provider-type').value,apiKey=$('ai-key-value').value.trim();
@@ -946,8 +1001,8 @@ NaN
 function decodeImage(dataUrl){const m=String(dataUrl||'').match(/^data:([^;]+);base64,(.*)$/);if(!m)throw new Error('Could not decode photo.');return {mimeType:m[1],data:m[2]};}
 
 
-async function post(url,opts){
- const c=new AbortController(),timer=setTimeout(()=>c.abort(),45000);
+async function post(url,opts,timeoutMs=45000){
+ const c=new AbortController(),timer=setTimeout(()=>c.abort(),timeoutMs);
  try{return await fetch(url,Object.assign({},opts,{signal:c.signal}));}finally{clearTimeout(timer);}
 }
 async function gemini(k,prompt,imgs=[]){
@@ -1842,6 +1897,7 @@ function init(){
   card.addEventListener('click',()=>chooseApiProvider(card.getAttribute('data-api-provider')));
  });
  $('ai-add-key-btn').addEventListener('click',addKey);
+  $('ai-test-api-btn')?.addEventListener('click',testApiConnection);
  $('ai-add-bulk-keys-btn').addEventListener('click',addBulkKeys);
  $('ai-save-defaults-btn').addEventListener('click',saveDefaults);
  $('ai-profile-select').addEventListener('change',async()=>{try{await loadSelectedProfile();}catch(e){say(e.message||'Could not load seller profile.','error');}});
