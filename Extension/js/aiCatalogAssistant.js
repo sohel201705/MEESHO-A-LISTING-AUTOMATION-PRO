@@ -1555,7 +1555,7 @@ async function generate(googleAllowed){
     identified.productType,identified.brandIfLegible,identified.modelIfLegible,
     identified.colorIfClear,identified.materialIfClear,identified.capacityIfPrinted,
     ...(Array.isArray(identified.searchTerms)?identified.searchTerms:[]),
-    ...(Array.isArray(identified.visibleText)?identified.visibleText:[]
+    ...(Array.isArray(identified.visibleText)?identified.visibleText:[])
    ].map(x=>String(x||'').trim()).filter(Boolean);
    p.productTypeEvidence=stripImageFilenameArtifacts(visualTerms.join(' ')).slice(0,500);
    p.imageResearchTerms=p.productTypeEvidence;
