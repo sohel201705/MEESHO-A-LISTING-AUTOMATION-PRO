@@ -145,7 +145,7 @@ jobs:
           assert.ok(aiAssistant.includes("p.wrongReturnPrice=calculateWrongReturnPrice(p.sellingPrice)"));
           assert.ok(aiAssistant.includes("Meesho selling price must be greater than ₹5"));
           assert.ok(aiAssistant.includes("Entered MRP is lower than the selling price"));
-          assert.ok(aiAssistant.includes("maxEdge=1600"));
+          assert.ok(aiAssistant.includes('maxEdge=1024'));
           assert.ok(!aiAssistant.includes("'image/gif'"));
           assert.ok(!popupHtml.includes('image/gif'));
           assert.ok(aiAssistant.includes("All '+imgs.length+' photos were sent"));
