@@ -604,10 +604,14 @@ async function checkAuth() {
       setPricingLogoutVisible(true);
       loadPlans();
       showView('pricing');
-      showAuthStatus(
-        access?.reason === 'expired' ? 'Your membership has expired.' : 'Activate a membership to continue.',
-        access?.reason === 'network' ? 'error' : 'info'
-      );
+      const accessMessage = access?.reason === 'trial_expired'
+        ? 'Your 24-hour free trial has expired. Activate a membership to continue.'
+        : access?.reason === 'trial_setup_required'
+          ? (access?.trialError || 'Free trial could not start. The latest Firestore Rules may need to be deployed.')
+          : access?.reason === 'expired'
+            ? 'Your membership has expired.'
+            : 'Activate a membership to continue.';
+      showAuthStatus(accessMessage, access?.reason === 'network' || access?.reason === 'trial_setup_required' ? 'error' : 'info');
     } else {
       setPricingLogoutVisible(false);
       showView('login');
@@ -639,7 +643,8 @@ async function signInWithGoogle() {
     }
     loadPlans();
     showView('pricing');
-    showAuthStatus(result?.error || 'Membership is not active.', result?.reason === 'error' ? 'error' : 'info');
+    const loginMessage = result?.reason === 'trial_setup_required' ? (result?.trialError || 'Free trial could not start. The latest Firestore Rules may need to be deployed.') : result?.reason === 'trial_expired' ? 'Your 24-hour free trial has expired. Activate a membership to continue.' : (result?.error || 'Membership is not active.');
+    showAuthStatus(loginMessage, result?.reason === 'error' || result?.reason === 'trial_setup_required' ? 'error' : 'info');
   } catch (err) {
     showAuthStatus(err.message || 'Google login failed.', 'error');
   } finally {
