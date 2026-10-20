@@ -1376,12 +1376,14 @@ async function applyTitleChoice(index){
  try{
   const codes=await productCodes(choice.title,currentTitleProduct||{});
   currentTitleFields.forEach(f=>{
+   if(draftEditedFields.has(f.identifier))return;
    const value=generatedCodeForField(f,codes);
    if(value&&allowed(value,f))draft[f.identifier]=value;
   });
   titleChoices.forEach((x,i)=>{x.recommended=i===index;});
   renderTitleOptions();
   showPreview(currentTitleFields,draft,currentTitleNeeds,currentTitleStats,researchNow);
+  setDraftButtonAvailability();
   setProgress(90,'Selected title applied · SKU / Style Code refreshed');
   say('Selected title option '+(index+1)+': '+choice.title,'success');
  }catch(e){
