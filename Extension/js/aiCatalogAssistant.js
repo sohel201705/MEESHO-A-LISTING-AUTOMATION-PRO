@@ -7,112 +7,88 @@ const $=id=>document.getElementById(id);
 const get=k=>new Promise(r=>chrome.storage.local.get(k,r));
 const set=o=>new Promise(r=>chrome.storage.local.set(o,r));
 
-const GOOGLE_ORIGIN='https://www.google.com/*';
-function requestGoogleSearchPermission(){
- return new Promise(resolve=>{
-  try{chrome.permissions.request({origins:[GOOGLE_ORIGIN]},granted=>resolve(Boolean(granted)));}catch(e){resolve(false);}
- });
-}
-function cleanSearchSeed(value){
- return String(value||'')
-  .replace(/\.(jpe?g|png|webp|gif)$/i,'')
-  .replace(/\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\b/gi,' ')
-  .replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,140);
-}
-function validExternalUrl(raw){
- try{
-  const u=new URL(raw);
-  if(!['http:','https:'].includes(u.protocol))return '';
-  if(/(^|\.)google\.(com|co\.in)$/i.test(u.hostname)||/googleusercontent|accounts\.google|support\.google/i.test(u.hostname))return '';
-  return u.href;
- }catch(e){return '';}
-}
-function parseGoogleResults(html){
- const doc=new DOMParser().parseFromString(String(html||''),'text/html'),items=[],seen=new Set();
- const cards=Array.from(doc.querySelectorAll('#search .MjjYud, #rso .MjjYud, #search .g, #rso .g'));
- const add=(card,heading)=>{
-  const h=heading||card.querySelector('h3');if(!h)return;
-  const anchor=h.closest('a')||Array.from(card.querySelectorAll('a')).find(a=>a.querySelector('h3'));if(!anchor)return;
-  let href=anchor.href||anchor.getAttribute('href')||'';
-  try{const parsedHref=new URL(href,'https://www.google.com');if(/(^|\.)google\.(com|co\.in)$/i.test(parsedHref.hostname)&&parsedHref.pathname==='/url')href=parsedHref.searchParams.get('q')||parsedHref.searchParams.get('url')||'';}catch(e){}
+const SEARCH_ORIGINS=['https://www.google.com/*','https://html.duckduckgo.com/*','https://www.bing.com/*'];
+function requestGoogleSearchPermission(){return new Promise(resolve=>{try{chrome.permissions.request({origins:SEARCH_ORIGINS},granted=>resolve(Boolean(granted)));}catch(e){resolve(false);}});}
+function stripImageFilenameArtifacts(value){return String(value||'').replace(/(?:^|[\s/])[^/\s]+\.(?:jpe?g|png|webp|gif|bmp|avif)\b/gi,' ').replace(/\b(?:img|dsc|dscn|screenshot|photo|image)[_-]?\d+\b/gi,' ').replace(/\s+/g,' ').trim();}
+function cleanSearchSeed(value){return stripImageFilenameArtifacts(value).replace(/\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\b/gi,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,160);}
+function validExternalUrl(raw){try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return '';if(/(^|\.)google\.[a-z.]+$/i.test(u.hostname)||/(^|\.)bing\.com$/i.test(u.hostname)||/(^|\.)duckduckgo\.com$/i.test(u.hostname)||/googleusercontent|accounts\.google|support\.google/i.test(u.hostname))return '';return u.href;}catch(e){return '';}}
+function parseGoogleResults(html,baseUrl){
+ const doc=new DOMParser().parseFromString(String(html||''),'text/html'),items=[],seen=new Set(),engineBase=baseUrl||'https://www.google.com/';
+ const add=heading=>{
+  if(!heading)return;const anchor=heading.closest('a')||Array.from(heading.parentElement?.querySelectorAll('a[href]')||[]).find(a=>a.querySelector('h3,h2'));if(!anchor)return;
+  let href=anchor.getAttribute('href')||anchor.href||'';
+  try{const u=new URL(href,engineBase);if(/(^|\.)google\.[a-z.]+$/i.test(u.hostname)&&u.pathname==='/url')href=u.searchParams.get('q')||u.searchParams.get('url')||'';else if(/(^|\.)duckduckgo\.com$/i.test(u.hostname)&&u.pathname==='/l/')href=u.searchParams.get('uddg')||u.searchParams.get('url')||'';else href=u.href;}catch(e){}
   href=validExternalUrl(href);if(!href||seen.has(href))return;
-  const title=String(h.textContent||'').replace(/\s+/g,' ').trim();
-  const snippet=String(card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st')?.textContent||'').replace(/\s+/g,' ').trim();
-  if(!title||title.length<3)return;
+  const title=String(heading.textContent||anchor.textContent||'').replace(/\s+/g,' ').trim();if(!title||title.length<3)return;
+  const card=heading.closest('.MjjYud, .g, .b_algo, .result, .results_links, li')||heading.parentElement?.parentElement||heading.parentElement;
+  let snippet=String(card?.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st, .b_caption p, .result__snippet, .snippet, p')?.textContent||'').replace(/\s+/g,' ').trim();
+  if(!snippet&&card)snippet=String(card.textContent||'').replace(title,' ').replace(/\s+/g,' ').trim();
   seen.add(href);items.push({title,url:href,snippet:snippet.slice(0,700),domain:new URL(href).hostname});
  };
- cards.forEach(card=>add(card));
- if(!items.length)doc.querySelectorAll('#search h3, #rso h3').forEach(h=>add(h.parentElement?.parentElement||h.parentElement,h));
- return items.slice(0,6);
+ let headings=Array.from(doc.querySelectorAll('h3'));if(!headings.length)headings=Array.from(doc.querySelectorAll('h2'));headings.forEach(add);
+ if(!items.length)Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{
+  const title=String(a.textContent||'').replace(/\s+/g,' ').trim();if(!title||title.length<16||a.querySelector('img'))return;
+  let href='';try{href=validExternalUrl(new URL(a.getAttribute('href')||a.href,engineBase).href);}catch(e){}if(!href||seen.has(href))return;
+  const card=a.closest('.b_algo, .result, .results_links, li')||a.parentElement?.parentElement,snippet=String(card?.querySelector('p,.b_caption,.result__snippet')?.textContent||'').replace(/\s+/g,' ').trim();
+  seen.add(href);items.push({title,url:href,snippet:snippet.slice(0,700),domain:new URL(href).hostname});
+ });
+ return items.slice(0,8);
 }
 async function searchGoogle(query){
- const url='https://www.google.com/search?q='+encodeURIComponent(query)+'&num=7&hl=en&gl=in';
- const res=await post(url,{method:'GET',credentials:'omit',headers:{'Accept':'text/html,application/xhtml+xml'}});
- if(!res.ok)throw new Error('Google Search HTTP '+res.status);
- const html=await res.text();if(/unusual traffic|not a robot|captcha|consent\.google/i.test(html.slice(0,25000)))throw new Error('Google returned a consent or anti-bot page.');
- const results=parseGoogleResults(html);if(!results.length)throw new Error('Google Search results could not be parsed.');
- return results;
+ const q=encodeURIComponent(query),engines=[
+  {name:'Google',url:'https://www.google.com/search?q='+q+'&num=10&hl=en&gl=in',base:'https://www.google.com/'},
+  {name:'DuckDuckGo',url:'https://html.duckduckgo.com/html/?q='+q+'&kl=in-en',base:'https://html.duckduckgo.com/'},
+  {name:'Bing',url:'https://www.bing.com/search?q='+q+'&count=10&setlang=en-IN',base:'https://www.bing.com/'}
+ ],failures=[];
+ for(const engine of engines){try{
+  const res=await post(engine.url,{method:'GET',credentials:'omit',headers:{'Accept':'text/html,application/xhtml+xml'}});
+  if(!res.ok)throw new Error(engine.name+' Search HTTP '+res.status);
+  const html=await res.text();if(/unusual traffic|not a robot|captcha|consent\.google|verify you are human/i.test(html.slice(0,30000)))throw new Error(engine.name+' returned a consent or anti-bot page.');
+  const results=parseGoogleResults(html,engine.base);if(!results.length)throw new Error(engine.name+' results could not be parsed.');
+  results.forEach(r=>{r.searchProvider=engine.name;});if(engine.name!=='Google')liveLog('WEB SEARCH FALLBACK · '+engine.name+' returned '+results.length+' result(s).','info');return results;
+ }catch(e){failures.push(String(e.message||e));}}
+ throw new Error('Search providers returned no parseable results. '+failures.join(' | '));
 }
-async function researchProduct(p,imgs,allowed){
- const fileSeed=(imgs||[]).map(i=>cleanSearchSeed(i.name)).filter(Boolean).join(' ');
- const seed=cleanSearchSeed(p.productName)||cleanSearchSeed([p.material,p.color,p.productFacts,fileSeed].filter(Boolean).join(' '));
- const research={seed,queries:[],results:[],error:'',searchedAt:new Date().toISOString()};
- if(!allowed){research.error='Google Search permission was not granted.';return research;}
- if(!seed){research.error='No product title or image filename available for Google Search.';return research;}
- const queries=[
-  '"'+seed+'" product specifications material capacity net weight dimensions India',
-  'site:cbic-gst.gov.in OR site:cbic.gov.in OR site:gst.gov.in "'+seed+'" HSN code GST rate tariff classification',
-  'site:cbic-gst.gov.in OR site:cbic.gov.in "'+seed+'" "rate of tax" HSN'
- ];
- research.queries=queries;
- // Run the independent searches concurrently to reduce wall-clock delay.
- const outcomes=await Promise.all(queries.map(async(q,index)=>{
-  setProgress(32,'Google Research · checking specifications and mandatory HSN/GST');
-  liveLog('GOOGLE SEARCH · query '+(index+1)+'/'+queries.length+': '+q,'info');
-  try{
-   const rows=await searchGoogle(q);
-   liveLog('GOOGLE SEARCH · '+rows.length+' result(s) for query '+(index+1)+'.','ok');
-   return {query:q,rows,error:''};
-  }catch(e){
-   const message=String(e.message||e);
-   liveLog('GOOGLE SEARCH · query '+(index+1)+' failed: '+redactSecrets(e,null),'warn');
-   return {query:q,rows:[],error:message};
-  }
- }));
- const all=[];
- outcomes.forEach(outcome=>{
-  if(outcome.error)research.error=research.error?research.error+' | '+outcome.error:outcome.error;
-  outcome.rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:outcome.query},row));});
- });
- setProgress(44,'Google research complete · evaluating official tax evidence');
- research.results=all.slice(0,18);
- if(!research.results.length&&!research.error)research.error='No usable Google results were found.';
+function categoryResearchTerms(p,scan,catalog){
+ const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),categoryBits=[ctx.subCategoryName,ctx.categoryName,ctx.catalogType,ctx.breadcrumb,catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean);
+ const fields=schema(scan||{}).fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
+ const fieldBits=fields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).filter(Boolean);
+ return cleanSearchSeed(categoryBits.concat(fieldBits,p&&p.material||'',p&&p.color||'',p&&p.productFacts||'').join(' ')).slice(0,160);
+}
+function taxResearchTerms(catalog,p){const key=String(catalog&&catalog.key||p&&p.productCategory||'general');if(key==='kitchen')return 'plastic tableware kitchenware food storage containers tariff classification HSN GST rate India';if(key==='bottles')return 'drinking bottles drinkware vacuum flask material tariff classification HSN GST rate India';if(key==='apparel')return 'garments clothing textile material tariff classification HSN GST rate India';if(key==='furniture')return 'chairs tables furniture material tariff classification HSN GST rate India';if(key==='electronics')return 'electrical electronic accessories product classification HSN GST rate India';return 'product category material use tariff classification HSN code GST goods rate India';}
+async function researchProduct(p,imgs,allowed,scan,catalog){
+ const seed=categoryResearchTerms(p,scan,catalog)||cleanSearchSeed([catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean).join(' ')),classificationTerms=taxResearchTerms(catalog,p);
+ const research={seed,queries:[],results:[],error:'',searchedAt:new Date().toISOString(),researchMode:'category-and-image-context'};
+ if(!allowed){research.error='Web Search permission was not granted.';return research;}if(!seed){research.error='No usable selected Meesho category or product attributes were available for research.';return research;}
+ const queries=[seed+' product specifications material capacity net weight length breadth height manufacturer India','site:cbic-gst.gov.in OR site:taxinformation.cbic.gov.in '+classificationTerms+' official goods tax notification','site:content.dgft.gov.in OR site:commerce.gov.in '+classificationTerms+' Indian tariff schedule official classification'];research.queries=queries;
+ const outcomes=await Promise.all(queries.map(async(q,index)=>{setProgress(32,'Web research · checking product specifications and official HSN/GST');liveLog('WEB SEARCH · category-based query '+(index+1)+'/'+queries.length+': '+q,'info');try{const rows=await searchGoogle(q);liveLog('WEB SEARCH · '+rows.length+' result(s) for query '+(index+1)+' via '+(rows[0]?.searchProvider||'search provider')+'.','ok');return {query:q,rows,error:''};}catch(e){const message=String(e.message||e);liveLog('WEB SEARCH · query '+(index+1)+' failed: '+redactSecrets(e,null),'warn');return {query:q,rows:[],error:message};}}));
+ const all=[];outcomes.forEach(outcome=>{if(outcome.error)research.error=research.error?research.error+' | '+outcome.error:outcome.error;outcome.rows.forEach(row=>{if(!all.some(x=>x.url===row.url))all.push(Object.assign({query:outcome.query},row));});});
+ setProgress(44,'Category research complete · evaluating official tax evidence');research.results=all.slice(0,24);if(!research.results.length&&!research.error)research.error='No usable web search results were found.';return research;
+}
+
+function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
+ const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),formSchema=schema(scan||{});
+ const relevantFields=formSchema.fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
+ const formEvidence=relevantFields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).join(' ');
+ const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
+ const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText);
+ const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
+ const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
+ if(vacuum){
+  const capacity=capacityInMl(p&&p.productCapacity)||capacityInMl(productText)||capacityInMl(research&&research.seed),hsn=capacity===null?'9617':(capacity<=750?'96170011':'96170012');
+  refs.push({kind:'hsn',title:'Government of India — India Tariff Schedule, heading 9617',url:'https://www.commerce.gov.in/wp-content/uploads/2022/11/02-Indias-Tariff-Schedule.pdf',domain:'commerce.gov.in',snippet:'Official Government of India tariff schedule: tariff item 9617 00 11 — vacuum flasks having a capacity not exceeding 0.75 litre; tariff item 9617 00 12 — vacuum flasks having a capacity exceeding 0.75 litre.'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 9617',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates, heading 9617: vacuum flasks and other vacuum vessels, complete; listed at 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
+  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'vacuum flask/vessel identified from category and product evidence',capacityMl:capacity,hsn,gst:'18%',hsnSourceUrl:refs[refs.length-2].url,gstSourceUrl:refs[refs.length-1].url,classificationBasis:'selected category, product use and capacity'};return research;
+ }
+ const kitchenCategory=String(catalog&&catalog.key||'')==='kitchen'||/\b(lunch boxes?|lunchbox|tiffin|food storage)\b/i.test(categoryText),lunchBoxContext=/\b(lunch boxes?|lunchbox|tiffin|food storage|food container|cutlery|number of sections|no of sections|microwave safe)\b/i.test(categoryText),plasticMaterial=/\b(plastic|polypropylene|polycarbonate|polyethylene|pet)\b/i.test(materialText),insulated=/\b(insulated|thermal insulated|vacuum insulated)\b/i.test(productText)&&!/\b(non[- ]?insulated|not insulated)\b/i.test(productText);
+ if(kitchenCategory&&lunchBoxContext&&plasticMaterial){
+  const hsn=insulated?'39241010':'39241090';
+  refs.push({kind:'hsn',title:'Government of India — DGFT ITC(HS) classification for plastic tableware and kitchenware',url:'https://content.dgft.gov.in/Website/Notification_ITCHS.pdf',domain:'content.dgft.gov.in',snippet:'Official Government of India ITC(HS) classification: heading 3924 covers tableware, kitchenware and other household articles of plastics; 392410 is tableware and kitchenware; tariff item 39241010 is insulated ware and 39241090 is other tableware and kitchenware of plastics.'},{kind:'gst',title:'CBIC — CGST Rate Notification No. 09/2025 and GST schedule for goods',url:'https://taxinformation.cbic.gov.in/view-pdf/1010436/ENG/Notifications',domain:'taxinformation.cbic.gov.in',snippet:'Current CGST goods-rate schedule as revised by Notification No. 09/2025-Central Tax (Rate), dated 17 September 2025: plastic tableware and kitchenware under heading 3924 is listed in the 18% GST slab (9% CGST plus 9% SGST for intra-State supply).'},{kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 3924',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST rate schedule, heading 3924: tableware, kitchenware and other household articles of plastics; 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'});
+  research.officialTaxReferences=refs;research.automaticTaxClassification={productType:'plastic lunch box / tableware and kitchenware of plastics',hsn,gst:'18%',insulated,hsnSourceUrl:refs[refs.length-3].url,gstSourceUrl:refs[refs.length-2].url,classificationBasis:'selected category + product form attributes + confirmed plastic material',status:'category-classified; verify seller-specific material and insulated/non-insulated construction'};
+ }
  return research;
 }
-function attachOfficialTaxReferences(research,p,imgs){
- const productText=norm([
-  research&&research.seed||'',p&&p.productName||'',p&&p.productFacts||'',p&&p.material||'',
-  p&&p.productCapacity||'',(imgs||[]).map(i=>i.name||'').join(' ')
- ].join(' '));
- // Use this fallback only when the provided product text explicitly identifies a vacuum flask/vessel.
- if(!/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText))return research;
- const capacity=capacityInMl(p&&p.productCapacity)||capacityInMl(productText)||capacityInMl(research&&research.seed);
- const hsn=capacity===null?'9617':(capacity<=750?'96170011':'96170012');
- research.officialTaxReferences=[
-  {kind:'hsn',title:'Government of India — India Tariff Schedule, heading 9617',url:'https://www.commerce.gov.in/wp-content/uploads/2022/11/02-Indias-Tariff-Schedule.pdf',domain:'commerce.gov.in',snippet:'Official Government of India tariff schedule: tariff item 9617 00 11 — vacuum flasks having a capacity not exceeding 0.75 litre; tariff item 9617 00 12 — vacuum flasks having a capacity exceeding 0.75 litre.'},
-  {kind:'gst',title:'CBIC — GST Goods and Services Rates, heading 9617',url:'https://cbic-gst.gov.in/hindi/gst-goods-services-rates.html',domain:'cbic-gst.gov.in',snippet:'CBIC GST Goods and Services Rates, heading 9617: vacuum flasks and other vacuum vessels, complete; listed at 9% CGST plus 9% SGST/UTGST, aggregate GST 18%.'}
- ];
- research.automaticTaxClassification={
-  productType:'explicitly identified vacuum flask/vessel',
-  capacityMl:capacity,
-  hsn,
-  gst:'18%',
-  hsnSourceUrl:research.officialTaxReferences[0].url,
-  gstSourceUrl:research.officialTaxReferences[1].url
- };
- return research;
-}
-const OFFICIAL_TAX_HOST=/(^|\.)(cbic\.gov\.in|cbic-gst\.gov\.in|gst\.gov\.in|commerce\.gov\.in|egazette\.gov\.in)$/i;
+
+const OFFICIAL_TAX_HOST=/(^|\.)(cbic\.gov\.in|cbic-gst\.gov\.in|gst\.gov\.in|commerce\.gov\.in|dgft\.gov\.in|egazette\.gov\.in)$/i;
 function isTaxField(field){
  const x=norm(String(field.identifier||'').replace(/_/g,' ')+' '+field.label);
  return /\bhsn\b/.test(x)||(/\bgst\b/.test(x)&&!/(gstin|gst number|registration)/.test(x));
@@ -794,9 +770,8 @@ function detectMeeshoCatalog(scan){
  const selectedValues=Object.entries(scan&&scan.capturedValues||{}).filter(([,v])=>String(v||'').trim()).map(([k,v])=>k.replace(/_/g,' ')+' '+String(v)).join(' | ');
  const context=scan&&scan.catalogContext||{};
  const contextText=[context.pageTitle,...(context.headings||[]),context.breadcrumb,context.categoryName,context.subCategoryName,context.catalogType].filter(Boolean).join(' | ');
- const imageNames=Array.from($('ai-product-images')?.files||[]).map(file=>String(file.name||'')).join(' | ');
- const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value,imageNames].filter(Boolean).join(' | ');
- const allText=norm([contextText,labelText,selectedValues,enteredText].join(' | '));
+ const enteredText=[$('ai-product-name')?.value,$('ai-product-facts')?.value,$('ai-product-material')?.value].filter(Boolean).join(' | ');
+  const allText=norm([contextText,labelText,selectedValues,enteredText].join(' | '));
  const fieldText=norm(labelText),visibleText=norm(contextText+' '+selectedValues+' '+enteredText);
  const rules=[
   {key:'bottles',name:'Bottles & Drinkware',type:'Bottle / Drinkware',signals:[
