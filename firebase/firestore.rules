@@ -52,11 +52,12 @@ service cloud.firestore {
     // Users cannot update or delete their own trial record to restart the 24-hour clock.
     match /trials/{uid} {
       allow read: if isAdmin() || isSelf(uid);
-      allow create: if isSelf(uid)
+      // Admin initializes the collection marker; each user can only create their own timestamped trial.
+      allow create: if isAdmin() || (isSelf(uid)
         && request.resource.data.keys().hasAll(['uid', 'startedAt'])
         && request.resource.data.keys().hasOnly(['uid', 'startedAt'])
         && request.resource.data.uid == uid
-        && request.resource.data.startedAt == request.time;
+        && request.resource.data.startedAt == request.time);
       allow update: if false;
       allow delete: if isAdmin();
     }
