@@ -2606,7 +2606,23 @@
         <div id="ai-image-list" class="ai-chip-list"></div>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
-        
+        <div id="ai-workflow-steps" style="display:grid;gap:5px;margin:8px 0 12px;font-size:10px;">
+          <div data-workflow-step="authority" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:7px;padding:6px 8px;border:1px solid #263c57;border-radius:6px;background:#0b1728;">
+            <span style="font-weight:900;color:#93c5fd;">1</span><div style="min-width:0;"><strong data-step-title style="color:#dbeafe;">Load Master Template + Reference JSON</strong><div data-step-detail style="color:#94a3b8;margin-top:2px;">Waiting for this stage.</div></div><strong data-step-status style="font-size:9px;color:#64748b;">WAITING</strong>
+          </div>
+          <div data-workflow-step="photos" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:7px;padding:6px 8px;border:1px solid #263c57;border-radius:6px;background:#0b1728;">
+            <span style="font-weight:900;color:#93c5fd;">2</span><div style="min-width:0;"><strong data-step-title style="color:#dbeafe;">Analyze every product photo</strong><div data-step-detail style="color:#94a3b8;margin-top:2px;">Waiting for this stage.</div></div><strong data-step-status style="font-size:9px;color:#64748b;">WAITING</strong>
+          </div>
+          <div data-workflow-step="research" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:7px;padding:6px 8px;border:1px solid #263c57;border-radius:6px;background:#0b1728;">
+            <span style="font-weight:900;color:#93c5fd;">3</span><div style="min-width:0;"><strong data-step-title style="color:#dbeafe;">Research sources + tax evidence</strong><div data-step-detail style="color:#94a3b8;margin-top:2px;">Waiting for this stage.</div></div><strong data-step-status style="font-size:9px;color:#64748b;">WAITING</strong>
+          </div>
+          <div data-workflow-step="mapping" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:7px;padding:6px 8px;border:1px solid #263c57;border-radius:6px;background:#0b1728;">
+            <span style="font-weight:900;color:#93c5fd;">4</span><div style="min-width:0;"><strong data-step-title style="color:#dbeafe;">Map evidence to Meesho fields</strong><div data-step-detail style="color:#94a3b8;margin-top:2px;">Waiting for this stage.</div></div><strong data-step-status style="font-size:9px;color:#64748b;">WAITING</strong>
+          </div>
+          <div data-workflow-step="apply" style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:7px;padding:6px 8px;border:1px solid #263c57;border-radius:6px;background:#0b1728;">
+            <span style="font-weight:900;color:#93c5fd;">5</span><div style="min-width:0;"><strong data-step-title style="color:#dbeafe;">Validate and Apply to Meesho</strong><div data-step-detail style="color:#94a3b8;margin-top:2px;">Waiting for this stage.</div></div><strong data-step-status style="font-size:9px;color:#64748b;">WAITING</strong>
+          </div>
+        </div>
         <div id="ai-title-options" class="ai-title-options" style="display:none"></div>
         <div id="ai-preview" class="ai-preview" style="display:none"></div>
         
