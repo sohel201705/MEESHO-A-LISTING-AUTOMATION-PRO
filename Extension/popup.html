@@ -1852,6 +1852,7 @@
     .ai-research-source a{font-size:11px;font-weight:700;color:#1d4ed8;overflow-wrap:anywhere}
     .ai-research-source .ai-muted{margin-top:2px;overflow-wrap:anywhere}
     .ai-product-grid,.ai-default-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    .ai-tax-summary{border:1px solid #28496b;border-radius:7px;background:#0b2035;color:#dbeafe;padding:8px;margin:8px 0;line-height:1.4;overflow-wrap:anywhere}.ai-tax-summary-line{display:flex;flex-wrap:wrap;gap:2px;margin:3px 0}
     .ai-catalog-card label{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:700;color:#475569;min-width:0}
     .ai-catalog-card input,.ai-catalog-card textarea,.ai-catalog-card select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:7px;font:inherit;font-size:11px;color:#0f172a;background:#fff}
     .ai-catalog-card input[type=file]{padding:7px;font-weight:400}.ai-full-label{display:flex;flex-direction:column;gap:5px;margin:8px 0}
@@ -2573,6 +2574,18 @@
           <div id="ai-variation-sizes" class="ai-size-options"><span class="ai-muted">Scan the catalog to load size options.</span></div>
         </div>
         <button id="ai-scan-current-btn" type="button" class="ai-secondary-btn" style="width:100%;margin:0 0 8px">Refresh Selected Catalog Detection</button>
+        <div class="ai-section-heading" style="font-size:11px;font-weight:800;margin:4px 0 6px;color:#dbeafe;">Main Product Details</div>
+        <div class="ai-product-grid ai-essential-inputs ai-core-product-inputs">
+          <label>Product name<input id="ai-product-name" type="text" placeholder="AI can identify from product photos"></label>
+          <label>Material<input id="ai-product-material" type="text" placeholder="Research / photo detected"></label>
+          <label>Color<input id="ai-product-color" type="text" placeholder="Detected or confirmed color"></label>
+          <label>Capacity / volume<input id="ai-product-capacity" type="text" placeholder="e.g. 750 ml or 1 L"></label>
+          <label>Product weight (g)<input id="ai-product-weight" type="number" min="0" step="0.1" placeholder="Research estimate if available"></label>
+          <label>Product length (cm)<input id="ai-product-length" type="number" min="0" step="0.1" placeholder="Research estimate if available"></label>
+          <label>Product breadth / width (cm)<input id="ai-product-width" type="number" min="0" step="0.1" placeholder="Research estimate if available"></label>
+          <label>Product height (cm)<input id="ai-product-height" type="number" min="0" step="0.1" placeholder="Research estimate if available"></label>
+        </div>
+        <div class="ai-section-heading" style="font-size:11px;font-weight:800;margin:8px 0 6px;color:#dbeafe;">Price &amp; Stock</div>
         <div class="ai-product-grid ai-essential-inputs">
           <label>Meesho selling price (₹)<input id="ai-product-price" type="number" min="5.01" step="0.01" placeholder="Enter selling price (optional if already set)"></label>
           <label>Wrong/Defective Returns Price (₹)<input id="ai-product-return-price" type="number" readonly placeholder="Calculated: selling price − ₹5"></label>
@@ -2581,23 +2594,16 @@
           <label>Pack quantity (pieces per pack)<input id="ai-product-pack-quantity" type="number" min="1" max="999" step="1" value="1" placeholder="1 = single item"></label>
         </div>
         <p class="ai-muted ai-pack-quantity-hint">Enter the actual number of sale units inside one pack. This is separate from the number of photos.</p>
-        <p class="ai-muted ai-price-rule">The selected Meesho catalog determines the category and available fields automatically. Add photos; enter only price/stock details you know. Unverified measurements and legal details will not be guessed.</p>
+        <div id="ai-tax-summary" class="ai-tax-summary" role="status" aria-live="polite">
+          <strong>Automatic HSN / GST Research</strong>
+          <div>These codes are researched from the selected category, product attributes and Government sources, then placed into the Draft automatically when an exact match is supported.</div>
+        </div>
+        <details class="ai-optional-product-details">
+          <summary>Optional additional product facts <span>· Only add confirmed packaging, model or special features</span></summary>
+          <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Confirmed set count, package contents or model details"></textarea></label>
+        </details>
         <label class="ai-full-label ai-photo-label">Product photos for the same product (JPG / PNG / WEBP; up to 10 photos, 8 MB each)<input id="ai-product-images" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
         <div id="ai-image-list" class="ai-chip-list"></div>
-        <details class="ai-optional-product-details">
-          <summary>Optional verified product details <span>· AI will infer from the selected catalog and photos when possible</span></summary>
-          <div class="ai-product-grid">
-            <label>Product name (optional)<input id="ai-product-name" type="text" placeholder="AI identifies it from photos if blank"></label>
-            <label>Material (only if known)<input id="ai-product-material" type="text" placeholder="Verified material"></label>
-            <label>Color (optional)<input id="ai-product-color" type="text" placeholder="Known color"></label>
-            <label>Product capacity (only if known)<input id="ai-product-capacity" type="text" placeholder="e.g. 750 ml or 1 L"></label>
-            <label>Product weight (g)<input id="ai-product-weight" type="number" min="0" step="0.1" placeholder="Actual weight"></label>
-            <label>Product length (cm)<input id="ai-product-length" type="number" min="0" step="0.1" placeholder="Actual length"></label>
-            <label>Product width (cm)<input id="ai-product-width" type="number" min="0" step="0.1" placeholder="Actual width"></label>
-            <label>Product height (cm)<input id="ai-product-height" type="number" min="0" step="0.1" placeholder="Actual height"></label>
-          </div>
-          <label class="ai-full-label">Other verified product facts<textarea id="ai-product-facts" rows="2" placeholder="Only if you have confirmed capacity, set count, package contents or model details"></textarea></label>
-        </details>
         <div class="ai-actions"><button id="ai-generate-btn" type="button" class="ai-primary-btn">Analyze Images &amp; Generate</button><button id="ai-autofill-btn" type="button" class="ai-secondary-btn" disabled>Autofill on Meesho Tab</button></div>
         <div id="ai-status" class="ai-status" role="status" aria-live="polite"></div>
         
