@@ -2,7 +2,7 @@
 'use strict';
 const KEY='ai_provider_keys_v1', DEFAULTS='ai_seller_defaults_v1', ROT='ai_provider_rotation_v1', PROFILE_DB='ai_seller_profiles_v1', PROFILE_OWNER='ai_seller_profile_owner_v1';
 let draft=null, pending=[], scanNow=null, researchNow={seed:'',results:[],error:''};
-let workflowBundle=null,workflowBundlePromise=null,activePhotoConflicts=[];
+let workflowBundle=null,workflowBundlePromise=null,activePhotoConflicts=[],productIdentityScore=0,productIdentityStatus='UNASSESSED';
 const MASTER_RESOURCE_PATH='resources/MASTER_TEMPLATE_PRO_MAX_V26.md';
 const REFERENCE_RESOURCE_PATH='resources/COMPLETE_REFERENCE_JSON.json';
 let profileCache=null, titleChoices=[], activeTitleFieldId='', currentTitleProduct=null, currentTitleFields=[], currentTitleStats=null, currentTitleNeeds=[], chatHistory=[];
@@ -112,6 +112,30 @@ function normalizePrimaryColor(value){
  for(const [pattern,label] of rules){const match=pattern.exec(raw);if(match&&(!best||match.index<best.index||(match.index===best.index&&match[0].length>best.length)))best={index:match.index,length:match[0].length,label};}
  return best?best.label:raw.split(/\s+(?:and|with|plus)\s+|[,/|;]/i)[0].trim().split(/\s+/).slice(0,2).join(' ');
 }
+function scoreProductIdentity(p,identified,sellerNameProvided){
+ if(!identified)return 0;
+ let score=0;
+ const confidence=String(identified.confidence||'low').toLowerCase();
+ score+=confidence==='high'?15:confidence==='medium'?10:0;
+ const name=String(p&&p.productName||identified.productName||'').trim();
+ const generic=/^(product|item|water bottle|bottle|plastic bottle|container|accessory|unknown)$/i.test(name);
+ if(name&&!generic)score+=sellerNameProvided?20:18;
+ if(String(identified.productType||p&&p.productType||'').trim().length>=5)score+=15;
+ if(String(p&&p.productTypeEvidence||'').trim().length>=15)score+=10;
+ if(String(p&&p.material||'').trim())score+=10;
+ if(String(p&&p.color||'').trim())score+=5;
+ if(capacityInMl(p&&p.productCapacity||'')!==null)score+=5;
+ if(String(identified.brandIfLegible||'').trim())score+=10;
+ if(String(identified.modelIfLegible||'').trim())score+=10;
+ if(Array.isArray(identified.visibleText)&&identified.visibleText.length)score+=5;
+ if(Array.isArray(identified.searchTerms)&&identified.searchTerms.length>=2)score+=5;
+ if(String(p&&p.productFacts||'').trim())score+=5;
+ return Math.min(100,score);
+}
+function productIdentityBand(score){
+ return score>=95?'VERIFIED':score>=85?'STRONG':score>=70?'POSSIBLE — APPROVAL':'BLOCKED — INPUT REQUIRED';
+}
+
 function categoryResearchTerms(p,scan,catalog){
  const ctx=safeMeeshoCatalogContext(scan&&scan.catalogContext||{}),categoryBits=[ctx.subCategoryName,ctx.categoryName,ctx.catalogType,ctx.breadcrumb,catalog&&catalog.name,catalog&&catalog.type,p&&p.productType].filter(Boolean);
  const fields=schema(scan||{}).fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
@@ -1786,7 +1810,7 @@ function promptFor(scan,p,d,s,research){
 
 async function generate(googleAllowed){
  try{
-  clearLiveLog();resetWorkflowSteps();activePhotoConflicts=[];
+  clearLiveLog();resetWorkflowSteps();activePhotoConflicts=[];productIdentityScore=0;productIdentityStatus='UNASSESSED';
   setWorkflowStep('authority','running','Loading the bundled Master Template and complete reference JSON.');
   workflowBundle=await ensureWorkflowBundle();
   liveLog('MASTER AUTHORITY · bundled template verified · fingerprint '+workflowBundle.masterFingerprint+' · reference profiles '+workflowBundle.referenceProfiles+'.','ok');
@@ -1841,9 +1865,10 @@ async function generate(googleAllowed){
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
   let identified=null;
+  let sellerProductNameProvided=Boolean(String(p.productName||'').trim());
   setWorkflowStep('photos','running','Analyzing '+imgs.length+' uploaded photo(s) individually across AI batches.');
   if(p.productName&&imgs.some(img=>norm(cleanSearchSeed(img.name))===norm(cleanSearchSeed(p.productName)))){
-   p.productName='';$('ai-product-name').value='';liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
+   p.productName='';$('ai-product-name').value='';sellerProductNameProvided=false;liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
   }
   setProgress(18,'Photos ready · identify product type and visual search clues');
   try{
@@ -1885,9 +1910,15 @@ async function generate(googleAllowed){
    const visible=Array.isArray(identified.visibleText)?identified.visibleText.map(x=>String(x||'').trim()).filter(Boolean).slice(0,8):[];
    const facts=[String(p.productFacts||'').trim(),p.productTypeEvidence?'Photo-derived research clues (verify against sources): '+p.productTypeEvidence:'',visible.length?'Readable product text from photos (verify): '+visible.join('; '):''].filter(Boolean);
    p.productFacts=facts.join(' | ').slice(0,1000);
+   productIdentityScore=scoreProductIdentity(p,identified,sellerProductNameProvided);
+   productIdentityStatus=productIdentityBand(productIdentityScore);
+   p.productIdentityScore=productIdentityScore;p.productIdentityStatus=productIdentityStatus;
+   liveLog('PRODUCT IDENTITY LOCK · '+productIdentityScore+'/100 · '+productIdentityStatus+'. Exact external facts stay blocked below 70; scores 70–84 require seller approval.',''+(productIdentityScore<70?'warn':'info'));
+   setWorkflowStep('photos',productIdentityScore<70?'blocked':'done',imgs.length+' photo(s) analysed · identity '+productIdentityScore+'/100 ('+productIdentityStatus+').');
    if(identified.searchTerms&&identified.searchTerms.length)liveLog('VISION IDENTIFICATION · '+identified.searchTerms.length+' visual search term(s) will be used to find similar products, not to copy their titles.','ok');
   }catch(e){
-   setWorkflowStep('photos','blocked','AI photo identity analysis failed; inspect the selected images and enabled vision provider.');
+   productIdentityScore=0;productIdentityStatus='BLOCKED — INPUT REQUIRED';
+   setWorkflowStep('photos','blocked','AI photo identity analysis failed; exact-product identity is not established.');
    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
    if(!p.productName){p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;}
    liveLog('VISION IDENTIFICATION · photo clue extraction failed; only the selected form/category remains. Research must not treat category fallback as exact product evidence. Details: '+redactSecrets(e,null),'warn');
@@ -1913,7 +1944,7 @@ async function generate(googleAllowed){
   say('Researching category-based product specifications and official tax sources…');
   liveLog('WEB RESEARCH · queries are based on selected category, form attributes and photo context—not an external listing title.','info');
   researchNow=await researchProduct(p,imgs,googleAllowed,scan,detectedCatalog);
-  researchNow.photoAnalysis={imagesAnalysed:imgs.length,productName:p.productName,productType:p.productTypeEvidence||p.productType,color:p.color||'',material:p.material||'',capacity:p.productCapacity||'',confidence:identified&&identified.confidence||'unknown',conflicts:identified&&identified.visionConflicts||[]};
+  researchNow.photoAnalysis={imagesAnalysed:imgs.length,productName:p.productName,productType:p.productTypeEvidence||p.productType,color:p.color||'',material:p.material||'',capacity:p.productCapacity||'',confidence:identified&&identified.confidence||'unknown',identityScore:productIdentityScore,identityStatus:productIdentityStatus,conflicts:identified&&identified.visionConflicts||[]};
   attachOfficialTaxReferences(researchNow,p,imgs,scan,detectedCatalog);
   researchNow.measurementEstimates=buildMeasurementEstimates(researchNow,s.fields,scan);
   if(researchNow.automaticTaxClassification)liveLog('OFFICIAL TAX RULE · '+researchNow.automaticTaxClassification.productType+' · HSN '+researchNow.automaticTaxClassification.hsn+' · GST '+researchNow.automaticTaxClassification.gst+'. Official Government of India and CBIC references attached.','ok');
@@ -1934,8 +1965,11 @@ async function generate(googleAllowed){
    const detectedPrimary=modelColor||titleColor;
    if(detectedPrimary){p.color=detectedPrimary;const colorInput=$('ai-product-color');if(colorInput)colorInput.value=detectedPrimary;liveLog('PRIMARY COLOR · selected '+detectedPrimary+' as the single dominant product color.','ok');}
   }
-  await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
+  if(productIdentityScore>=70)await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
+  else liveLog('IDENTITY HARD LOCK · targeted exact-product HSN/GST candidate checks are not accepted below 70/100. Improve product identity evidence and re-run analysis.','warn');
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
+  if(productIdentityScore<70)needs.push({identifier:'product_identity',reason:'Identity score '+productIdentityScore+'/100 is below the Master Template minimum. Add a specific product name, clear product photos or verified product details, then regenerate before applying.'});
+  else if(productIdentityScore<85)needs.push({identifier:'product_identity_approval',reason:'Identity score '+productIdentityScore+'/100 is in the POSSIBLE — APPROVAL range. Verify that the photos, color, capacity and product name all describe the same item before applying.'});
   (identified&&Array.isArray(identified.visionConflicts)?identified.visionConflicts:[]).forEach(conflict=>needs.push({identifier:'photo_identity_'+String(conflict.field||'conflict'),reason:'Photo analysis conflict for '+String(conflict.field||'product identity')+': '+(conflict.values||[]).join(' vs ')+'. Confirm that all photos show the same product variant before applying.'}));
   // Meesho's default GST "0" is a placeholder, not a researched product tax rate.
   // Remove only obvious placeholder values so the AI/research result can replace them.
@@ -1968,6 +2002,7 @@ async function generate(googleAllowed){
   liveLog('VALUE MAPPING · applying title-based SKU/Style Code, seller defaults and explicit pricing rules.','info');
   s.fields.forEach(f=>{
    const old=captured(scan,f.identifier);
+   if(isTaxField(f)&&productIdentityScore<70){needs.push({identifier:f.identifier,reason:'HSN/GST exact classification is blocked because product identity is below 70/100. No category-only tax guess is allowed.'});return;}
    const fixed=isTaxField(f)?'':preset(f,p,d);
    const isPriceOrInventory=/(meesho_price|only_wrong_return_price|product_mrp|inventory)/.test(String(f.identifier||''))||/(meesho price|wrong|defective|return price|\bmrp\b|inventory|stock quantity)/.test(norm(f.label));
    // Respect already-entered Meesho values unless the seller explicitly supplied the new pricing value.
@@ -2075,7 +2110,7 @@ async function generate(googleAllowed){
    if(f.mandatory&&!String(values[f.identifier]||'').trim()&&!needs.some(n=>n&&n.identifier===f.identifier))
     needs.push({identifier:f.identifier,reason:'Required field is blank because a verified value was not found.'});
   });
-  const unresolvedTaxFields=s.fields.filter(f=>isTaxField(f)&&!String(values[f.identifier]||'').trim());
+  const unresolvedTaxFields=s.fields.filter(f=>isTaxField(f)&&(!String(values[f.identifier]||'').trim()||![...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])].some(row=>officialTaxEvidence(f,String(values[f.identifier]||'').trim(),{url:row.url},researchNow))));
   unresolvedTaxFields.forEach(f=>{
    if(!needs.some(n=>n&&n.identifier===f.identifier))needs.push({identifier:f.identifier,reason:'Mandatory tax field unresolved. Add/confirm an official classification source before Autofill; the extension will not submit a blank or fabricated HSN/GST value.'});
   });
@@ -2088,9 +2123,9 @@ async function generate(googleAllowed){
   const autofillButton=$('ai-autofill-btn');
   if(autofillButton){autofillButton.disabled=!Object.values(values).some(v=>String(v||'').trim());autofillButton.title=unresolvedTaxFields.length?'HSN/GST values are unresolved. Click for guidance or edit the tax fields in Draft.':'';}
   const photoConflictNeeds=(identified&&identified.visionConflicts||[]).length;
-  const mappingBlocked=unresolvedTaxFields.length>0||photoConflictNeeds>0;
-  setWorkflowStep('mapping',mappingBlocked?'blocked':'done',Object.keys(values).filter(k=>String(values[k]||'').trim()).length+' mapped value(s); '+needs.length+' review item(s); '+unresolvedTaxFields.length+' unresolved tax field(s); '+photoConflictNeeds+' photo conflict(s).');
-  setWorkflowStep('apply',mappingBlocked?'blocked':'waiting',unresolvedTaxFields.length?'Review verified HSN/GST in Draft before applying.':photoConflictNeeds?'Conflicting photo identity must be resolved; do not apply this draft.':'Ready after seller review of the draft.');
+  const mappingBlocked=unresolvedTaxFields.length>0||photoConflictNeeds>0||productIdentityScore<70;
+  setWorkflowStep('mapping',mappingBlocked?'blocked':'done',Object.keys(values).filter(k=>String(values[k]||'').trim()).length+' mapped value(s); identity '+productIdentityScore+'/100 ('+productIdentityStatus+'); '+needs.length+' review item(s); '+unresolvedTaxFields.length+' unresolved tax field(s); '+photoConflictNeeds+' photo conflict(s).');
+  setWorkflowStep('apply',mappingBlocked?'blocked':'waiting',unresolvedTaxFields.length?'Review source-verified HSN/GST in Draft before applying.':photoConflictNeeds?'Conflicting photo identity must be resolved; do not apply this draft.':productIdentityScore<70?'Product identity score is below the Master Template minimum.':'Ready after seller review of the draft.');
   if(unresolvedTaxFields.length)liveLog('TAX REVIEW REQUIRED · HSN/GST remain mandatory. Autofill stays clickable, but listing fill is paused until verified values are supplied.','warn');
   const imageNote=answer.imageBatches>1?' All '+imgs.length+' photos were analyzed in '+answer.imageBatches+' batches.':'';
   const researchNote=researchNow.results.length?' Category-based web research added.':(' Web research unavailable: '+(researchNow.error||'no results')+'.');
@@ -2114,7 +2149,8 @@ async function autofill(){
   if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
   const payload=Object.assign({},draft);
   const fields=(scanNow.sections||[]).flatMap(section=>section.fields||[]);
-  const unresolvedTax=fields.filter(field=>isTaxField(field)&&!String(payload[field.identifier]||'').trim());
+  if(productIdentityScore<70){setWorkflowStep('apply','blocked','Product identity score '+productIdentityScore+'/100 is below the required threshold.');say('Autofill blocked by Master Template hard lock: product identity score is '+productIdentityScore+'/100. Add a specific product name or clearer photos/details, then run Analyze Images & Generate again.','warning');return;}
+  const unresolvedTax=fields.filter(field=>{if(!isTaxField(field))return false;const value=String(payload[field.identifier]||'').trim();return !value||![...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])].some(row=>officialTaxEvidence(field,value,{url:row.url},researchNow));});
   if(unresolvedTax.length){
    const names=unresolvedTax.map(field=>field.label||field.identifier).join(', ');
    setWorkflowStep('apply','blocked','Required HSN/GST values must be verified before sending anything to Meesho.');
