@@ -476,7 +476,20 @@ async function resetKnownAppData() {
 
 $('google-login').addEventListener('click',login);
 $('logout').addEventListener('click',()=>signOut(auth));
-$('initialize-db').addEventListener('click',()=>initializeDatabase().catch(e=>toast(e?.message||'Initialization failed.','error')));
+async function runFirebaseIntegration() {
+  const buttons = [$('initialize-db'), $('run-firebase-integration')].filter(Boolean);
+  const originalLabels = buttons.map(button => button.textContent);
+  buttons.forEach(button => { button.disabled = true; button.textContent = 'Integrating Firebase…'; });
+  try {
+    await initializeDatabase();
+  } catch (error) {
+    toast(error?.message || 'Firebase integration failed.', 'error');
+  } finally {
+    buttons.forEach((button, index) => { button.disabled = false; button.textContent = originalLabels[index]; });
+  }
+}
+$('initialize-db').addEventListener('click', runFirebaseIntegration);
+$('run-firebase-integration')?.addEventListener('click', runFirebaseIntegration);
 $('download-backup').addEventListener('click',()=>downloadLocalBackup().catch(e=>toast(e?.message||'Backup failed.','error')));
 $('restore-backup-trigger').addEventListener('click',()=>$('backup-file-input').click());
 $('backup-file-input').addEventListener('change',async e=>{
