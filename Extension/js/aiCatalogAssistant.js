@@ -31,7 +31,7 @@ function unwrapSearchResultUrl(raw,baseUrl){
    if(target)u=new URL(target);
   }else if(/(^|\.)duckduckgo\.com$/i.test(host)&&/^\/l\/?$/.test(u.pathname)){
    const target=u.searchParams.get('uddg')||u.searchParams.get('url');
-   if(target)u=new URL(decodeURIComponent(target));
+   if(target)u=new URL(target);
   }else if(/(^|\.)bing\.com$/i.test(host)&&/^\/ck\/a\/?$/i.test(u.pathname)){
    const encoded=u.searchParams.get('u')||'';
    if(/^a\d/i.test(encoded)){
@@ -117,7 +117,7 @@ function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
  const relevantFields=formSchema.fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
  const formEvidence=relevantFields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).join(' ');
  const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
- const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText);
+ const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText+' '+String(p&&p.productName||'')+' '+String(p&&p.productTypeEvidence||'')+' '+String(p&&p.imageResearchTerms||''));
  const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
  const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
  if(vacuum){
