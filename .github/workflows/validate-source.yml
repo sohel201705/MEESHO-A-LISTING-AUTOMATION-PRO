@@ -338,7 +338,19 @@ jobs:
           assert.ok(titleChoices.every(x => x.title.length >= 201 && x.title.length <= 250 && /pack of 2/i.test(x.title)));
           assert.equal(new Set(titleChoices.map(x => x.title)).size, 4);
           assert.ok(titleChoices.every(x => !/\.(?:jpe?g|png|webp|gif)\b/i.test(x.title)));
+          assert.ok(titleChoices.every(x => !x.title.includes(' / / ')));
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
+          const filenameTitleChoices = titleBuilder([
+            { title: 'Lunch Boxes / Orange / With Cutlery / Pack of 1.jpg', recommended: true },
+            { title: 'Lunch Boxes / Plastic / Orange / Pack of 1.png' },
+            { title: 'Lunch Boxes / With Cutlery / Orange / Pack of 1' },
+            { title: 'Lunch Boxes / Orange / Pack of 1' }
+          ], 'Lunch Boxes', { packQuantity: '1', productCategory: 'kitchen', productType: 'Kitchenware / Food Storage', material: 'Plastic', color: 'Orange' }, { brand: '' });
+          assert.equal(filenameTitleChoices.length, 4);
+          assert.ok(filenameTitleChoices.every(x => x.title.length >= 201 && x.title.length <= 250));
+          assert.ok(filenameTitleChoices.every(x => x.title.includes('Lunch Boxes') && !x.title.includes(' / / ')));
+          assert.ok(filenameTitleChoices.every(x => /Pack of 1$/i.test(x.title)));
+
           assert.ok(aiAssistant.includes('function stripImageFilenameArtifacts'));
           assert.ok(aiAssistant.includes('function categoryResearchTerms'));
           assert.ok(aiAssistant.includes('DuckDuckGo'));
