@@ -72,7 +72,7 @@ jobs:
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.17.9');
+          assert.equal(manifest.version, '3.18.2');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
@@ -321,11 +321,12 @@ jobs:
           const titleEnd = aiAssistant.indexOf('function renderTitleOptions()', titleStart);
           const titleCode = aiAssistant.slice(titleStart, titleEnd);
           assert.ok(titleStart >= 0 && titleEnd > titleStart);
-          assert.ok(titleCode.includes("const packSegment=' / Pack of '+packCount") && titleCode.includes('raw+=packSegment'));
+          assert.ok(titleCode.includes("packSegment=' / Pack of '+packCount") && titleCode.includes('clean.length<201||clean.length>250'));
           const titleHelpersStart = aiAssistant.indexOf('function cleanTitle(title)');
           assert.ok(titleHelpersStart >= 0);
-          const titleBuilder = new Function('norm', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
-            value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+          const titleBuilder = new Function('norm','stripImageFilenameArtifacts', aiAssistant.slice(titleHelpersStart, titleEnd) + '; return buildTitleChoices;')(
+            value => String(value || '').replace(/[＊*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(),
+            value => String(value || '').replace(/(?:^|[\s/])[^/\s]+\.(?:jpe?g|png|webp|gif|bmp|avif)\b/gi,' ').replace(/\s+/g, ' ').trim()
           );
           const titleChoices = titleBuilder([
             { title: 'Bottle / Steel / Pack of 4', recommended: true },
@@ -334,7 +335,13 @@ jobs:
             { title: 'Travel Bottle / Metal', recommended: false }
           ], 'Water Bottle', { packQuantity: '2', productCapacity: '750 ml', material: 'Steel', color: 'Silver' }, { brand: 'Eagle' });
           assert.equal(titleChoices.length, 4);
-          assert.ok(titleChoices.every(x => x.title.length <= 250 && /pack of 2/i.test(x.title)));
+          assert.ok(titleChoices.every(x => x.title.length >= 201 && x.title.length <= 250 && /pack of 2/i.test(x.title)));
+          assert.equal(new Set(titleChoices.map(x => x.title)).size, 4);
+          assert.ok(titleChoices.every(x => !/\.(?:jpe?g|png|webp|gif)\b/i.test(x.title)));
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
-          console.log('v3.17.9 checks passed: pack quantity, Gemini quota fallback diagnostics, verified Free Size selection, shipping photo capture, and nine provider cards.');
+          assert.ok(aiAssistant.includes('function stripImageFilenameArtifacts'));
+          assert.ok(aiAssistant.includes('function categoryResearchTerms'));
+          assert.ok(aiAssistant.includes('DuckDuckGo'));
+          assert.ok(aiAssistant.includes('39241090'));
+          console.log('v3.18.2 checks passed: category research, original SEO titles, filename filtering, tax evidence and existing extension safeguards.');
           NODE
