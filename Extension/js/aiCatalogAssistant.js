@@ -1476,7 +1476,8 @@ function isDescriptionField(f){
 }
 function stripBrandPlaceholders(value){
  const placeholders=/^(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided|n\/?a)|unknown\s+brand|n\/?a|na|not\s+applicable|not\s+provided|not\s+specified|unknown)$/i;
- const parts=stripImageFilenameArtifacts(String(value||'')).split(/\s*\/\s*/).map(x=>x.trim()).filter(x=>x&&!placeholders.test(x));
+ let raw=stripImageFilenameArtifacts(String(value||'')).replace(/\bN\s*\/\s*A\b/ig,' ');
+ const parts=raw.split(/\s*\/\s*/).map(x=>x.trim()).filter(x=>x&&!placeholders.test(x));
  let text=parts.join(' / ');
  text=text.replace(/\b(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided)|unknown\s+brand)\b/ig,' ');
  return text.replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*){2,}/g,' / ').replace(/^\s*\/\s*|\s*\/\s*$/g,'').replace(/\s+/g,' ').trim();
