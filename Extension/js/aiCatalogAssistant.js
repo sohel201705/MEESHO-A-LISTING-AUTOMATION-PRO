@@ -9,7 +9,16 @@ const set=o=>new Promise(r=>chrome.storage.local.set(o,r));
 
 const SEARCH_ORIGINS=['https://www.google.com/*','https://html.duckduckgo.com/*','https://www.bing.com/*'];
 function requestGoogleSearchPermission(){return new Promise(resolve=>{try{chrome.permissions.request({origins:SEARCH_ORIGINS},granted=>resolve(Boolean(granted)));}catch(e){resolve(false);}});}
-function stripImageFilenameArtifacts(value){return String(value||'').replace(/(?:^|[\s/])[^/\s]+\.(?:jpe?g|png|webp|gif|bmp|avif)\b/gi,' ').replace(/\b(?:img|dsc|dscn|screenshot|photo|image)[_-]?\d+\b/gi,' ').replace(/\s+/g,' ').trim();}
+function stripImageFilenameArtifacts(value){
+ return String(value||'')
+  .replace(/\b([A-Za-z0-9_-]+)\.(?:jpe?g|png|webp|gif|bmp|avif)\b/gi,(match,stem)=>{
+   if(/^\d+$/.test(stem))return stem;
+   if(/[_-]/.test(stem)||/^(?:img|dscn?|screenshot|photo|image|productimg|productimage|file)[_-]?\d*$/i.test(stem))return ' ';
+   return stem;
+  })
+  .replace(/\b(?:img|dsc|dscn|screenshot|photo|image)[_-]?\d+\b/gi,' ')
+  .replace(/\s+/g,' ').trim();
+}
 function cleanSearchSeed(value){return stripImageFilenameArtifacts(value).replace(/\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\b/gi,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,160);}
 function validExternalUrl(raw){try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return '';if(/(^|\.)google\.[a-z.]+$/i.test(u.hostname)||/(^|\.)bing\.com$/i.test(u.hostname)||/(^|\.)duckduckgo\.com$/i.test(u.hostname)||/googleusercontent|accounts\.google|support\.google/i.test(u.hostname))return '';return u.href;}catch(e){return '';}}
 function parseGoogleResults(html,baseUrl){
