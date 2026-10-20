@@ -380,6 +380,15 @@ jobs:
           assert.equal(titleChoices.filter(x => x.recommended).length, 1);
           assert.ok(titleChoices.every(x => !/\b(?:not branded|non[- ]?branded|unbranded|no brand|unknown brand|brand not specified)\b/i.test(x.title)));
           assert.equal(new Set(titleChoices.map(x => x.strategy)).size, 4);
+          const placeholderTitleChoices = titleBuilder([
+            { title: 'Lunch Boxes / Not Branded / 1L / Plastic / Orange / Multi Layer / Pack of 1', recommended: true },
+            { title: 'Lunch Boxes / N/A / 1L / Plastic / Orange / Spoon Included / Pack of 1' },
+            { title: 'Lunch Boxes / Unknown / 1L / Plastic / Orange / Travel Meals / Pack of 1' },
+            { title: 'Lunch Boxes / Non-Branded / 1L / Plastic / Orange / Food Storage / Pack of 1' }
+          ], 'Lunch Boxes / Not Branded / 1L / Plastic / Orange', { packQuantity: '1', productCategory: 'kitchen', productType: 'Kitchenware / Food Storage', productCapacity: '1 L', material: 'Plastic', color: 'Orange' }, { brand: '' });
+          assert.equal(placeholderTitleChoices.length, 4);
+          assert.ok(placeholderTitleChoices.every(x => !/\b(?:not branded|non[- ]?branded|unbranded|no brand|unknown brand|brand not specified|n\s*\/\s*a)\b/i.test(x.title)));
+          assert.ok(placeholderTitleChoices.every(x => !/\/\s*(?:N\s*\/\s*A|Unknown)\s*\//i.test(x.title)));
           const filenameTitleChoices = titleBuilder([
             { title: 'Lunch Boxes / Orange / With Cutlery / Pack of 1.jpg', recommended: true },
             { title: 'Lunch Boxes / Plastic / Orange / Pack of 1.png' },
