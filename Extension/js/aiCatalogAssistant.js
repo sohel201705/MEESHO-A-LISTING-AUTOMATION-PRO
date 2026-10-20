@@ -1148,19 +1148,164 @@ function renderResearchSources(research){
  });
  host.appendChild(list);
 }
-function showPreview(fields,values,needs,stats,research){
- const root=$('ai-preview');root.replaceChildren();root.style.display='block';
- root.appendChild(el('div','ai-preview-title','AI Draft Preview'));
- root.appendChild(el('div','ai-muted','AI values: '+stats.ai+' · Defaults: '+stats.preset+' · Generated codes: '+stats.generated+' · Dropdown mismatches: '+stats.bad+' · Needs confirmation: '+needs.length));
- if(research&&research.seed)root.appendChild(el('div','ai-muted','Google research seed: '+research.seed));
- const list=el('div','ai-preview-list');
- fields.forEach(f=>{const v=values[f.identifier],row=el('div','ai-preview-item');row.appendChild(el('span','ai-preview-label',f.label+(f.mandatory?' *':'')));row.appendChild(el('span','ai-preview-value'+(v?'':' ai-blank'),v?String(v):'Not filled'));list.appendChild(row);});
- root.appendChild(list);
- const sizes=selectedVariationSizes();
- if(sizes.length)root.appendChild(el('p','ai-muted','Size variants to select on Meesho: '+sizes.join(', ')));
- if(needs.length){const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs confirmation — '+needs.length));const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});box.appendChild(ul);root.appendChild(box);}
- root.appendChild(el('p','ai-muted','Review the draft. Tax classification uses the selected category, material and official sources. Physical measurements remain unresolved rather than fabricated when no matching specification can be verified.'));
+function dropdownEquivalent(value,field){
+ const wanted=String(value||'').trim();if(!wanted)return '';
+ if(!field||!Array.isArray(field.values)||!field.values.length)return wanted;
+ const exact=field.values.find(option=>norm(option)===norm(wanted));
+ if(exact!==undefined)return String(exact);
+ const compact=value=>norm(value).replace(/[^a-z0-9]+/g,'');
+ const equivalent=field.values.find(option=>compact(option)===compact(wanted));
+ return equivalent===undefined?'':String(equivalent);
 }
+function setDraftControlStyle(control){
+ control.style.width='100%';control.style.boxSizing='border-box';control.style.minWidth='0';
+ control.style.padding='6px';control.style.borderRadius='5px';control.style.font='10px/1.45 system-ui';
+ control.style.background='#081323';control.style.color='#e5efff';control.style.border='1px solid #315375';
+ control.style.whiteSpace='normal';control.style.overflowWrap='anywhere';
+}
+function makeDraftControl(field,value){
+ let control;
+ if(Array.isArray(field.values)&&field.values.length){
+  control=el('select','ai-draft-field-control');
+  const mapped=dropdownEquivalent(value,field);
+  if(value&&!mapped){
+   const option=el('option','',String(value)+' · current value, not in dropdown');
+   option.value=String(value);option.dataset.unmatched='true';control.appendChild(option);
+  }else{
+   const option=el('option','','Choose an exact Meesho option…');option.value='';control.appendChild(option);
+  }
+  field.values.forEach(item=>{const option=el('option','',String(item));option.value=String(item);control.appendChild(option);});
+  control.value=mapped||String(value||'');
+ }else if(isDescriptionField(field)||String(value||'').length>90){
+  control=el('textarea','ai-draft-field-control');control.rows=isDescriptionField(field)?5:3;control.value=String(value||'');
+ }else{
+  control=el('input','ai-draft-field-control');
+  const ftype=String(field.inputType||'').toLowerCase();
+  control.type=ftype==='number'||isPhysicalMeasureField(field)||/(price|mrp|inventory|stock|capacity|quantity|weight|length|breadth|width|height)/i.test(field.label+' '+field.identifier)?'number':'text';
+  if(control.type==='number'){control.step='any';control.min='0';}
+  control.value=String(value||'');
+ }
+ setDraftControlStyle(control);
+ control.setAttribute('aria-label',String(field.label||field.identifier||'Draft field'));
+ control.addEventListener('input',()=>updateDraftValue(field,control.value));
+ control.addEventListener('change',()=>updateDraftValue(field,control.value));
+ return control;
+}
+function updateDraftValue(field,value){
+ if(!draft)return;
+ draft[field.identifier]=String(value??'').trim();
+ draftEditedFields.add(field.identifier);
+ if(isProductNameField(field)&&currentTitleProduct)currentTitleProduct.productName=draft[field.identifier];
+ const button=$('ai-autofill-btn');
+ if(button){
+  const missingTax=currentTitleFields.filter(f=>f.mandatory&&isTaxField(f)&&!String(draft[f.identifier]||'').trim());
+  button.disabled=missingTax.length>0||!Object.values(draft).some(v=>String(v||'').trim());
+ }
+}
+function showPreview(fields,values,needs,stats,research){
+ const root=$('ai-preview');if(!root)return;root.replaceChildren();root.style.display='block';
+ const top=el('div','ai-preview-toolbar'),heading=el('div','ai-preview-title','AI Draft Preview');
+ top.appendChild(heading);
+ const actions=el('div','ai-preview-actions');
+ if(draftEditMode){
+  const save=el('button','ai-secondary-btn ai-small-btn','Save Changes');save.type='button';save.addEventListener('click',()=>{commitDraftEdits();});
+  const cancel=el('button','ai-secondary-btn ai-small-btn','Cancel');cancel.type='button';cancel.addEventListener('click',()=>{if(draftBeforeEdit)draft=Object.assign({},draftBeforeEdit);draftEditMode=false;draftBeforeEdit=null;showPreview(currentTitleFields,draft,currentTitleNeeds,currentTitleStats,researchNow);setDraftButtonAvailability();});
+  actions.append(save,cancel);
+ }else{
+  const edit=el('button','ai-secondary-btn ai-small-btn','Edit Draft');edit.type='button';edit.addEventListener('click',()=>{draftBeforeEdit=Object.assign({},draft||values||{});draftEditMode=true;showPreview(currentTitleFields, draft||values, currentTitleNeeds, currentTitleStats, researchNow);});
+  actions.appendChild(edit);
+ }
+ top.appendChild(actions);root.appendChild(top);
+ const info=stats||{ai:0,preset:0,generated:0,bad:0};
+ root.appendChild(el('div','ai-muted','AI values: '+info.ai+' · Defaults: '+info.preset+' · Generated codes: '+info.generated+' · Dropdown mismatches: '+info.bad+' · Needs confirmation: '+(needs||[]).length));
+ if(research&&research.seed)root.appendChild(el('div','ai-muted','Category research seed: '+research.seed));
+ const estimateCount=Object.keys(research&&research.measurementEstimates||{}).filter(id=>String(values[id]||'').trim()).length;
+ if(estimateCount)root.appendChild(el('div','ai-draft-estimate-summary',estimateCount+' field(s) contain ESTIMATED measurements from similar products. Edit them before applying if your item differs.'));
+ if(draftEditMode)root.appendChild(el('div','ai-draft-edit-hint','Edit values below. Dropdown fields use Meesho’s actual options. Click Save Changes before Autofill; your saved Draft values take priority.'));
+ const list=el('div','ai-preview-list');
+ (fields||[]).forEach(field=>{
+  const value=values[field.identifier],row=el('div','ai-preview-item');
+  row.appendChild(el('span','ai-preview-label',field.label+(field.mandatory?' *':'')));
+  const valueBox=el('div','ai-preview-value'+(value?'':' ai-blank'));
+  if(draftEditMode){
+   const control=makeDraftControl(field,value);
+   valueBox.appendChild(control);
+  }else{
+   valueBox.appendChild(el('span','',value?String(value):'Not filled'));
+  }
+  const estimate=research&&research.measurementEstimates&&research.measurementEstimates[field.identifier];
+  if(estimate&&value){
+   const details=el('small','ai-draft-field-status','ESTIMATED · '+estimate.sourceCount+' source(s) · '+(estimate.reason||'similar-product reference'));
+   valueBox.appendChild(details);
+   if(Array.isArray(estimate.sourceUrls)&&estimate.sourceUrls.length){
+    const source=el('a','ai-draft-field-source','View measurement source');source.href=estimate.sourceUrls[0];source.target='_blank';source.rel='noopener noreferrer';valueBox.appendChild(source);
+   }
+  }
+  row.appendChild(valueBox);list.appendChild(row);
+ });
+ root.appendChild(list);
+ const sizes=selectedVariationSizes();if(sizes.length)root.appendChild(el('p','ai-muted','Size variants to select on Meesho: '+sizes.join(', ')));
+ if(needs&&needs.length){
+  const box=el('div','ai-needs-box');box.appendChild(el('strong','','Needs review — '+needs.length));
+  const ul=el('ul'),seen=new Set();needs.forEach(n=>{if(!n||!n.identifier)return;const k=n.identifier+'|'+(n.reason||'');if(seen.has(k))return;seen.add(k);ul.appendChild(el('li','',n.identifier+': '+(n.reason||'Check manually.')));});
+  box.appendChild(ul);root.appendChild(box);
+ }
+ root.appendChild(el('p','ai-muted',draftEditMode?'Unsaved edits are held in this Draft. Save Changes to validate the title and update generated codes.':'Use Edit Draft to correct any field. Autofill sends the saved Draft values rather than re-generating them.'));
+}
+function setDraftButtonAvailability(){
+ const button=$('ai-autofill-btn');if(!button)return;
+ const missingTax=(currentTitleFields||[]).filter(f=>f.mandatory&&isTaxField(f)&&!String(draft&&draft[f.identifier]||'').trim());
+ button.disabled=missingTax.length>0||!Object.values(draft||{}).some(v=>String(v||'').trim());
+}
+async function commitDraftEdits(){
+ if(!draft||!currentTitleFields.length)return;
+ const titleField=currentTitleFields.find(isProductNameField);
+ const manualTitle=titleField?String(draft[titleField.identifier]||'').trim():'';
+ if(titleField&&(manualTitle.length<201||manualTitle.length>250)){
+  say('Product Title must be between 201 and 250 characters. Current length: '+manualTitle.length+'. Edit it and Save Changes again.','warning');return;
+ }
+ if(titleField){
+  draft[titleField.identifier]=stripImageFilenameArtifacts(manualTitle);
+  if(currentTitleProduct)currentTitleProduct.productName=draft[titleField.identifier];
+  if($('ai-product-name'))$('ai-product-name').value=draft[titleField.identifier];
+  const recommendedIndex=Math.max(0,titleChoices.findIndex(x=>x.recommended));
+  if(titleChoices[recommendedIndex]){titleChoices[recommendedIndex].title=draft[titleField.identifier];titleChoices[recommendedIndex].reason='Manually edited in Draft · '+draft[titleField.identifier].length+'/250 characters';}
+ }
+ (currentTitleFields||[]).forEach(field=>{
+  const val=String(draft[field.identifier]||'').trim(),label=fieldText(field);
+  if(/\bmaterial\b/.test(label)&&val&&currentTitleProduct)currentTitleProduct.material=val;
+  if(/\bcolor\b/.test(label)&&val&&currentTitleProduct)currentTitleProduct.color=val;
+  if(/\b(capacity|volume)\b/.test(label)&&val&&currentTitleProduct)currentTitleProduct.productCapacity=val;
+ });
+ try{
+  const codes=await productCodes(currentTitleProduct&&currentTitleProduct.productName||manualTitle,currentTitleProduct||{});
+  currentTitleFields.forEach(field=>{
+   if(draftEditedFields.has(field.identifier))return;
+   const newCode=generatedCodeForField(field,codes);
+   if(newCode&&allowed(newCode,field))draft[field.identifier]=newCode;
+  });
+ }catch(e){liveLog('DRAFT SAVE · Style Code/SKU refresh was unavailable: '+redactSecrets(e,null),'warn');}
+ const nextNeeds=[];
+ (currentTitleNeeds||[]).forEach(item=>{
+  const field=currentTitleFields.find(f=>f.identifier===item.identifier);if(!field){nextNeeds.push(item);return;}
+  const val=String(draft[field.identifier]||'').trim();
+  if(!val){nextNeeds.push(item);return;}
+  if(isTaxField(field)){
+   const refs=[...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])];
+   const verified=refs.some(row=>officialTaxEvidence(field,val,{url:row.url},researchNow));
+   if(!verified)nextNeeds.push({identifier:field.identifier,reason:'Seller-edited tax value; confirm its exact HSN/GST rate against an official source before submitting.'});
+   return;
+  }
+  if(field.values.length&&!allowed(val,field)){nextNeeds.push({identifier:field.identifier,reason:'Value does not match an exact Meesho dropdown option. Choose one from Edit Draft.'});return;}
+  if(isPhysicalMeasureField(field)&&researchNow.measurementEstimates&&researchNow.measurementEstimates[field.identifier])return;
+  // A completed editable value resolves the previous blank/unavailable-value notice.
+ });
+ currentTitleNeeds=nextNeeds;pending=nextNeeds;
+ draftEditMode=false;draftBeforeEdit=null;
+ renderTitleOptions();showPreview(currentTitleFields,draft,currentTitleNeeds,currentTitleStats,researchNow);setDraftButtonAvailability();
+ say('Draft changes saved. The saved values will be used for Autofill.','success');
+}
+
 function isDescriptionField(f){
  return /description/.test(norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||'')));
 }
