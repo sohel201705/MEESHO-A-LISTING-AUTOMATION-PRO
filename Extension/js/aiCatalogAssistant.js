@@ -1844,6 +1844,7 @@ async function generate(googleAllowed){
   let d=await getActiveDefaultsForCategory(category);
   liveLog('SELLER PROFILE · '+(($('ai-profile-name')&&$('ai-profile-name').value)||'Active profile')+' · automatic catalog override: '+category+'.','ok');
   const imgs=await images();
+  let identified=null;
   setWorkflowStep('photos','running','Analyzing '+imgs.length+' uploaded photo(s) individually across AI batches.');
   if(p.productName&&imgs.some(img=>norm(cleanSearchSeed(img.name))===norm(cleanSearchSeed(p.productName)))){
    p.productName='';$('ai-product-name').value='';liveLog('FILENAME GUARD · removed an image filename reused as a product name.','info');
@@ -1853,7 +1854,7 @@ async function generate(googleAllowed){
    setProgress(19,'Reading product photos and selected catalog attributes');
    say('Analyzing product photos for category-specific research clues…');
    liveLog('VISION IDENTIFICATION · extracting visible attributes for targeted research; file names are excluded.','info');
-   const identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
+   identified=await identifyProductFromPhotos(imgs,p.productFacts,detectedCatalog,safeMeeshoCatalogContext(scan.catalogContext||{}));
    setWorkflowStep('photos','done',imgs.length+' photo(s) analysed before research; visual identity clues captured.');
    liveLog('PHOTO ANALYSIS · '+imgs.length+' of '+imgs.length+' supplied image(s) analysed before web search.','ok');
    (identified.visionConflicts||[]).forEach(conflict=>liveLog('PHOTO CONFLICT · '+conflict.field+': '+conflict.values.join(' vs ')+'. Confirm this product/variant before applying.','warn'));
@@ -1889,9 +1890,10 @@ async function generate(googleAllowed){
    p.productFacts=facts.join(' | ').slice(0,1000);
    if(identified.searchTerms&&identified.searchTerms.length)liveLog('VISION IDENTIFICATION · '+identified.searchTerms.length+' visual search term(s) will be used to find similar products, not to copy their titles.','ok');
   }catch(e){
+   setWorkflowStep('photos','blocked','AI photo identity analysis failed; inspect the selected images and enabled vision provider.');
    const ctx=safeMeeshoCatalogContext(scan.catalogContext||{});
    if(!p.productName){p.productName=stripImageFilenameArtifacts(ctx.subCategoryName||ctx.categoryName||detectedCatalog.type||detectedCatalog.name||'Product');$('ai-product-name').value=p.productName;}
-   liveLog('VISION IDENTIFICATION · photo clue extraction failed; category and form fields will still be researched. Details: '+redactSecrets(e,null),'warn');
+   liveLog('VISION IDENTIFICATION · photo clue extraction failed; only the selected form/category remains. Research must not treat category fallback as exact product evidence. Details: '+redactSecrets(e,null),'warn');
   }
   if(!p.productCapacity){
    const capMatch=String(p.productFacts+' '+p.productName).match(/\b(\d+(?:\.\d+)?)\s*(ml|millilit(?:er|re)s?|lit(?:er|re)s?|l)\b/i);
@@ -1937,6 +1939,7 @@ async function generate(googleAllowed){
   }
   await enrichTaxEvidence(proposed,evidence,researchNow,s.fields,p,scan,detectedCatalog);
   const values=Object.assign({},scan.capturedValues||{}),needs=Array.isArray(parsed.needsConfirmation)?parsed.needsConfirmation.slice(0,80):[];
+  (identified&&Array.isArray(identified.visionConflicts)?identified.visionConflicts:[]).forEach(conflict=>needs.push({identifier:'photo_identity_'+String(conflict.field||'conflict'),reason:'Photo analysis conflict for '+String(conflict.field||'product identity')+': '+(conflict.values||[]).join(' vs ')+'. Confirm that all photos show the same product variant before applying.'}));
   // Meesho's default GST "0" is a placeholder, not a researched product tax rate.
   // Remove only obvious placeholder values so the AI/research result can replace them.
   s.fields.forEach(f=>{
