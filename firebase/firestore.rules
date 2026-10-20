@@ -48,6 +48,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // A user may start one trial only. Server time prevents client backdating.
+    // Users cannot update or delete their own trial record to restart the 24-hour clock.
+    match /trials/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      allow create: if isSelf(uid)
+        && request.resource.data.keys().hasAll(['uid', 'startedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'startedAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.startedAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     function canRedeemMembership(uid) {
       let code = request.resource.data.activationKey;
       let key = getAfter(/databases/$(database)/documents/activationKeys/$(code)).data;
