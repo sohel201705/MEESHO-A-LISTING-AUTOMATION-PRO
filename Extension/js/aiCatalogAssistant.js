@@ -22,26 +22,62 @@ function stripImageFilenameArtifacts(value){
 }
 function cleanSearchSeed(value){return stripImageFilenameArtifacts(value).replace(/\b(feature showcase|showcase|product image|main image|image|photo|copy|final|edited)\b/gi,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,160);}
 function validExternalUrl(raw){try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return '';if(/(^|\.)google\.[a-z.]+$/i.test(u.hostname)||/(^|\.)bing\.com$/i.test(u.hostname)||/(^|\.)duckduckgo\.com$/i.test(u.hostname)||/googleusercontent|accounts\.google|support\.google/i.test(u.hostname))return '';return u.href;}catch(e){return '';}}
+function unwrapSearchResultUrl(raw,baseUrl){
+ try{
+  let u=new URL(String(raw||''),baseUrl||'https://www.google.com/');
+  const host=u.hostname.toLowerCase();
+  if(/(^|\.)google\.[a-z.]+$/i.test(host)&&u.pathname==='/url'){
+   const target=u.searchParams.get('q')||u.searchParams.get('url')||u.searchParams.get('adurl');
+   if(target)u=new URL(target);
+  }else if(/(^|\.)duckduckgo\.com$/i.test(host)&&/^\/l\/?$/.test(u.pathname)){
+   const target=u.searchParams.get('uddg')||u.searchParams.get('url');
+   if(target)u=new URL(target);
+  }else if(/(^|\.)bing\.com$/i.test(host)&&/^\/ck\/a\/?$/i.test(u.pathname)){
+   const encoded=u.searchParams.get('u')||'';
+   if(/^a\d/i.test(encoded)){
+    try{const decoded=atob(encoded.replace(/^a\d/i,''));if(/^https?:\/\//i.test(decoded))u=new URL(decoded);}catch(e){}
+   }
+  }
+  return validExternalUrl(u.href);
+ }catch(e){return '';}
+}
 function parseGoogleResults(html,baseUrl){
  const doc=new DOMParser().parseFromString(String(html||''),'text/html'),items=[],seen=new Set(),engineBase=baseUrl||'https://www.google.com/';
- const add=heading=>{
-  if(!heading)return;const anchor=heading.closest('a')||Array.from(heading.parentElement?.querySelectorAll('a[href]')||[]).find(a=>a.querySelector('h3,h2'));if(!anchor)return;
-  let href=anchor.getAttribute('href')||anchor.href||'';
-  try{const u=new URL(href,engineBase);if(/(^|\.)google\.[a-z.]+$/i.test(u.hostname)&&u.pathname==='/url')href=u.searchParams.get('q')||u.searchParams.get('url')||'';else if(/(^|\.)duckduckgo\.com$/i.test(u.hostname)&&u.pathname==='/l/')href=u.searchParams.get('uddg')||u.searchParams.get('url')||'';else href=u.href;}catch(e){}
-  href=validExternalUrl(href);if(!href||seen.has(href))return;
-  const title=String(heading.textContent||anchor.textContent||'').replace(/\s+/g,' ').trim();if(!title||title.length<3)return;
-  const card=heading.closest('.MjjYud, .g, .b_algo, .result, .results_links, li')||heading.parentElement?.parentElement||heading.parentElement;
-  let snippet=String(card?.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st, .b_caption p, .result__snippet, .snippet, p')?.textContent||'').replace(/\s+/g,' ').trim();
+ const add=(anchor,heading)=>{
+  if(!anchor)return;
+  const title=String(heading&&heading.textContent||anchor.textContent||anchor.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim();
+  if(!title||title.length<3)return;
+  const href=unwrapSearchResultUrl(anchor.getAttribute('href')||anchor.href,engineBase);
+  if(!href||seen.has(href))return;
+  const card=(heading&&heading.closest('.MjjYud, .g, .b_algo, .result, .results_links, li'))||
+   anchor.closest('.MjjYud, .g, .b_algo, .result, .results_links, li, article')||
+   heading&&heading.parentElement&&heading.parentElement.parentElement||anchor.parentElement&&anchor.parentElement.parentElement;
+  let snippet=String(card&&card.querySelector('.VwiC3b, .aCOpRe, .IsZvec, [data-sncf], .st, .b_caption p, .result__snippet, .snippet, p')?.textContent||'').replace(/\s+/g,' ').trim();
   if(!snippet&&card)snippet=String(card.textContent||'').replace(title,' ').replace(/\s+/g,' ').trim();
+  if(/^(?:images|videos|news|maps|shopping|settings|tools|feedback|next|previous|more results)$/i.test(title))return;
   seen.add(href);items.push({title,url:href,snippet:snippet.slice(0,700),domain:new URL(href).hostname});
  };
- let headings=Array.from(doc.querySelectorAll('h3'));if(!headings.length)headings=Array.from(doc.querySelectorAll('h2'));headings.forEach(add);
- if(!items.length)Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{
-  const title=String(a.textContent||'').replace(/\s+/g,' ').trim();if(!title||title.length<16||a.querySelector('img'))return;
-  let href='';try{href=validExternalUrl(new URL(a.getAttribute('href')||a.href,engineBase).href);}catch(e){}if(!href||seen.has(href))return;
-  const card=a.closest('.b_algo, .result, .results_links, li')||a.parentElement?.parentElement,snippet=String(card?.querySelector('p,.b_caption,.result__snippet')?.textContent||'').replace(/\s+/g,' ').trim();
-  seen.add(href);items.push({title,url:href,snippet:snippet.slice(0,700),domain:new URL(href).hostname});
+ Array.from(doc.querySelectorAll('h3, h2')).forEach(heading=>{
+  const anchor=heading.closest('a')||heading.parentElement&&heading.parentElement.querySelector('a[href]');
+  add(anchor,heading);
  });
+ // Search engines frequently change heading markup; fall back to known result anchors.
+ if(items.length<3){
+  const selectors=['a.result__a','.b_algo h2 a','a[data-testid="result-title-a"]','.MjjYud a[href]','.g a[href]','a[href*="uddg="]','a[href*="/url?q="]','a[href*="/ck/a?"]'];
+  const targeted=new Set();
+  selectors.forEach(selector=>{try{doc.querySelectorAll(selector).forEach(anchor=>{if(!targeted.has(anchor)){targeted.add(anchor);add(anchor,anchor.querySelector('h3,h2')||anchor);}});}catch(e){}});
+ }
+ // Last-resort extraction is constrained to external links with substantial text and a result-like container.
+ if(items.length<3){
+  Array.from(doc.querySelectorAll('a[href]')).forEach(anchor=>{
+   if(items.length>=12)return;
+   const title=String(anchor.textContent||'').replace(/\s+/g,' ').trim();
+   if(title.length<18||title.length>220||anchor.querySelector('img,svg'))return;
+   const card=anchor.closest('.MjjYud, .g, .b_algo, .result, .results_links, li, article');
+   if(!card&&anchor.querySelectorAll('*').length>8)return;
+   add(anchor,anchor);
+  });
+ }
  return items.slice(0,8);
 }
 async function searchGoogle(query){
@@ -81,7 +117,7 @@ function attachOfficialTaxReferences(research,p,imgs,scan,catalog){
  const relevantFields=formSchema.fields.filter(f=>!/(product.?name|title|style.?code|sku|product.?id|filename|seller|price|inventory|mrp)/i.test(String(f.identifier||'')+' '+String(f.label||'')));
  const formEvidence=relevantFields.map(f=>String(f.label||'')+' '+captured(scan||{},f.identifier)).join(' ');
  const materialField=formSchema.fields.find(f=>/\bmaterial\b/.test(norm(fieldText(f)))),materialValue=String(p&&p.material||captured(scan||{},materialField&&materialField.identifier)||'').trim();
- const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText);
+ const materialText=norm(materialValue+' '+(p&&p.productFacts||'')),categoryText=norm([ctx.pageTitle,(ctx.headings||[]).join(' '),ctx.breadcrumb,ctx.categoryName,ctx.subCategoryName,ctx.catalogType,ctx.detectedCategory,ctx.productType,catalog&&catalog.name,catalog&&catalog.type,formEvidence,p&&p.productType].filter(Boolean).join(' ')),productText=norm(categoryText+' '+materialText+' '+String(p&&p.productName||'')+' '+String(p&&p.productTypeEvidence||'')+' '+String(p&&p.imageResearchTerms||''));
  const refs=Array.isArray(research&&research.officialTaxReferences)?research.officialTaxReferences.slice():[];
  const vacuum=/\b(vacuum flask|vacuum bottle|vacuum vessel|vacuum insulated|insulated vacuum flask|thermos flask)\b/i.test(productText);
  if(vacuum){
@@ -864,6 +900,10 @@ function buildMeasurementEstimates(research,fields,scan){
  return estimates;
 }
 
+function clearNeedsForField(needs,identifier){
+ if(!Array.isArray(needs))return;
+ for(let i=needs.length-1;i>=0;i--)if(needs[i]&&needs[i].identifier===identifier)needs.splice(i,1);
+}
 function parseMoney(value){
  const cleaned=String(value??'').replace(/[₹,\s]/g,'').replace(/[^0-9.-]/g,'');
  const n=Number(cleaned);return Number.isFinite(n)?n:null;
@@ -1231,6 +1271,47 @@ function renderResearchSources(research){
  });
  host.appendChild(list);
 }
+function renderTaxApplicationSummary(values,fields,research){
+ const host=$('ai-tax-summary');if(!host)return;
+ host.replaceChildren();
+ const heading=el('strong','','Automatic HSN / GST Research');
+ heading.style.cssText='display:block;font-size:11px;margin-bottom:4px;color:#bfdbfe;';
+ host.appendChild(heading);
+ const taxFields=(fields||[]).filter(f=>isTaxField(f));
+ if(!taxFields.length){
+  host.appendChild(el('div','ai-muted','The selected Meesho form has no HSN/GST fields to fill.'));
+  return;
+ }
+ const rows=taxFields.map(field=>{
+  const label=String(field.label||field.identifier||'Tax field'),value=String(values&&values[field.identifier]||'').trim();
+  const src=value?[...(research&&research.results||[]),...(research&&research.officialTaxReferences||[])].map(row=>officialTaxEvidence(field,value,{url:row.url},research)).find(Boolean):null;
+  return {field,label,value,src};
+ });
+ rows.forEach(row=>{
+  const line=el('div','ai-tax-summary-line');
+  const text=el('span','',row.label+': '+(row.value||'Not matched yet'));
+  text.style.cssText='font-size:10px;overflow-wrap:anywhere;';
+  line.appendChild(text);
+  const status=el('span','',row.src?' · RESEARCHED & ADDED TO DRAFT':row.value?' · Review classification':' · Research pending');
+  status.style.cssText='font-size:9px;font-weight:800;color:'+(row.src?'#86efac':row.value?'#fcd34d':'#fca5a5')+';';
+  line.appendChild(status);host.appendChild(line);
+  if(row.src){
+   const link=el('a','ai-tax-source-link','Open official source');
+   link.href=row.src.url;link.target='_blank';link.rel='noopener noreferrer';
+   link.style.cssText='display:inline-block;font-size:9px;color:#93c5fd;text-decoration:underline;margin:2px 0 5px;';
+   host.appendChild(link);
+  }
+ });
+ if(rows.some(row=>!row.src)){
+  const note=el('div','ai-tax-summary-note','Only values supported by a matching official source are auto-applied. If no exact match is available, the field stays flagged for review instead of inventing a code.');
+  note.style.cssText='font-size:9px;line-height:1.4;color:#cbd5e1;margin-top:5px;';
+  host.appendChild(note);
+ }else{
+  const note=el('div','ai-tax-summary-note','Tax values are ready in the Draft. Press “Autofill on Meesho Tab” to send them to the selected Meesho form.');
+  note.style.cssText='font-size:9px;line-height:1.4;color:#cbd5e1;margin-top:5px;';
+  host.appendChild(note);
+ }
+}
 function dropdownEquivalent(value,field){
  const wanted=String(value||'').trim();if(!wanted)return '';
  if(!field||!Array.isArray(field.values)||!field.values.length)return wanted;
@@ -1384,6 +1465,7 @@ async function commitDraftEdits(){
   // A completed editable value resolves the previous blank/unavailable-value notice.
  });
  currentTitleNeeds=nextNeeds;pending=nextNeeds;
+ renderTaxApplicationSummary(draft,currentTitleFields,researchNow);
  draftEditMode=false;draftBeforeEdit=null;
  renderTitleOptions();showPreview(currentTitleFields,draft,currentTitleNeeds,currentTitleStats,researchNow);setDraftButtonAvailability();
  say('Draft changes saved. The saved values will be used for Autofill.','success');
@@ -1392,7 +1474,15 @@ async function commitDraftEdits(){
 function isDescriptionField(f){
  return /description/.test(norm(String(f.identifier||'').replace(/_/g,' ')+' '+String(f.label||'')));
 }
-function cleanTitle(title){return stripImageFilenameArtifacts(title).replace(/\s+/g,' ').replace(/^\s*\/+\s*|\s*\/+\s*$/g,'').trim().slice(0,250).trim();}
+function stripBrandPlaceholders(value){
+ const placeholders=/^(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided|n\/?a)|unknown\s+brand|n\/?a|na|not\s+applicable|not\s+provided|not\s+specified|unknown)$/i;
+ let raw=stripImageFilenameArtifacts(String(value||'')).replace(/\bN\s*\/\s*A\b/ig,' ');
+ const parts=raw.split(/\s*\/\s*/).map(x=>x.trim()).filter(x=>x&&!placeholders.test(x));
+ let text=parts.join(' / ');
+ text=text.replace(/\b(?:not\s+branded|non[\s-]*branded|unbranded|no\s+brand|brand\s+(?:unknown|not\s+specified|not\s+available|not\s+provided)|unknown\s+brand)\b/ig,' ');
+ return text.replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*){2,}/g,' / ').replace(/^\s*\/\s*|\s*\/\s*$/g,'').replace(/\s+/g,' ').trim();
+}
+function cleanTitle(title){return stripBrandPlaceholders(stripImageFilenameArtifacts(title)).replace(/\s+/g,' ').replace(/^\s*\/+\s*|\s*\/+\s*$/g,'').trim().slice(0,250).trim();}
 function titleExpansionPhrases(p,index){
  const text=norm([p&&p.productCategory,p&&p.productType,p&&p.productName].filter(Boolean).join(' '));
  if(/\b(kitchen|lunch|tiffin|food storage|food container)\b/.test(text))return ['Suitable for packed meals at school, office, travel and picnics','Useful for organizing rice, snacks, fruits and side dishes during everyday meal planning','A practical option for daily lunch preparation, carrying meals and convenient on-the-go dining','Designed around everyday food storage needs for home meals, work lunches and short outings','For regular meal packing routines, helping keep different food items arranged for carrying and serving'];
@@ -1403,10 +1493,10 @@ function titleExpansionPhrases(p,index){
  return ['Suitable for relevant everyday tasks at home, work or while travelling, according to its intended use','Review the photos and verified specifications to choose the correct option for your requirements','A practical choice for regular use when the product details match your intended application','Consider the actual product dimensions, included components and listed features before choosing','Use the verified product details to confirm suitability for your routine and intended purpose'];
 }
 function buildTitleChoices(raw,baseTitle,p,d){
- const choices=[],seen=new Set(),packCount=Math.max(1,Math.floor(Number(p&&p.packQuantity)||1)),packSegment=' / Pack of '+packCount,minBody=201-packSegment.length,maxBody=250-packSegment.length;
+ const choices=[],seen=new Set(),strategies=['SEO keyword-first','Feature-led title','Use-case-led title','Structured buyer-friendly title'],packCount=Math.max(1,Math.floor(Number(p&&p.packQuantity)||1)),packSegment=' / Pack of '+packCount,minBody=201-packSegment.length,maxBody=250-packSegment.length;
  const brand=String(d&&d.brand||'').trim(),capacity=String(p&&p.productCapacity||'').trim(),material=String(p&&p.material||'').trim(),color=String(p&&p.color||'').trim(),variants=titleExpansionPhrases(p,0);
  const add=(title,reason,recommended,optionIndex)=>{
-  let body=stripImageFilenameArtifacts(String(title||'')).replace(/\s+/g,' ').trim();if(!body)return;
+  let body=stripBrandPlaceholders(stripImageFilenameArtifacts(String(title||''))).replace(/\s+/g,' ').trim();if(!body)return;
   body=body.replace(/(?:\s*\/\s*)?(?:pack|set)\s+of\s+\d+(?:\s+(?:pieces?|pcs?))?/ig,' ').replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').replace(/\s+/g,' ').trim();
   body=body.replace(/\b(?:title|option)\s*[#-]?\s*\d+\b/ig,' ').replace(/\s*\/\s*/g,' / ').replace(/(?:\s*\/\s*)+$/,'').replace(/\s+/g,' ').trim();
   if(!body)body=stripImageFilenameArtifacts(baseTitle)||String(p&&p.productType||'Product');
@@ -1420,7 +1510,7 @@ function buildTitleChoices(raw,baseTitle,p,d){
   if(body.length>maxBody){let shortened=body.slice(0,maxBody),space=shortened.lastIndexOf(' ');if(space>maxBody-32)shortened=shortened.slice(0,space);body=shortened.replace(/[ /]+$/,'').trim();}
   if(body.length<minBody){const fallback='Suitable for practical everyday use according to verified product specifications',separator=body?' / ':'',room=maxBody-body.length-separator.length;if(room>0)body=(body+separator+fallback.slice(0,room)).replace(/[ /]+$/,'').trim();}
   const clean=cleanTitle(body+packSegment);if(clean.length<201||clean.length>250)return;
-  const key=norm(clean);if(seen.has(key))return;seen.add(key);choices.push({title:clean,reason:String(reason||'Original title generated from product photos, category and verified details.'),recommended:Boolean(recommended)});
+  const key=norm(clean);if(seen.has(key))return;seen.add(key);choices.push({title:clean,reason:String(reason||'Original title generated from product photos, category and verified details.'),strategy:strategies[Math.min(choices.length,3)],recommended:Boolean(recommended)});
  };
  (Array.isArray(raw)?raw:[]).forEach((x,i)=>{if(typeof x==='string')add(x,'Original AI-generated SEO title based on photos and verified attributes.',false,i);else if(x&&typeof x==='object')add(x.title||x.value||'',x.reason||x.rationale||'Original AI-generated SEO title based on photos and verified attributes.',x.recommended===true||String(x.recommended).toLowerCase()==='true',i);});
  const base=stripImageFilenameArtifacts(baseTitle)||String(p&&p.productType||'Product');
@@ -1445,7 +1535,7 @@ function renderTitleOptions(){
   const body=el('div','ai-title-choice-body'),main=el('div','ai-title-choice-main',choice.title);
   if(choice.recommended)main.appendChild(el('span','ai-recommended-tag','RECOMMENDED'));
   body.appendChild(main);
-  body.appendChild(el('div','ai-title-choice-meta',choice.reason||''));
+  const strategy=el('div','ai-title-choice-strategy',choice.strategy||['SEO keyword-first','Feature-led title','Use-case-led title','Structured buyer-friendly title'][index%4]);strategy.style.cssText='font-size:10px;font-weight:800;color:#60a5fa;margin:2px 0;';body.appendChild(strategy);body.appendChild(el('div','ai-title-choice-meta',choice.reason||''));
   body.appendChild(el('div','ai-title-choice-count',choice.title.length+'/250 characters'));
   label.appendChild(radio);label.appendChild(body);root.appendChild(label);
  });
@@ -1541,7 +1631,7 @@ function promptFor(scan,p,d,s,research){
   'Return ONLY valid JSON: {"values":{"existing_field_identifier":"string value"},"titleOptions":[{"title":"original SEO title between 201 and 250 characters inclusive","reason":"brief reason","recommended":true}],"needsConfirmation":[{"identifier":"existing_field_identifier","reason":"short reason"}],"evidence":{"hsn_code":{"url":"exact URL from webResearchResults or officialGovernmentTaxReferences"},"supplier_gst_percent":{"url":"exact URL from webResearchResults or officialGovernmentTaxReferences"}}}. Provide 4 unique titleOptions whenever a product title field exists. Exactly one recommended=true. Do not return markdown.',
   'The seller already selected the Meesho category. Use the category, photos and actual product attributes as primary evidence. Do not ask the seller to select the category again. Fill only fields existing in the scanned Meesho form; use only exact allowed dropdown options. Never invent field identifiers or category values.',
   'TITLE CREATION RULE: Create original titles yourself from product photos, selected Meesho category, verified material/color/size/features and seller-entered pack quantity. Never copy, paraphrase or imitate another website title as a title template. Web result titles may help identify similar products and specifications, but must never be copied or used as a title template.',
-  'Every title must be at least 201 and no more than 250 characters, counting spaces and punctuation. Create 4 distinct, natural, search-friendly options using factual attributes; no keyword stuffing, repetitive phrases, invented claims, image filenames or extensions such as .png, .jpg, .jpeg, .webp or .gif. Use slash-separated segments: Product Type / verified Brand if known / verified Capacity or Size / verified Material / Color / Pack Quantity / relevant verified details and ordinary-use context. Exactly one recommended=true.',
+  'Every title must be at least 201 and no more than 250 characters, counting spaces and punctuation. Return four intentionally different approaches in this order: (1) SEO keyword-first using natural high-intent product search terms; (2) feature-led highlighting one or two verified differentiators; (3) use-case-led focused on relevant everyday use; (4) clean structured buyer-friendly title emphasizing product type and confirmed attributes. Use clearly different openings and wording, not four near-duplicates or the same attribute sequence. No keyword stuffing, repetitive phrases, invented claims, image filenames or extensions such as .png, .jpg, .jpeg, .webp or .gif. IMPORTANT: Never put listing placeholders or internal metadata into customer-facing titles: do not write Not Branded, Non Branded, Unbranded, No Brand, Unknown, N/A, None, or Brand Not Specified. If the brand is not verified, omit the brand entirely. Use only slash-separated factual segments and exactly one recommended=true.',
   'Pack quantity is the seller-entered number of sale units/pieces in a pack, not the number of photos. Use the exact pack count in title, description and matching Net Quantity / Multipack form field, obeying exact dropdown values. Never infer multi-pack count from multiple images or angles.',
   'Try every scanned field. Prefer official/verified source facts, photo evidence, seller inputs and matching seller defaults. Never create field identifiers.',
   'For description fields, target 950–1000 characters including spaces; never exceed 1000. Include only known product details, sensible usage context, and care guidance when supported. Never pad with filler. Do not claim food-grade, insulation, hot/cold retention, leak-proof, BPA-free, certification, compatibility or special construction unless verified.',
@@ -1749,8 +1839,8 @@ async function generate(googleAllowed){
     const src=allowedCandidate?officialTaxEvidence(f,allowedCandidate,{url:sourceUrl},researchNow):null;
     if(src){
      values[f.identifier]=String(allowedCandidate).trim();ai++;
-     for(let n=needs.length-1;n>=0;n--)if(needs[n]&&needs[n].identifier===f.identifier)needs.splice(n,1);
-     liveLog('OFFICIAL TAX FIELD · '+f.label+' = '+allowedCandidate+' · '+src.url,'ok');
+     clearNeedsForField(needs,f.identifier);
+     liveLog('OFFICIAL TAX FIELD · researched and applied to Draft: '+f.label+' = '+allowedCandidate+' · '+src.url,'ok');
     }else{
      needs.push({identifier:f.identifier,reason:'The official preverified classification did not match this field’s permitted options. Autofill will be blocked until this mandatory tax field is resolved.'});
     }
@@ -1761,7 +1851,7 @@ async function generate(googleAllowed){
    if(!mappedValue||!allowed(mappedValue,f)){needs.push({identifier:f.identifier,reason:'AI value is not an exact permitted dropdown option. Choose the matching Meesho option in Edit Draft.'});bad++;return;}
    if(isPhysicalMeasureField(f)&&!sourceSupportsExactMeasure(f,mappedValue,researchNow)){
     const estimate=researchNow.measurementEstimates&&researchNow.measurementEstimates[f.identifier];
-    if(estimate&&estimate.value){values[f.identifier]=String(estimate.value);ai++;liveLog('MEASUREMENT ESTIMATE · '+f.label+' = '+estimate.value+' '+(estimate.unit||'')+' · '+(estimate.sourceCount||1)+' related source(s); editable in Draft.','warn');return;}
+    if(estimate&&estimate.value){values[f.identifier]=String(estimate.value);ai++;clearNeedsForField(needs,f.identifier);liveLog('MEASUREMENT ESTIMATE · applied to Draft: '+f.label+' = '+estimate.value+' '+(estimate.unit||'')+' · '+(estimate.sourceCount||1)+' related source(s); editable in Draft.','warn');return;}
     needs.push({identifier:f.identifier,reason:'Research checked same-category measurement sources but found no usable exact value or supported estimate. This field remains unresolved.'});return;
    }
    if(isTaxField(f)){
@@ -1771,15 +1861,16 @@ async function generate(googleAllowed){
      return;
     }
     values[f.identifier]=String(mappedValue).trim();ai++;
-    needs.push({identifier:f.identifier,reason:'Official result matched this candidate: '+src.url+'. Confirm the exact classification applies to this product before submitting.'});
+    clearNeedsForField(needs,f.identifier);
+    liveLog('OFFICIAL TAX FIELD · exact Government evidence matched and applied to Draft: '+f.label+' = '+mappedValue+' · '+src.url,'ok');
     return;
    }
    values[f.identifier]=String(mappedValue).trim();ai++;
   });
   Object.entries(researchNow.measurementEstimates||{}).forEach(([identifier,estimate])=>{
    if(!estimate||!estimate.value||String(values[identifier]||'').trim())return;
-   values[identifier]=String(estimate.value);
-   liveLog('MEASUREMENT ESTIMATE · '+identifier+' = '+estimate.value+' '+(estimate.unit||'')+' from '+(estimate.sourceCount||1)+' similar-product source(s); edit in Draft if your item differs.','warn');
+   values[identifier]=String(estimate.value);clearNeedsForField(needs,identifier);
+   liveLog('MEASUREMENT ESTIMATE · applied to Draft: '+identifier+' = '+estimate.value+' '+(estimate.unit||'')+' from '+(estimate.sourceCount||1)+' similar-product source(s); clearly marked ESTIMATED and editable.','warn');
   });
   const estimates=Object.values(researchNow.measurementEstimates||{});
   const hasDimensionEstimate=estimates.some(x=>x&&x.kind!=='weight');
@@ -1828,6 +1919,7 @@ async function generate(googleAllowed){
   currentTitleProduct=Object.assign({},p);currentTitleFields=s.fields;currentTitleStats={ai,preset:presetCount,generated,bad};currentTitleNeeds=needs;
   renderTitleOptions();
   liveLog('DRAFT READY · AI '+ai+', defaults '+presetCount+', generated codes '+generated+', dropdown mismatches '+bad+', confirmation items '+needs.length+'.','ok');
+  renderTaxApplicationSummary(values,s.fields,researchNow);
   showPreview(s.fields,values,needs,{ai,preset:presetCount,generated,bad},researchNow);
   $('ai-autofill-btn').disabled=unresolvedTaxFields.length>0||!Object.values(values).some(v=>String(v||'').trim());
   if(unresolvedTaxFields.length)liveLog('AUTOFILL BLOCKED · unresolved mandatory tax fields: '+unresolvedTaxFields.map(f=>f.label).join(', ')+'. HSN/GST will not be silently left blank or guessed.','warn');
