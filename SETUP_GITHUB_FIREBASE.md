@@ -65,7 +65,13 @@ After updating rules, deploy them using the existing GitHub Actions workflow (or
 
 **Important limitation:** this no-VPS design does not create a trusted server that authorizes every AI request. Firestore Rules protect the one-time trial record, but an advanced user who modifies the local extension or changes the computer clock may bypass a client-side expiry check. Strong tamper-resistant enforcement requires a trusted backend / server-side verification, which is intentionally outside this no-backend option.
 
-## 8. Security
+## 8. Nightly transient-log cleanup
+
+The `.github/workflows/nightly-cleanup.yml` workflow runs daily at **midnight India time** using GitHub Actions and the existing `FIREBASE_SERVICE_ACCOUNT_JSON` repository secret. It deletes documents from the Firestore `logs` collection only, preserving the `_meta` collection marker. It does **not** delete users, memberships, product memberships, plans, activation keys, payments, devices, trial records, system settings or seller profile data.
+
+The cleanup is scoped this way so that routine diagnostics are cleared without removing business/account records. If the repository secret is absent or the service account cannot access the project, the workflow fails visibly instead of using client credentials.
+
+## 9. Security
 - Firestore Rules are the permission boundary.
 - Never store service-account private keys in client-side code, public files or browser storage.
 - Keep downloaded backup files private because they contain user names, email addresses, memberships and key records.
