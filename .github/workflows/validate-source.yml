@@ -71,6 +71,7 @@ jobs:
           const aiAssistant = fs.readFileSync('Extension/js/aiCatalogAssistant.js', 'utf8');
           const popupHtml = fs.readFileSync('Extension/popup.html', 'utf8');
           const onboarding = fs.readFileSync('Extension/js/sellerOnboarding.js', 'utf8');
+          const cleanupWorkflow = fs.readFileSync('.github/workflows/nightly-cleanup.yml', 'utf8');
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
           assert.equal(manifest.version, '3.18.3');
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
@@ -87,6 +88,16 @@ jobs:
           assert.ok(!manifest.host_permissions.some(x => x.includes('cloudfunctions.net')));
           assert.match(rules, /YnfQtmTpm9asdR0izeWuMwmX3Sw1/);
           assert.match(rules, /canRedeemProductMembership/);
+          assert.match(rules, /match \/trials\/\{uid\}/);
+          assert.ok(rules.includes('request.resource.data.startedAt == request.time'));
+          assert.ok(rules.includes('allow update: if false;'));
+          assert.ok(admin.includes("['trials','Trials','One-time authenticated 24-hour trial records']"));
+          assert.ok(admin.includes('trials:true'));
+          assert.ok(cleanupWorkflow.includes("cron: '30 18 * * *'"));
+          assert.ok(cleanupWorkflow.includes("db.collection('logs')"));
+          assert.ok(cleanupWorkflow.includes("doc.id !== '_meta'"));
+          assert.ok(!cleanupWorkflow.includes("db.collection('users')"));
+          assert.ok(!cleanupWorkflow.includes("db.collection('memberships')"));
           assert.match(rules, /match \/flipkartProfiles\/\{profileId\} \{\s*allow read, create, update, delete: if isAdmin\(\);/);
           assert.ok(admin.includes('downloadLocalBackup'));
           assert.ok(admin.includes('restoreLocalBackupFile'));
@@ -106,6 +117,9 @@ jobs:
           assert.ok(aiAssistant.includes('callAI(promptFor(scan,p,d,s,researchNow),imgs,46,25)'));
           assert.ok(aiAssistant.includes('Array.isArray(imgs)'));
           assert.ok(aiAssistant.includes('function explainProviderFailure(provider,error,hasAlternative)'));
+          assert.ok(aiAssistant.includes('async function testApiConnection()'));
+          assert.ok(aiAssistant.includes("const endpoints=k.provider==='freellmapi'?connectionTestCandidates(k.provider,url):[url]"));
+          assert.ok(aiAssistant.includes("for(const port of [url.port,'31415','3001'])"));
           assert.ok(aiAssistant.includes('explainProviderFailure(k.provider,e,i<order.length-1)'));
           assert.ok(aiAssistant.includes('Provider quota exhausted.'));
           assert.ok(aiAssistant.includes('imgs.slice(0,3)'));
