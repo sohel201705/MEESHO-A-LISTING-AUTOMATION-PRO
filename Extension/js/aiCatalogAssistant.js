@@ -2137,66 +2137,107 @@ async function autofill(){
  try{
   if(!draft||!scanNow)throw new Error('Generate a draft first.');
   if(activePhotoConflicts.length){
-   setWorkflowStep('apply','blocked','Conflicting photo identity requires a new single-variant photo set.');
-   say('Autofill paused: product photos disagree about '+activePhotoConflicts.map(x=>x.field||'identity').join(', ')+'. Upload only photos of the same product variant, analyse again and review the new mapping. No field values were sent to Meesho.','warning');
+   setWorkflowStep('apply','blocked','The uploaded photos appear to contain conflicting product/variant facts.');
+   say('Autofill paused because the photo analysis detected conflicting product details: '+activePhotoConflicts.map(x=>x.field||'identity').join(', ')+'. Use photos of one exact variant, then analyze again. This prevents the wrong color or stock/variant from being applied.','warning');
    return;
   }
-  const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});if(!gate||!gate.allowed)throw new Error('Active membership required.');
-  const tabs=await new Promise(r=>chrome.tabs.query({active:true,currentWindow:true},t=>r(t||[]))),tab=tabs[0];
-  if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho catalog tab again.');
-  setProgress(1,'Autofill · checking selected sizes and field values');
+  const gate=await chrome.runtime.sendMessage({type:'GET_ACCESS'});
+  if(!gate||!gate.allowed)throw new Error('Active membership required.');
+  const tabs=await new Promise(resolve=>chrome.tabs.query({active:true,currentWindow:true},t=>resolve(t||[])));
+  const tab=tabs[0];
+  if(!tab||!tab.url||!tab.url.includes('supplier.meesho.com'))throw new Error('Open the selected Meesho Seller Panel tab, select the catalog, then click Autofill again.');
+  setProgress(1,'Preparing a verified field-by-field fill');
   const sizes=variationNames(scanNow),selected=selectedVariationSizes();
-  if(sizes.length&&!selected.length)throw new Error('Select at least one Meesho size variant above. Free Size is auto-selected when it is the only option.');
+  if(sizes.length&&!selected.length)throw new Error('Select a size variant above. Free Size is selected automatically when it is the only catalog option.');
   const payload=Object.assign({},draft);
   const fields=(scanNow.sections||[]).flatMap(section=>section.fields||[]);
-  if(productIdentityScore<70){setWorkflowStep('apply','blocked','Product identity score '+productIdentityScore+'/100 is below the required threshold.');say('Autofill blocked by Master Template hard lock: product identity score is '+productIdentityScore+'/100. Add a specific product name or clearer photos/details, then run Analyze Images & Generate again.','warning');return;}
-  const unresolvedTax=fields.filter(field=>{if(!isTaxField(field))return false;const value=String(payload[field.identifier]||'').trim();return !value||![...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])].some(row=>officialTaxEvidence(field,value,{url:row.url},researchNow));});
-  if(unresolvedTax.length){
-   const names=unresolvedTax.map(field=>field.label||field.identifier).join(', ');
-   setWorkflowStep('apply','blocked','Required HSN/GST values must be verified before sending anything to Meesho.');
-   say('Autofill is ready, but it was paused because required tax values are not verified: '+names+'. Edit Draft, enter HSN and GST from an official source, click Save Changes, then retry. No blank or guessed tax value was sent to Meesho.','warning');
-   return;
-  }else if(pending.length&&!confirm('Some fields need confirmation. Estimated values are marked in Draft. Continue autofill with the values currently shown?')){setWorkflowStep('apply','blocked','Seller cancelled because some fields need review.');return;}
-  setWorkflowStep('apply','running','Validating chosen size, required tax values and mapped fields before sending.');
-  // Values explicitly typed/selected in the existing Step 2 form override AI suggestions.
+  if(productIdentityScore<70){
+   liveLog('IDENTITY REVIEW · score '+productIdentityScore+'/100. Exact-product external claims and unsupported tax guesses are excluded; safe mapped fields can still be filled.','warn');
+  }
+
+  // Seller-edited Draft controls have precedence over the generated map.
   document.querySelectorAll('#dynamic-sections-container [id^="f_"]').forEach(input=>{
    const identifier=input.id.slice(2),value=String(input.value||'').trim();
-   if(value&&!draftEditedFields.has(identifier))payload[identifier]=value;
+   if(value&&draftEditedFields.has(identifier))payload[identifier]=value;
   });
-  // Keep per-size table entries that the seller typed manually.
   document.querySelectorAll('#size-measure-table input[id*="__"]').forEach(input=>{
    const value=String(input.value||'').trim();if(value)payload[input.id]=value;
   });
   if(selected.length)payload._variation_sizes=selected.join(',');
+
+  // HSN/GST stay mandatory, but an unverified AI guess must not disable every
+  // other field. Keep a seller-confirmed/current Meesho value; otherwise omit
+  // that tax value from this pass and report it clearly for manual resolution.
+  const unresolvedTax=[];
+  fields.filter(isTaxField).forEach(field=>{
+   const identifier=field.identifier,value=String(payload[identifier]||'').trim(),current=captured(scanNow,identifier);
+   if(!value){
+    unresolvedTax.push(field.label||identifier);
+    delete payload[identifier];
+    return;
+   }
+   const hasOfficialSource=[...(researchNow.results||[]),...(researchNow.officialTaxReferences||[])]
+    .some(row=>officialTaxEvidence(field,value,{url:row.url},researchNow));
+   const isPlaceholder=['0','0%','--','select','not selected'].includes(norm(value));
+   const explicitlyEdited=draftEditedFields.has(identifier)&&!isPlaceholder;
+   const unchangedCurrent=current&&norm(current)===norm(value)&&!isPlaceholder;
+   if(!hasOfficialSource&&!explicitlyEdited&&!unchangedCurrent){
+    unresolvedTax.push(field.label||identifier);
+    delete payload[identifier];
+    liveLog('TAX SAFETY · omitted unverified '+(field.label||identifier)+' from this fill; resolve it in Draft using an official source or enter the seller-confirmed value.','warn');
+   }
+  });
+
   const missingRequired=(currentTitleFields||[]).filter(field=>field.mandatory&&!isTaxField(field)&&!String(payload[field.identifier]||'').trim());
   const measureSizes=selected.length?selected:variationNames(scanNow);
   const missingMeasurements=(currentTitleMeasurements||[]).filter(field=>field.mandatory&&measureSizes.some(size=>!String(payload[String(field.identifier)+'__'+String(size)]||'').trim()));
-  if(missingRequired.length||missingMeasurements.length){
-   const names=[...missingRequired.map(field=>field.label||field.identifier),...missingMeasurements.map(field=>(field.label||field.identifier)+' (per-size measurement)')].slice(0,12);
-   setWorkflowStep('apply','blocked',missingRequired.length+' required field(s) and '+missingMeasurements.length+' per-size measurement(s) remain blank.');
-   say('Autofill blocked by Master Template hard lock: required values are still blank: '+names.join(', ')+(missingRequired.length+missingMeasurements.length>12?'…':'')+'. Complete these in Draft/size measurements, save the Draft, then retry. The extension will not apply an incomplete required form.','warning');
+  if(missingRequired.length)liveLog('REQUIRED REVIEW · '+missingRequired.length+' required field(s) remain blank. Safe values will still be filled; these must be completed before catalog submission.','warn');
+  if(missingMeasurements.length)liveLog('MEASUREMENT REVIEW · '+missingMeasurements.length+' per-size measurement(s) remain blank. The available verified fields will still be filled.','warn');
+
+  const sendCount=Object.entries(payload).filter(([key,value])=>key!=='_variation_sizes'&&String(value||'').trim()).length;
+  if(!sendCount&&!payload._variation_sizes)throw new Error('No usable Draft values are ready. Generate or edit the Draft, then retry Autofill.');
+
+  setWorkflowStep('apply','running','Sending '+sendCount+' mapped values to the active Meesho tab; unverified tax guesses are excluded.');
+  await set({meesho_autofill_values:payload});
+  setProgress(3,'Autofill · connecting to the active Meesho tab');
+  say('Applying '+sendCount+' mapped value(s)'+(selected.length?' and size '+selected.join(', '):'')+' to Meesho…');
+  const result=await new Promise((resolve,reject)=>{
+   chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},response=>{
+    if(chrome.runtime.lastError)return reject(new Error('Could not connect to the Meesho page. Refresh the Seller Panel tab after reloading this extension, then scan again.'));
+    if(!response)return reject(new Error('Meesho did not respond to Autofill. Refresh the catalog tab and run Scan Meesho Form Fields again.'));
+    resolve(response);
+   });
+  });
+  if(result.success===false)throw new Error('Meesho rejected the autofill request: '+String(result.error||'unknown content-script error'));
+  const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
+  const reviewCount=unresolvedTax.length+missingRequired.length+missingMeasurements.length;
+  if(filled===0){
+   setWorkflowStep('apply','error','No field was verified as filled. See the failure list.');
+   setProgress(0,'Autofill failed · review field mapping');
+   const details=failed.slice(0,6).join('; ');
+   say('Autofill reached Meesho but filled 0 fields. '+(details||result.message||'No visible form controls matched the scanned field mapping.')+' Refresh the selected catalog and scan again.','error');
    return;
   }
-  await set({meesho_autofill_values:payload});
-  setProgress(3,'Autofill · sending values to the active Meesho tab');
-  say('Sending '+Object.keys(payload).filter(k=>k!=='_variation_sizes'&&String(payload[k]||'').trim()).length+' field values and size variant(s): '+(selected.join(', ')||'none')+'…');
-  const result=await new Promise((resolve,reject)=>chrome.tabs.sendMessage(tab.id,{type:'AUTOFILL',values:payload},r=>{if(chrome.runtime.lastError)return reject(new Error('Could not connect to Meesho. Refresh the Meesho page and retry.'));if(!r)return reject(new Error('Meesho did not return an autofill result.'));resolve(r);}));
-  const filled=Number(result.filled||0),failed=Array.isArray(result.failed)?result.failed:[];
-  if(filled===0){
-   setWorkflowStep('apply','error','Meesho did not confirm any filled fields.');
-   setProgress(0,'Autofill failed · no fields matched');
-   say('No fields were filled. '+(result.message||'The Meesho page labels/controls did not match the scanned schema. Refresh the selected catalog and retry.')+' Inspect the failed-field list in the message, then retry.','error');return;
+  if(failed.length||reviewCount){
+   const parts=[];
+   if(failed.length)parts.push(failed.length+' field/control issue(s): '+failed.slice(0,5).join('; ')+(failed.length>5?'…':''));
+   if(unresolvedTax.length)parts.push('HSN/GST needs resolution: '+unresolvedTax.join(', '));
+   if(missingRequired.length)parts.push('required fields blank: '+missingRequired.slice(0,6).map(f=>f.label||f.identifier).join(', '));
+   if(missingMeasurements.length)parts.push('per-size measurements blank: '+missingMeasurements.slice(0,5).map(f=>f.label||f.identifier).join(', '));
+   setWorkflowStep('apply','blocked',filled+' field(s) filled; '+(failed.length+reviewCount)+' review item(s) remain.');
+   setProgress(86,'Partial autofill · review highlighted fields');
+   say('Partial autofill: '+filled+' field(s) were verified on Meesho. '+parts.join(' | ')+'. Review the listed fields before saving the catalog.','warning');
+   return;
   }
-  if(result.stopped||failed.length){
-   setWorkflowStep('apply','blocked',filled+' field(s) filled; '+failed.length+' field(s) need review. Check the size selector and Apply confirmation.');
-   setProgress(85,'Partial autofill · inspect failed fields');
-   const shown=failed.slice(0,6).join(', ')+(failed.length>6?'… and '+(failed.length-6)+' more':'');
-   say('Partial autofill: '+filled+' field(s). '+shown+'. '+(result.stopped?'Some fields could not be filled. ':'')+'Review the remaining fields before saving.','warning');return;
-  }
-  setWorkflowStep('apply','done',filled+' field(s) reported filled. Verify the visible Meesho fields before saving the catalog.');
-  setProgress(100,'Autofill complete · verify Meesho values before saving');
-  say('Autofill completed: '+filled+' field(s). Selected size(s): '+(selected.join(', ')||'none')+'. Review Meesho before saving/submitting.','success');
- }catch(e){say(e.message||'Autofill failed.','error');}
+  setWorkflowStep('apply','done',filled+' field(s) were filled and confirmed by the Meesho page. Check the visible form before saving.');
+  setProgress(100,'Autofill complete · verify Meesho before saving');
+  say('Autofill complete: '+filled+' field(s) were verified on Meesho. Selected size(s): '+(selected.join(', ')||'none')+'. Review the visible fields before saving/submitting.','success');
+ }catch(e){
+  const message=String(e&&e.message||'Autofill failed.');
+  setWorkflowStep('apply','error',message);
+  liveLog('AUTOFILL ERROR · '+redactSecrets(e,null),'error');
+  say(message,'error');
+ }
 }
 const AI_PAGE_META={
  listing:{label:'LISTING STUDIO',counter:'01 / 05'},
