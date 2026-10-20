@@ -1783,7 +1783,7 @@ function promptFor(scan,p,d,s,research){
   officialGovernmentTaxReferences:(research.officialTaxReferences||[]).map(r=>({title:r.title,url:r.url,domain:r.domain,snippet:r.snippet})),
   measurementEstimates:research.measurementEstimates||{},
   preverifiedTaxClassification:research.automaticTaxClassification||null,
-  masterTemplateAuthority:bundle?{file:MASTER_RESOURCE_PATH,version:'V26.1 HARD LOCK',fingerprint:bundle.masterFingerprint,excerpts:bundle.masterDigest}:null,
+  masterTemplateAuthority:bundle?{file:MASTER_RESOURCE_PATH,version:'V26.1 HARD LOCK',fingerprint:bundle.masterFingerprint,characters:bundle.masterChars,referenceFile:REFERENCE_RESOURCE_PATH,referenceFingerprint:bundle.referenceFingerprint,referenceProfiles:bundle.referenceProfiles,excerpts:bundle.masterDigest}:null,
   completeReferencePlacementGuide:buildReferencePlacementGuide(scan,p,detectMeeshoCatalog(scan),bundle)
  };
  return [
@@ -2131,7 +2131,7 @@ async function generate(googleAllowed){
   const researchNote=researchNow.results.length?' Category-based web research added.':(' Web research unavailable: '+(researchNow.error||'no results')+'.');
   setProgress(100,'Draft complete · choose a title and review unresolved fields');
   say('Draft ready using '+answer.name+'.'+imageNote+researchNote+' Review fields before autofill.',needs.length||researchNow.error?'warning':'success');
- }catch(e){liveLog('PIPELINE ERROR · '+redactSecrets(e,null),'error');say(redactSecrets(e,null),'error');}
+ }catch(e){const message=redactSecrets(e,null);setWorkflowStep(workflowBundle?'mapping':'authority','error',message);setWorkflowStep('apply','blocked','Workflow failed before safe application. Check the message and retry.');liveLog('PIPELINE ERROR · '+message,'error');say(message,'error');}
 }
 async function autofill(){
  try{
