@@ -32,6 +32,28 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+  // Meesho's controlled React fields need deliberate, sequential commit time.
+  // These waits prevent one field/dropdown from opening before the prior
+  // field has retained its value.
+  const AUTOFILL_TIMING = Object.freeze({
+    fieldFocus: 120,
+    inputCommit: 180,
+    inputRetryCommit: 240,
+    dropdownOpenPoll: 80,
+    dropdownOpenAttempts: 24,
+    dropdownSearchCommit: 320,
+    dropdownOptionCommit: 220,
+    dropdownVerifyCommit: 180,
+    retryDropdownOpenCommit: 180,
+    sizeMenuOpenTimeout: 1600,
+    sizeOptionCommit: 190,
+    sizeApplyPrepare: 100,
+    sizeApplyCommit: 360,
+    sizeVerifyPoll: 100,
+    dropdownCloseCommit: 100,
+    fieldGap: 160
+  });
+
   function norm(text) {
     return (text || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   }
@@ -202,7 +224,7 @@
       const observer = new MutationObserver(check);
       observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-expanded', 'aria-checked'] });
       check();
-      setTimeout(() => done(null), 750);
+      setTimeout(() => done(null), AUTOFILL_TIMING.sizeMenuOpenTimeout);
     });
     if (!menu) menu = findVisibleSizeMenu();
     if (!menu) {
@@ -236,14 +258,14 @@
       if(rowIsSelected(row)){clicked.push(target);continue;}
       row.scrollIntoView({behavior:'auto',block:'nearest'});
       clickSizeRow(row);
-      await sleep(60);
+      await sleep(AUTOFILL_TIMING.sizeOptionCommit);
       active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
       row=locateSizeRow(active,target);
       if(!rowIsSelected(row)&&row){
         // Re-query after React settles. If the control click did not change state,
         // target the whole refreshed option row with a real pointer event.
         realClick(row);
-        await sleep(65);
+        await sleep(AUTOFILL_TIMING.sizeOptionCommit);
         active=findVisibleSizeMenu()||(menu.isConnected?menu:null);
         row=locateSizeRow(active,target);
       }
@@ -261,15 +283,15 @@
       /^apply\b/i.test(String(btn.textContent || '').trim()) && btn.getBoundingClientRect().width > 0);
     if (applyBtn) {
       applyBtn.scrollIntoView({ behavior: 'auto', block: 'center' });
-      await sleep(25);
+      await sleep(AUTOFILL_TIMING.sizeApplyPrepare);
       if (!callReactOnClick(applyBtn)) realClick(applyBtn);
-      await sleep(120);
+      await sleep(AUTOFILL_TIMING.sizeApplyCommit);
       let menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
       if(menuStillOpenAfterApply){
         const refreshedMenu=findVisibleSizeMenu();
         const refreshedApply=refreshedMenu&&Array.from(refreshedMenu.querySelectorAll('button')).find(btn=>/^apply\b/i.test(String(btn.textContent||'').trim()));
         if(refreshedApply)realClick(refreshedApply);
-        await sleep(120);
+        await sleep(AUTOFILL_TIMING.sizeApplyCommit);
         menuStillOpenAfterApply=Boolean(findVisibleSizeMenu());
       }
       await closeOpenDropdown();
@@ -280,7 +302,7 @@
       for(let attempt=0;attempt<5;attempt++){
         label=norm(String(triggerEl?.textContent||'')+' '+String(triggerEl?.querySelector?.('input')?.value||''));
         if(clicked.every(target=>label.includes(norm(target))))break;
-        await sleep(35);
+        await sleep(AUTOFILL_TIMING.sizeVerifyPoll);
       }
       const verified=clicked.every(target=>label.includes(norm(target)));
       if(verified)return true;
@@ -292,7 +314,7 @@
     const triggerText = norm(String(triggerEl?.textContent || '') + ' ' + String(triggerEl?.querySelector?.('input')?.value || ''));
     if (active && active.isConnected) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-      await sleep(60);
+      await sleep(AUTOFILL_TIMING.dropdownCloseCommit);
     }
     const stillOpen = Boolean(findVisibleSizeMenu());
     const selectedVisible = clicked.every(target => triggerText.includes(norm(target)));
@@ -547,14 +569,14 @@
       return false;
     }
     triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-    await sleep(25);
+    await sleep(AUTOFILL_TIMING.fieldFocus);
     realClick(triggerEl);
     const targetText = norm(value);
     const menuSelector = '[role="listbox"], [role="menu"], .MuiPopover-root, .MuiModal-root, .MuiDialog-root, [data-radix-popper-content-wrapper]';
     let opt = null;
     let activeMenu = null;
-    for (let i = 0; i < 18; i++) {
-      await sleep(30);
+    for (let i = 0; i < AUTOFILL_TIMING.dropdownOpenAttempts; i++) {
+      await sleep(AUTOFILL_TIMING.dropdownOpenPoll);
       const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
       for (const menu of menus) {
         const items = Array.from(menu.querySelectorAll('li, [role="option"], [role="menuitem"], [data-value], button'));
@@ -570,7 +592,7 @@
       if (searchBox) {
         searchBox.focus();
         setReactInputValue(searchBox, value);
-        await sleep(140);
+        await sleep(AUTOFILL_TIMING.dropdownSearchCommit);
         const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
         for (const menu of menus) {
           const items = Array.from(menu.querySelectorAll('li, [role="option"], [role="menuitem"], [data-value], button'));
@@ -587,13 +609,13 @@
     }
     opt.scrollIntoView({ behavior: 'auto', block: 'nearest' });
     realClick(opt);
-    await sleep(80);
-    if (activeMenu && activeMenu.isConnected && visibleEnabled(activeMenu)) await sleep(90);
+    await sleep(AUTOFILL_TIMING.dropdownOptionCommit);
+    if (activeMenu && activeMenu.isConnected && visibleEnabled(activeMenu)) await sleep(AUTOFILL_TIMING.dropdownVerifyCommit);
     const observed = String(inputEl && inputEl.value || '') + ' ' + String(triggerEl && triggerEl.textContent || '');
     if (fieldValueEquivalent(inputEl && inputEl.value, value) || norm(observed).includes(targetText)) return true;
     await closeOpenDropdown();
     realClick(triggerEl);
-    await sleep(100);
+    await sleep(AUTOFILL_TIMING.retryDropdownOpenCommit);
     const menus = Array.from(document.querySelectorAll(menuSelector)).filter(visibleEnabled);
     let retry = null;
     for (const menu of menus) {
@@ -601,7 +623,7 @@
         .find(el => norm(el.textContent) === targetText);
       if (retry) break;
     }
-    if (retry) { realClick(retry); await sleep(100); }
+    if (retry) { realClick(retry); await sleep(AUTOFILL_TIMING.inputRetryCommit); }
     const afterRetry = String(inputEl && inputEl.value || '') + ' ' + String(triggerEl && triggerEl.textContent || '');
     if (fieldValueEquivalent(inputEl && inputEl.value, value) || norm(afterRetry).includes(targetText)) return true;
     failed.push(identifier + ' ("' + value + '") was clicked but Meesho did not retain the selected value');
@@ -618,7 +640,7 @@
     }
     try {
       field.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-      await sleep(20);
+      await sleep(AUTOFILL_TIMING.fieldFocus);
       if (field.type === 'mui') return await selectMuiDropdown(field.triggerEl, field.inputEl, expected, identifier, failed);
       if (field.type === 'select') {
         const select = field.triggerEl;
@@ -638,7 +660,7 @@
         else select.value = match.value;
         select.dispatchEvent(new Event('input', { bubbles: true }));
         select.dispatchEvent(new Event('change', { bubbles: true }));
-        await sleep(70);
+        await sleep(AUTOFILL_TIMING.inputCommit);
         const selectedText = select.options[select.selectedIndex]?.text || '';
         if (String(select.value) === String(match.value) &&
             (fieldValueEquivalent(selectedText, expected) || fieldValueEquivalent(select.value, expected))) return true;
@@ -656,13 +678,13 @@
       }
       input.focus();
       setReactInputValue(input, expected);
-      await sleep(65);
+      await sleep(AUTOFILL_TIMING.inputCommit);
       if (fieldValueEquivalent(input.value, expected)) {
         input.dispatchEvent(new Event('blur', { bubbles: true }));
         return true;
       }
       setReactInputValue(input, expected);
-      await sleep(100);
+      await sleep(AUTOFILL_TIMING.inputRetryCommit);
       if (fieldValueEquivalent(input.value, expected)) {
         input.dispatchEvent(new Event('blur', { bubbles: true }));
         return true;
@@ -695,7 +717,7 @@
 
       const ok = await fillFieldDirect(f, finalVal, identifier, failed);
       if (ok) anyFilled = true;
-      if (f.type === 'mui') await sleep(50);
+      if (f.type === 'mui') await sleep(AUTOFILL_TIMING.fieldGap);
     }
     if (!anyFilled) failed.push(`${identifier} (all rows)`);
     return anyFilled;
@@ -849,7 +871,7 @@
 
       if (field.type === 'mui') {
         field.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-        await sleep(30);
+        await sleep(AUTOFILL_TIMING.fieldFocus);
         const ok = await fillFieldDirect(field, value, id, failed);
         if (ok) {
           filled++;
@@ -857,7 +879,7 @@
           await closeOpenDropdown();
           buildLabelCache();
         }
-        await sleep(50);
+        await sleep(AUTOFILL_TIMING.fieldGap);
       } else {
         const ok = await fillFieldDirect(field, value, id, failed);
         if (ok) {
@@ -873,12 +895,12 @@
       const vField = findVariationSizeField();
       if (vField) {
         vField.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-        await sleep(30);
+        await sleep(AUTOFILL_TIMING.fieldFocus);
         const ok = await selectSizeDropdown(vField.triggerEl, variationSizes, failed);
         reportAutofillProgress('Selecting size '+variationSizes);
         if (ok) filled++;
         await closeOpenDropdown();
-        await sleep(50);
+        await sleep(AUTOFILL_TIMING.fieldGap);
       } else {
         failed.push('Selected size(s) could not be matched to a Meesho size selector.');
       }
@@ -886,9 +908,9 @@
 
     for (let i = 0; i < 40; i++) {
       if (document.getElementById('meesho_price')) break;
-      await sleep(50);
+      await sleep(AUTOFILL_TIMING.fieldGap);
     }
-    await sleep(50);
+    await sleep(AUTOFILL_TIMING.fieldGap);
 
     buildLabelCache();
 
@@ -949,7 +971,7 @@
       for (const { id, value, field } of queue) {
         if (field.type === 'mui') {
           field.triggerEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-          await sleep(30);
+          await sleep(AUTOFILL_TIMING.fieldFocus);
           const ok = await fillFieldDirect(field, value, id, failed);
           if (ok) {
             filled++;
@@ -957,7 +979,7 @@
             await closeOpenDropdown();
             buildLabelCache();
           }
-          await sleep(50);
+          await sleep(AUTOFILL_TIMING.fieldGap);
         } else {
           const ok = await fillFieldDirect(field, value, id, failed);
           if (ok) filled++;
