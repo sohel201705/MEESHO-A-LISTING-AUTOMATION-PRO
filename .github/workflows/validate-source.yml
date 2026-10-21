@@ -415,6 +415,7 @@ jobs:
           assert.ok(aiAssistant.includes('TITLE CREATION RULE'));
           assert.ok(aiAssistant.includes('HSN CODE AND GST RATE ARE REQUIRED PRIORITIES'));
           assert.ok(aiAssistant.includes('DuckDuckGo'));
-          assert.ok(aiAssistant.includes('39241090'));
+          assert.ok(aiAssistant.includes('function productCodes'));
+          assert.ok(aiAssistant.includes('function officialTaxEvidence'));
           console.log('v3.18.4 checks passed: robust research parsing, automatic evidence-backed tax/measurement application, four distinct clean title styles, core product fields and existing extension safeguards.');
           NODE
