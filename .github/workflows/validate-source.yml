@@ -135,7 +135,7 @@ jobs:
           assert.ok(aiAssistant.includes("for(const port of [url.port,'31415','3001'])"));
           assert.ok(aiAssistant.includes('explainProviderFailure(k.provider,e,i<order.length-1)'));
           assert.ok(aiAssistant.includes('Provider quota exhausted.'));
-          assert.ok(aiAssistant.includes('imgs.slice(0,3)'));
+          assert.ok(aiAssistant.includes('imgs.slice(0,3)') || aiAssistant.includes('(imgs||[]).slice(0,3)'));
           assert.ok(aiAssistant.includes("k.provider!=='groq'&&/^gsk_/i.test(apiKey)"));
           assert.ok(aiAssistant.includes("k.provider!=='gemini'&&/^AIzaSy/i.test(apiKey)"));
           assert.ok(aiAssistant.includes("if(/^gsk_/i.test(apiKey))p='groq';else if(/^AIzaSy/i.test(apiKey))p='gemini'"));
