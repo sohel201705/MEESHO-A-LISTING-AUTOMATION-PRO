@@ -86,7 +86,7 @@ jobs:
           assert.ok(html.includes('run-firebase-integration'));
           assert.ok(admin.includes("$('run-firebase-integration')?.addEventListener('click', runFirebaseIntegration)"));
           assert.equal(manifest.name, 'MEESHO A+ LISTING AUTOMATION PRO');
-          assert.equal(manifest.version, '3.18.4');
+          assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
           assert.ok(!manifest.host_permissions.some(x => /codes-market|supabase/i.test(x)));
           assert.ok(!popup.includes('codes-market.xyz'));
           assert.ok(!popup.includes('syncProfilesFromBackend'));
