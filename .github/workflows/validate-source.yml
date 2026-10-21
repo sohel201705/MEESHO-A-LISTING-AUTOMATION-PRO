@@ -298,22 +298,24 @@ jobs:
             { identifier: 'seating_capacity', label: 'Seating Capacity' }
           ], {}, { categoryName: 'Plastic Chairs' })).key, 'furniture');
 
-          // Free Size must target the real checkbox/label row and commit Apply faster.
+          // Free Size must target the real checkbox/label row and allow React/Meesho enough time to commit Apply.
           assert.ok(content.includes('function sizeOptionContainer(option, menu)'));
           assert.ok(content.includes('function clickSizeRow(row)'));
-          assert.ok(content.includes('setTimeout(() => done(null), 750)'));
-          assert.ok(content.includes('HTMLElement.click() already emits the native click/input/change sequence'));
+          assert.ok(content.includes('sizeMenuOpenTimeout: 1600'));
+          assert.ok(content.includes('sizeOptionCommit: 190'));
+          assert.ok(content.includes('sizeApplyCommit: 360'));
+          assert.ok(content.includes('if (!input.checked)') && content.includes('input.click()'));
           const sizeClickStart = content.indexOf('function clickSizeRow(row)');
           const sizeClickEnd = content.indexOf('async function selectSizeDropdown', sizeClickStart);
           assert.ok(sizeClickStart >= 0 && sizeClickEnd > sizeClickStart);
           assert.ok(!content.slice(sizeClickStart, sizeClickEnd).includes("input.dispatchEvent(new Event('change', { bubbles: true }))"));
-          assert.ok(content.includes("await sleep(120)"));
+          assert.ok(content.includes('fieldGap: 160'));
           assert.ok(content.includes('Meesho did not confirm the committed size'));
 
           // Product taxes: search in parallel, never preserve Meesho's default GST 0,
           // and require an official source before filling an HSN/GST candidate.
           assert.ok(aiAssistant.includes('const outcomes=await Promise.all(queries.map'));
-          assert.ok(aiAssistant.includes('Autofill blocked: '));
+          assert.ok(aiAssistant.includes('unresolvedTax.push(field.label||identifier)'));
           assert.ok(aiAssistant.includes('function officialTaxEvidence'));
           assert.ok(aiAssistant.includes('if(!OFFICIAL_TAX_HOST.test(host))return null'));
           assert.ok(aiAssistant.includes("['0','0%','--','select','not selected'].includes(norm(oldTax))"));
