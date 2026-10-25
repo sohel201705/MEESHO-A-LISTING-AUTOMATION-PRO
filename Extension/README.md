@@ -1,6 +1,6 @@
-# MEESHO A+ LISTING AUTOMATION PRO — Extension v3.20.6
+# MEESHO A+ LISTING AUTOMATION PRO — Extension v3.20.7
 
-## Membership verification (v3.20.6)
+## Membership verification (v3.20.7)
 - Google sign-in does not grant paid membership by itself.
 - Access is granted only when Firebase has an explicit `ACTIVE` entitlement for this user in `productMemberships/{uid}.products.meesho` or a compatible legacy `memberships/{uid}` document.
 - The entitlement must have a valid future expiry date, or explicitly identify a Lifetime plan with `durationDays: 0`.
@@ -24,5 +24,5 @@
 5. If no active membership is found, choose a plan / contact support in WhatsApp and enter the one-time activation key after Admin issues it.
 
 ## Release
-- Extension version: 3.20.6
+- Extension version: 3.20.7
 - Fixes: read Admin Panel's product membership record, prevent accidental “active lifetime” status when the expiry/duration is missing, remove implicit trial auto-start from paid membership verification, and label any free trial distinctly from paid membership.
