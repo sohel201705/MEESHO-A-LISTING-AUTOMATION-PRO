@@ -48,7 +48,7 @@
       }
     ]
   },
-  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Firebase Google login, active-plan Firestore queries, authoritative product membership verification, activation keys, and combined Meesho + Flipkart plan support.",
+  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Firebase Google login, active-plan Firestore queries, authoritative membership verification, optional saved seller defaults during product listing, and device-local AI settings.",
   "host_permissions": [
     "https://supplier.meesho.com/*",
     "https://upload.meeshosupplyassets.com/*",
@@ -76,7 +76,7 @@
     "storage",
     "offscreen"
   ],
-  "version": "3.20.8",
+  "version": "3.20.9",
   "web_accessible_resources": [
     {
       "matches": [
