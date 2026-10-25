@@ -590,6 +590,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message?.type) {
+        case 'LOCAL_STORAGE_BRIDGE': {
+          // Storage bridge for extension-supporting mobile browsers. AI settings
+          // still mirror to localStorage/IndexedDB if this bridge is unavailable.
+          const op = String(message.op || 'get');
+          const payload = message.payload;
+          if (op === 'get') {
+            sendResponse({ ok: true, data: await chrome.storage.local.get(payload) });
+          } else if (op === 'set') {
+            await chrome.storage.local.set(payload || {});
+            sendResponse({ ok: true });
+          } else if (op === 'remove') {
+            const keys = Array.isArray(payload) ? payload : [payload];
+            await chrome.storage.local.remove(keys.filter(Boolean));
+            sendResponse({ ok: true });
+          } else {
+            sendResponse({ ok: false, error: 'Unsupported storage operation.' });
+          }
+          return;
+        }
         case 'GET_ACCESS':
         case 'CHECK_MEMBERSHIP':
           sendResponse(await buildAccess());
