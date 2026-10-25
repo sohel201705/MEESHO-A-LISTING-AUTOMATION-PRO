@@ -48,7 +48,7 @@
       }
     ]
   },
-  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Firebase Google login, active-plan Firestore queries, authoritative membership verification, optional saved seller defaults during product listing, and device-local AI settings.",
+  "description": "MEESHO A+ LISTING AUTOMATION PRO by Sohel Enterprise. Google login, verified membership and plans, fully visible AI Listing Studio, product basics, multi-provider API connections, and optional saved seller defaults.",
   "host_permissions": [
     "https://supplier.meesho.com/*",
     "https://upload.meeshosupplyassets.com/*",
@@ -76,7 +76,7 @@
     "storage",
     "offscreen"
   ],
-  "version": "3.20.9",
+  "version": "3.21.0",
   "web_accessible_resources": [
     {
       "matches": [
