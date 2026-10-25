@@ -1876,6 +1876,85 @@ async function tryRouteToRequestedView(viewId) {
   }
 }
 
+
+// v3.21.0 UI recovery: keep the complete AI listing workspace available in the
+// injected side-panel iframe even if a page-style or workspace-init handler fails.
+function restoreAiWorkspaceUI() {
+  const root = document.getElementById('ai-catalog-assistant');
+  if (!root) return;
+  root.style.setProperty('overflow', 'visible', 'important');
+
+  const showEl = (selector, display) => {
+    const el = root.querySelector(selector);
+    if (!el) return;
+    el.style.setProperty('display', display, 'important');
+    el.style.setProperty('visibility', 'visible', 'important');
+  };
+  showEl('.ai-progress-panel', 'block');
+  showEl('.ai-dashboard-nav', 'grid');
+  showEl('.ai-page-switcher', 'flex');
+  root.querySelectorAll('.ai-dashboard-nav [data-ai-page]').forEach(button => {
+    button.style.setProperty('display', 'flex', 'important');
+    button.style.setProperty('visibility', 'visible', 'important');
+  });
+
+  const buttons = Array.from(root.querySelectorAll('[data-ai-page]'));
+  const pages = Array.from(root.querySelectorAll('[data-ai-page-panel]'));
+  if (!buttons.length || !pages.length) return;
+
+  const pageMeta = {
+    listing: ['LISTING STUDIO', '01 / 05'],
+    profile: ['SELLER PROFILE', '02 / 05'],
+    api: ['API CONNECTIONS', '03 / 05'],
+    chat: ['AI LISTING CHAT', '04 / 05'],
+    activity: ['ACTIVITY CENTER', '05 / 05']
+  };
+  const activatePage = page => {
+    if (!pageMeta[page]) page = 'listing';
+    buttons.forEach(button => {
+      const active = button.getAttribute('data-ai-page') === page;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    pages.forEach(panel => {
+      const active = panel.getAttribute('data-ai-page-panel') === page;
+      panel.classList.toggle('active', active);
+      panel.style.setProperty('display', active ? 'block' : 'none', 'important');
+      panel.style.setProperty('visibility', active ? 'visible' : 'hidden', 'important');
+    });
+    const label = document.getElementById('ai-page-overline');
+    const counter = document.getElementById('ai-page-counter');
+    if (label) label.textContent = pageMeta[page][0];
+    if (counter) counter.textContent = pageMeta[page][1];
+
+    // Legacy scanner/fill controls belong to Listing Studio only.
+    const tab = document.getElementById('tab-fill');
+    if (tab) {
+      const legacyNodes = [
+        tab.querySelector(':scope > .scan-section'),
+        tab.querySelector(':scope > .step-label'),
+        document.getElementById('dynamic-sections-container'),
+        document.getElementById('fill-footer')
+      ];
+      legacyNodes.forEach(node => { if (node) node.style.display = page === 'listing' ? '' : 'none'; });
+    }
+  };
+
+  buttons.forEach(button => {
+    if (button.dataset.aiWorkspaceFallbackBound === '1') return;
+    button.dataset.aiWorkspaceFallbackBound = '1';
+    button.addEventListener('click', () => activatePage(button.getAttribute('data-ai-page')));
+  });
+
+  const current = buttons.find(button => button.classList.contains('active'))?.getAttribute('data-ai-page')
+    || pages.find(panel => panel.classList.contains('active'))?.getAttribute('data-ai-page-panel')
+    || 'listing';
+  activatePage(current);
+}
+restoreAiWorkspaceUI();
+setTimeout(restoreAiWorkspaceUI, 250);
+setTimeout(restoreAiWorkspaceUI, 900);
+
 const _requestedView = new URLSearchParams(location.search).get('view');
 if (_requestedView) {
   setTimeout(() => tryRouteToRequestedView(_requestedView), 600);
