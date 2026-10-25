@@ -197,7 +197,9 @@ async function buildAccess() {
   };
   if (!user.uid) return { allowed: false, reason: 'unauthenticated', user: null, membership: null, plan: null };
 
-  let userDoc = null, productDoc = null, legacyDoc = null;
+  let userDoc = null;
+  let productDoc = null;
+  let legacyDoc = null;
   let membershipReadFailed = false;
   try { userDoc = await firestoreGet(`users/${user.uid}`, token); } catch (_) {}
   try { productDoc = await firestoreGet(`productMemberships/${user.uid}`, token); } catch (_) { membershipReadFailed = true; }
@@ -210,18 +212,23 @@ async function buildAccess() {
   const legacyMembership = legacyDoc?.fields || null;
   const candidates = [productMembership, legacyMembership].filter(Boolean);
   const now = Date.now();
+
   const activeEntitlement = entitlement => {
     if (!entitlement || String(entitlement.status || '').toUpperCase() !== 'ACTIVE') return false;
-    const duration = Number(entitlement.durationDays);
-    // Lifetime must be explicit: durationDays=0 is valid only when the field is present.
-    if (entitlement.durationDays !== undefined && entitlement.durationDays !== null && duration === 0) return true;
-    const expiry = entitlement.expiryDate ? Date.parse(entitlement.expiryDate) : NaN;
-    return Number.isFinite(expiry) && expiry > now;
+    const durationProvided = entitlement.durationDays !== undefined && entitlement.durationDays !== null;
+    const durationDays = Number(entitlement.durationDays);
+    // A zero-day plan is lifetime only if the stored plan explicitly identifies itself as Lifetime.
+    const isLifetime = durationProvided && durationDays === 0 &&
+      String(entitlement.planId || '').toLowerCase().includes('lifetime');
+    if (isLifetime) return true;
+    const expiryMs = entitlement.expiryDate ? Date.parse(entitlement.expiryDate) : NaN;
+    return Number.isFinite(expiryMs) && expiryMs > now;
   };
   const activeCandidates = candidates.filter(activeEntitlement);
-  // Prefer the product-specific entitlement written by the current Admin Panel.
+  // Product-specific Admin Panel entitlement is first, with legacy Meesho membership supported.
   const membership = activeCandidates[0] || productMembership || legacyMembership || null;
   const membershipActive = activeCandidates.length > 0;
+
   let plan = null;
   if (membership?.planId) {
     try { plan = (await firestoreGet(`plans/${membership.planId}`, token))?.fields || null; } catch (_) {}
@@ -238,6 +245,7 @@ async function buildAccess() {
   const effectiveDuration = membershipActive ? Number(membership?.durationDays ?? plan?.durationDays ?? -1) : -1;
   const effectiveExpiry = membershipActive ? (membership?.expiryDate || null) : (membership?.expiryDate || null);
   const entitlementStatus = membershipActive ? 'active' : expired ? 'expired' : suspended ? 'suspended' : revoked ? 'revoked' : 'not_found';
+
   const full = {
     ...user, ...(userDoc?.fields || {}),
     uid: user.uid,
