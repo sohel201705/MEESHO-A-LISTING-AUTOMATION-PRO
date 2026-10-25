@@ -725,20 +725,61 @@ async function fetchFirebaseDoc(collectionName, docId) {
 async function fetchFirebaseCollection(collectionName) {
   const token = await getFirebaseToken();
   if (!token) return [];
-  const rows = [];
-  let pageToken = '';
   try {
+    // Firestore Rules are not filters. The Extension is only allowed to read plans
+    // whose active field is true, so the query itself must include active == true.
+    // Listing the entire plans collection gets PERMISSION_DENIED even when every
+    // visible plan is active; that denial was silently rendered as an empty catalog.
+    if (collectionName === 'plans') {
+      const endpoint = FIREBASE_BASE_URL().replace(/\\/documents$/, '/documents:runQuery');
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: 'plans' }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: 'active' },
+                op: 'EQUAL',
+                value: { booleanValue: true }
+              }
+            },
+            limit: 100
+          }
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn('[Membership plans] Firestore query failed:', res.status, err?.error?.message || '');
+        return [];
+      }
+      const results = await res.json();
+      return (Array.isArray(results) ? results : [])
+        .filter(row => row?.document?.name)
+        .map(row => decodeFirestoreDocument(row.document))
+        .filter(row => row.id && row.id !== '_meta');
+    }
+
+    const rows = [];
+    let pageToken = '';
     do {
       const query = new URLSearchParams({ pageSize: '100' });
       if (pageToken) query.set('pageToken', pageToken);
-      const res = await fetch(`${FIREBASE_BASE_URL()}/${collectionName}?${query.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${FIREBASE_BASE_URL()}/${collectionName}?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (!res.ok) return [];
       const data = await res.json();
       rows.push(...(data.documents || []).map(decodeFirestoreDocument));
       pageToken = data.nextPageToken || '';
     } while (pageToken);
     return rows.filter(row => row.id !== '_meta');
-  } catch (_) {
+  } catch (error) {
+    console.warn('[Firebase collection] Read failed:', collectionName, error?.message || error);
     return [];
   }
 }
