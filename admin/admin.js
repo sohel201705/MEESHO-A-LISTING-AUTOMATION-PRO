@@ -130,8 +130,31 @@ async function loadSettings() { const s=await getDoc(doc(db,'settings','general'
 async function loadAll() { await Promise.all([loadPlans(),loadUsers(),loadKeys(),loadPayments(),loadSettings()]); updateStats(); renderPlans(); renderUsers(); renderKeySelectors(); renderKeys(); renderPlanSelectors(); renderPayments(); }
 
 function updateStats() {
-  const active=[...memberships.values()].filter(m=>String(m.status).toUpperCase()==='ACTIVE' && (Number(m.durationDays||0)===0 || !m.expiryDate || new Date(m.expiryDate).getTime()>Date.now())).length;
-  const expired=[...memberships.values()].filter(m=>String(m.status).toUpperCase()==='EXPIRED' || (m.expiryDate && new Date(m.expiryDate).getTime()<=Date.now())).length;
+  // Count distinct UID entitlements. Missing expiry/duration is never implicitly lifetime.
+  const isActiveEntitlement = m => {
+    if (String(m?.status || '').toUpperCase() !== 'ACTIVE') return false;
+    const durationProvided = m.durationDays !== undefined && m.durationDays !== null;
+    const isLifetime = durationProvided && Number(m.durationDays) === 0 &&
+      String(m.planId || '').toLowerCase().includes('lifetime');
+    if (isLifetime) return true;
+    const expiry = m.expiryDate ? new Date(m.expiryDate).getTime() : NaN;
+    return Number.isFinite(expiry) && expiry > Date.now();
+  };
+  const activeUids = new Set();
+  const expiredUids = new Set();
+  for (const m of memberships.values()) {
+    const uid = String(m.uid || '');
+    const entitlements = Object.values(m.productMemberships || {});
+    const candidates = entitlements.length ? entitlements : [m];
+    if (candidates.some(isActiveEntitlement)) {
+      if (uid) activeUids.add(uid);
+    } else if (candidates.some(e => String(e?.status || '').toUpperCase() === 'EXPIRED' ||
+      (e?.expiryDate && Number.isFinite(Date.parse(e.expiryDate)) && Date.parse(e.expiryDate) <= Date.now()))) {
+      if (uid) expiredUids.add(uid);
+    }
+  }
+  const active = activeUids.size;
+  const expired = expiredUids.size;
   const avail=keys.filter(k=>String(k.status||'').toUpperCase()==='AVAILABLE').length;
   $('stat-users').textContent=users.length; $('stat-active').textContent=active; $('stat-plans').textContent=plans.length; $('stat-keys').textContent=avail; $('stat-payments').textContent=payments.length; $('stat-expired').textContent=expired;
 }
