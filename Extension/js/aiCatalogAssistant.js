@@ -600,16 +600,36 @@ function updateModelChoices(p){
  const list=$('ai-model-options');if(!list)return;list.replaceChildren();
  modelChoices(p).forEach(item=>{const opt=el('option');opt.value=item.id;opt.label=item.label;list.appendChild(opt);});
 }
-function updateProviderForm(){
+const LOCAL_ENDPOINT_KEY='ai_local_endpoint_by_device_v1';
+async function getSavedLocalEndpoint(provider){
+ if(provider!=='freellmapi')return '';
+ try{
+  const r=await get(LOCAL_ENDPOINT_KEY),map=r[LOCAL_ENDPOINT_KEY];
+  return String(map&&map[provider]||'').trim();
+ }catch(_){return '';}
+}
+async function saveLocalEndpoint(provider,endpoint){
+ if(provider!=='freellmapi'||!endpoint)return;
+ try{
+  const r=await get(LOCAL_ENDPOINT_KEY);
+  const map=(r[LOCAL_ENDPOINT_KEY]&&typeof r[LOCAL_ENDPOINT_KEY]==='object')?r[LOCAL_ENDPOINT_KEY]:{};
+  map[provider]=endpoint;
+  await set({[LOCAL_ENDPOINT_KEY]:map});
+ }catch(_){}
+}
+async function updateProviderForm(){
  const p=$('ai-provider-type').value,m=$('ai-key-model'),ep=$('ai-key-endpoint');
  if(!m.value.trim()||m.dataset.provider!==p)m.value=modelDefault(p);
  m.dataset.provider=p;
  $('ai-key-endpoint-wrap').style.display=usesEndpoint(p)?'block':'none';
- if(usesEndpoint(p)&&(!ep.value.trim()||ep.dataset.provider!==p))ep.value=endpointDefault(p);
+ if(usesEndpoint(p)&&(!ep.value.trim()||ep.dataset.provider!==p)){
+  const saved=await getSavedLocalEndpoint(p);
+  ep.value=saved||endpointDefault(p);
+ }
  ep.dataset.provider=p;
  updateModelChoices(p);
  $('ai-provider-hint').textContent=(PROVIDERS[p]?.hint||'Use a supported vision model and a reachable OpenAI-compatible endpoint.')+
-  ' Use your own key. This provider may be paid; the extension cannot promise free quotas.';
+  ' API keys and endpoint settings save locally; connection permission is checked separately.';
 }
 async function askPermission(endpoint){
  let pattern;try{
@@ -692,11 +712,23 @@ async function addKey(){
  if(p!==selectedProvider){$('ai-provider-type').value=p;updateProviderForm();say('Detected key format; provider switched to '+label(p)+'.','warning');}
  const model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=usesEndpoint(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
  if(!model)return say('Enter the model ID.','error');
- let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
- if(!ok)return say('API-host permission denied; key was not saved.','error');
+ const all=await keys();
+ if(all.some(k=>k.provider===p&&k.apiKey===apiKey))return say('This provider key is already saved.','warning');
+
+ // Save the key and device-specific local endpoint even if this mobile browser
+ // cannot grant host permissions immediately. Connection testing is a separate step.
  const item=makeKey(p,model,endpoint,apiKey,$('ai-key-name').value.trim()||label(p)+' key');
- const all=await keys();if(all.some(k=>k.provider===p&&k.apiKey===apiKey))return say('This provider key is already saved.','warning');
- all.push(item);await persistKeys(all);$('ai-key-value').value='';$('ai-key-name').value='';say('API key added. Multiple providers and keys are supported.','success');
+ all.push(item);
+ await persistKeys(all);
+ if(p==='freellmapi')await saveLocalEndpoint(p,endpoint);
+ $('ai-key-value').value='';$('ai-key-name').value='';
+ let permissionOk=true,permissionError='';
+ try{permissionOk=await checkProviderPermission(p,endpoint);}catch(e){permissionOk=false;permissionError=e.message||'';}
+ if(!permissionOk){
+  say('API key saved locally. Connection permission is not available yet; use Test Connection in a browser that supports this endpoint.'+(permissionError?' '+permissionError:''),'warning');
+  return;
+ }
+ say('API key added and saved on this device. Multiple providers and keys are supported.','success');
 }
 async function addBulkKeys(){
  const p=$('ai-provider-type').value,model=$('ai-key-model').value.trim()||modelDefault(p),endpoint=usesEndpoint(p)?($('ai-key-endpoint').value.trim()||endpointDefault(p)):'';
@@ -708,8 +740,6 @@ async function addBulkKeys(){
  }).filter(item=>item.apiKey);
  if(!entries.length)return say('Paste one API key per line in the bulk box first.','error');
  if(!model)return say('Enter the model ID for this provider.','error');
- let ok=false;try{ok=await checkProviderPermission(p,endpoint);}catch(e){return say(e.message,'error');}
- if(!ok)return say('API-host permission denied; no keys were added.','error');
  const all=await keys();let added=0,duplicates=0;
  entries.forEach((entry,index)=>{
   if(all.some(k=>k.provider===p&&k.apiKey===entry.apiKey)){duplicates++;return;}
@@ -717,8 +747,12 @@ async function addBulkKeys(){
   all.push(makeKey(p,model,endpoint,entry.apiKey,name));added++;
  });
  if(added)await persistKeys(all);
+ if(added&&p==='freellmapi')await saveLocalEndpoint(p,endpoint);
  $('ai-key-bulk').value='';
- say('Bulk add complete: '+added+' added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.',added?'success':'warning');
+ let permissionOk=true;
+ try{permissionOk=await checkProviderPermission(p,endpoint);}catch(_){permissionOk=false;}
+ const message='Bulk add complete: '+added+' added'+(duplicates?', '+duplicates+' duplicate(s) skipped':'')+'.';
+ say(message+(!permissionOk?' Keys are saved locally, but endpoint permission is not available yet; use Test Connection where supported.':''),added?(permissionOk?'success':'warning'):'warning');
 }
 const DEFAULT_FIELD_MAP={
  'ai-default-brand':'brand','ai-default-seller-name':'sellerName','ai-default-seller-address':'sellerAddress',
@@ -2537,7 +2571,8 @@ function init(){
  });
  switchAiDashboardPage('listing');
  $('ai-scan-current-btn').addEventListener('click',async()=>{try{setProgress(2,'Scanning Meesho fields');say('Scanning current catalog form…');await scanCurrentCatalog(true);setProgress(12,'Catalog scan complete');}catch(e){say(e.message||'Scan failed.','error');}});
- $('ai-provider-type').addEventListener('change',()=>{updateProviderForm();syncProviderCards();});
+ $('ai-provider-type').addEventListener('change',()=>{updateProviderForm().catch(e=>say(e.message||'Could not load provider settings.','error'));syncProviderCards();});
+ $('ai-key-endpoint')?.addEventListener('change',()=>{const p=$('ai-provider-type')?.value;if(p==='freellmapi')saveLocalEndpoint(p,$('ai-key-endpoint').value.trim()).catch(()=>{});});
  document.querySelectorAll('#ai-provider-cards [data-api-provider]').forEach(card=>{
   card.addEventListener('click',()=>chooseApiProvider(card.getAttribute('data-api-provider')));
  });
