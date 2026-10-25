@@ -94,10 +94,10 @@ async function writeStorageTombstones(keys){
 }
 function extensionStorageCall(method,args,timeoutMs=1600){
  return new Promise((resolve,reject)=>{
-  let settled=false,directStarted=false;
+  let settled=false,directStarted=false,directFallback=null;
   const finish=(error,value)=>{
    if(settled)return;
-   settled=true;clearTimeout(timeout);clearTimeout(directFallback);
+   settled=true;clearTimeout(timeout);if(directFallback)clearTimeout(directFallback);
    if(error)reject(error);else resolve(value);
   };
   const timeout=setTimeout(()=>finish(new Error('Extension storage callback timed out')),timeoutMs);
@@ -145,7 +145,7 @@ function extensionStorageCall(method,args,timeoutMs=1600){
   }
   // Give the MV3 service-worker bridge first chance. If this browser does not
   // implement the bridge, fall back to direct storage without losing the write.
-  const directFallback=setTimeout(()=>{if(!settled)direct();},bridgeAttempted?220:0);
+  directFallback=setTimeout(()=>{if(!settled)direct();},bridgeAttempted?220:0);
  });
 }
 function requestedStorageKeys(keys){
