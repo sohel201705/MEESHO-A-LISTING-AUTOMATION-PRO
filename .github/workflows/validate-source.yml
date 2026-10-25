@@ -226,7 +226,11 @@ jobs:
           assert.ok(popup.includes("function sellerIdentity(user=currentUser)"));
           assert.ok(popup.includes("function sellerProfileDbKey(user=currentUser)"));
           assert.ok(popup.includes("function sellerDefaultsStorageKey(user=currentUser)"));
-          assert.ok(popup.includes("showView('onboarding')"));
+          assert.ok(popup.includes("if (viewId === 'onboarding') viewId = 'profilesLanding';"));
+const landingStart = popup.indexOf('function enterLandingView()');
+const landingEnd = popup.indexOf('\nfunction setProfileSelection', landingStart);
+assert.ok(landingStart >= 0 && landingEnd > landingStart);
+assert.ok(!popup.slice(landingStart, landingEnd).includes("showView('onboarding')"));
           assert.ok(popup.includes("async function saveInitialSellerProfile()"));
           assert.ok(onboarding.includes("saveInitialSellerProfile()"));
           assert.ok(popupHtml.includes('id="view-onboarding"'));
