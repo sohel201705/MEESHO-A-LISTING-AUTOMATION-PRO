@@ -2182,6 +2182,15 @@
   @media(prefers-reduced-motion:reduce){
     #ai-catalog-assistant *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   }
+
+    /* v3.21.0 panel safety: make Listing Studio, its fields and the workspace nav visible
+       in narrow side-panel/iframe layouts. Individual pages remain switchable. */
+    #ai-catalog-assistant.ai-dashboard-shell{height:auto!important;max-height:none!important;overflow:visible!important}
+    #ai-catalog-assistant .ai-progress-panel{display:block!important;visibility:visible!important}
+    #ai-catalog-assistant .ai-dashboard-nav{display:grid!important;visibility:visible!important}
+    #ai-catalog-assistant .ai-page-switcher{display:flex!important;visibility:visible!important}
+    #ai-catalog-assistant .ai-dashboard-nav [data-ai-page]{display:flex!important;visibility:visible!important}
+    #ai-catalog-assistant .ai-page.active{display:block!important;visibility:visible!important}
 </style>
 </head>
 
