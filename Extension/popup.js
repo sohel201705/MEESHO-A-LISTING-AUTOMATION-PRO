@@ -514,10 +514,11 @@ function showAuthStatus(message, type = 'info') {
 
 function buildUserState(user, membership = null, plan = null, reason = '') {
   const status = String(membership?.status || '').toUpperCase();
-  const durationDays = Number(membership?.durationDays || plan?.durationDays || 0);
+  const durationDays = Number(membership?.durationDays ?? plan?.durationDays ?? -1);
   const lifetime = membership?.durationDays !== undefined && membership?.durationDays !== null && durationDays === 0 && String(membership?.planId || '').toLowerCase().includes('lifetime');
   const expiry = membership?.expiryDate || null;
-  const nowActive = status === 'ACTIVE' && (lifetime || (expiry && new Date(expiry).getTime() > Date.now()));
+  const expiryMs = expiry ? new Date(expiry).getTime() : NaN;
+  const nowActive = status === 'ACTIVE' && (lifetime || (Number.isFinite(expiryMs) && expiryMs > Date.now()));
   const common = {
     active: nowActive,
     status: nowActive ? 'active' : (reason || 'not_found'),
