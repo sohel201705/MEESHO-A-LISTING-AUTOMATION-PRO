@@ -93,53 +93,60 @@ async function writeStorageTombstones(keys){
   return (await writeIndexedRecords(records))||localSaved;
 }
 function extensionStorageCall(method,args,timeoutMs=1600){
-  return new Promise((resolve,reject)=>{
-    let settled=false;
-    const finish=(error,value)=>{
-      if(settled)return;
-      settled=true;clearTimeout(timer);
-      if(error)reject(error);else resolve(value);
+ return new Promise((resolve,reject)=>{
+  let settled=false,directStarted=false;
+  const finish=(error,value)=>{
+   if(settled)return;
+   settled=true;clearTimeout(timeout);clearTimeout(directFallback);
+   if(error)reject(error);else resolve(value);
+  };
+  const timeout=setTimeout(()=>finish(new Error('Extension storage callback timed out')),timeoutMs);
+  const direct=()=>{
+   if(settled||directStarted)return;
+   directStarted=true;
+   try{
+    const browserApi=globalThis.browser,chromeApi=globalThis.chrome;
+    const api=(browserApi?.storage?.local?browserApi:chromeApi);
+    const area=api?.storage?.local;
+    if(!area||typeof area[method]!=='function')throw new Error('Extension local storage API unavailable');
+    const callback=value=>{
+     let lastError=null;try{lastError=(api?.runtime||chromeApi?.runtime)?.lastError||null;}catch(_){}
+     finish(lastError?new Error(lastError.message||'Extension storage error'):null,value);
     };
-    const timer=setTimeout(()=>finish(new Error('Extension storage callback timed out')),timeoutMs);
-    try{
-      const browserApi=globalThis.browser,chromeApi=globalThis.chrome;
-      const runtime=browserApi?.runtime||chromeApi?.runtime;
-      if(runtime?.sendMessage){
-        const op=method==='get'?'get':method==='set'?'set':method==='remove'?'remove':null;
-        if(op){
-          const payload=args?.[0];
-          const bridgeDone=value=>{
-            let lastError=null;try{lastError=runtime.lastError||null;}catch(_){}
-            if(lastError)return finish(new Error(lastError.message||'Storage bridge error'));
-            if(value?.ok){finish(null,op==='get'?(value.data||{}):value);return;}
-          };
-          try{
-            const returned=runtime.sendMessage({type:'LOCAL_STORAGE_BRIDGE',op,payload},bridgeDone);
-            if(returned&&typeof returned.then==='function')returned.then(bridgeDone,()=>{});
-          }catch(_){}
-        }
-      }
-      const api=(browserApi?.storage?.local?browserApi:chromeApi);
-      const area=api?.storage?.local;
-      if(!area||typeof area[method]!=='function')throw new Error('Extension local storage API unavailable');
-      const callback=value=>{
-        let lastError=null;try{lastError=(api?.runtime||chromeApi?.runtime)?.lastError||null;}catch(_){}
-        finish(lastError?new Error(lastError.message||'Extension storage error'):null,value);
-      };
-      let returned;
-      if(api===browserApi&&typeof browserApi?.storage?.local?.get==='function'){
-        try{returned=area[method](...args);}catch(firstError){
-          try{returned=area[method](...args,callback);}catch(_){finish(firstError);return;}
-        }
-      }else{
-        try{returned=area[method](...args,callback);}catch(callbackError){
-          try{returned=area[method](...args);}catch(_){finish(callbackError);return;}
-        }
-      }
-      if(returned&&typeof returned.then==='function')returned.then(value=>finish(null,value),error=>finish(error));
-      else if(returned&&typeof returned==='object'&&method==='get')finish(null,returned);
-    }catch(error){finish(error);}
-  });
+    let returned;
+    if(api===browserApi&&typeof browserApi?.storage?.local?.get==='function'){
+     try{returned=area[method](...args);}catch(firstError){
+      try{returned=area[method](...args,callback);}catch(_){finish(firstError);return;}
+     }
+    }else{
+     try{returned=area[method](...args,callback);}catch(callbackError){
+      try{returned=area[method](...args);}catch(_){finish(callbackError);return;}
+     }
+    }
+    if(returned&&typeof returned.then==='function')returned.then(value=>finish(null,value),error=>finish(error));
+    else if(returned&&typeof returned==='object'&&method==='get')finish(null,returned);
+   }catch(error){finish(error);}
+  };
+  const browserApi=globalThis.browser,chromeApi=globalThis.chrome;
+  const runtime=browserApi?.runtime||chromeApi?.runtime;
+  const op=method==='get'?'get':method==='set'?'set':method==='remove'?'remove':null;
+  let bridgeAttempted=false;
+  if(runtime?.sendMessage&&op){
+   bridgeAttempted=true;
+   const bridgeDone=value=>{
+    let lastError=null;try{lastError=runtime.lastError||null;}catch(_){}
+    if(lastError||!value?.ok){direct();return;}
+    finish(null,op==='get'?(value.data||{}):value);
+   };
+   try{
+    const returned=runtime.sendMessage({type:'LOCAL_STORAGE_BRIDGE',op,payload:args?.[0]},bridgeDone);
+    if(returned&&typeof returned.then==='function')returned.then(value=>{if(value?.ok)finish(null,op==='get'?(value.data||{}):value);else direct();},()=>direct());
+   }catch(_){direct();}
+  }
+  // Give the MV3 service-worker bridge first chance. If this browser does not
+  // implement the bridge, fall back to direct storage without losing the write.
+  const directFallback=setTimeout(()=>{if(!settled)direct();},bridgeAttempted?220:0);
+ });
 }
 function requestedStorageKeys(keys){
   if(typeof keys==='string')return [keys];
