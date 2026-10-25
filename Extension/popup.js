@@ -477,7 +477,9 @@ function renderMeasurementSection(container) {
 }
 
 function showView(viewId) {
-  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding' || viewId === 'onboarding';
+  // Skip first-time seller onboarding after login; defaults can be saved during listing.
+  if (viewId === 'onboarding') viewId = 'profilesLanding';
+  const isPremiumView = viewId === 'fill' || viewId === 'profilesLanding';
   if (currentUser && isPremiumView && !hasAutofillAccess(currentUser)) {
     viewId = 'pricing';
   }
@@ -1554,25 +1556,11 @@ function enterLandingView() {
     showView('pricing');
     return;
   }
-  const flagKey=sellerSetupFlagKey(),dbKey=sellerProfileDbKey(),defaultsKey=sellerDefaultsStorageKey(),identity=sellerIdentity();
-  localGet([flagKey,dbKey,defaultsKey,'ai_seller_profiles_v1','ai_seller_defaults_v1','ai_seller_profile_owner_v1']).then(data=>{
-    const owner=String(data.ai_seller_profile_owner_v1||''),legacyAllowed=!(owner&&identity&&owner!==identity);
-    const db=data[dbKey]||(legacyAllowed?data.ai_seller_profiles_v1:null)||{},profiles=Array.isArray(db.profiles)?db.profiles:[];
-    const active=profiles.find(p=>p.id===db.activeId)||profiles[0]||null;
-    const defaults=Object.assign({},data[defaultsKey]||(legacyAllowed?data.ai_seller_defaults_v1:{})||{},active?.defaults||{});
-    const hasBasics=Boolean(String(defaults.sellerName||'').trim()&&String(defaults.sellerAddress||'').trim());
-    if(data[flagKey]||hasBasics){
-      if(hasBasics&&!data[flagKey]){
-        const migrated={[dbKey]:db,[defaultsKey]:defaults,[flagKey]:true};
-        if(!data[dbKey]&&legacyAllowed&&!owner&&(data.ai_seller_profiles_v1||data.ai_seller_defaults_v1))migrated.ai_seller_profile_owner_v1=identity;
-        localSet(migrated).catch(()=>{});
-      }
-      openLandingWorkspace();
-      return;
-    }
-    prefillOnboardingFromStorage().catch(()=>{});
-    showView('onboarding');
-  }).catch(()=>openLandingWorkspace());
+
+  // Login must not be blocked by seller identity, manufacturer, packer, importer,
+  // HSN, GST or support-profile fields. Open the dashboard immediately.
+  // Reusable seller defaults can be saved later from AI Catalog Autofill while listing a product.
+  openLandingWorkspace();
 }
 
 function setProfileSelection(name) {
