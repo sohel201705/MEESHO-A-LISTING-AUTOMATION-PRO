@@ -1034,7 +1034,7 @@ function updateAccountUI() {
   if (emailEl) emailEl.textContent = email;
 
   if (active) {
-    if (eyebrow) eyebrow.textContent = 'Membership active';
+    if (eyebrow) eyebrow.textContent = currentUser.accessMode === 'trial' ? 'Free trial active' : 'Membership active';
     if (title) title.textContent = `Your ${currentUser.planLabel || 'premium'} access is active`;
     if (note) note.textContent = shippingActive ? 'Autofill and Shipping Optimizer are included.' : 'Autofill is active. Shipping Optimizer is not included in this plan.';
     if (badge) { badge.textContent = 'ACTIVE'; badge.style.color = '#bbf7d0'; badge.style.background = 'rgba(22,101,52,.18)'; badge.style.borderColor = 'rgba(34,197,94,.35)'; }
