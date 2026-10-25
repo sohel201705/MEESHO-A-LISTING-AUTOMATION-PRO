@@ -731,7 +731,7 @@ async function fetchFirebaseCollection(collectionName) {
     // Listing the entire plans collection gets PERMISSION_DENIED even when every
     // visible plan is active; that denial was silently rendered as an empty catalog.
     if (collectionName === 'plans') {
-      const endpoint = FIREBASE_BASE_URL().replace(/\\/documents$/, '/documents:runQuery');
+      const endpoint = FIREBASE_BASE_URL().replace(/\/documents$/, '/documents:runQuery');
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
