@@ -8,8 +8,207 @@ const REFERENCE_RESOURCE_PATH='resources/COMPLETE_REFERENCE_JSON.json';
 let profileCache=null, titleChoices=[], activeTitleFieldId='', currentTitleProduct=null, currentTitleFields=[], currentTitleStats=null, currentTitleNeeds=[], chatHistory=[];
 let draftEditMode=false,draftBeforeEdit=null,draftEditedFields=new Set();
 const $=id=>document.getElementById(id);
-const get=k=>new Promise(r=>chrome.storage.local.get(k,r));
-const set=o=>new Promise(r=>chrome.storage.local.set(o,r));
+const STORAGE_MIRROR_PREFIX='__meesho_a_plus_listing_local_v1__:';
+const STORAGE_MIRROR_DB='meesho_a_plus_listing_settings_v1';
+let mirrorDbPromise=null;
+function readStorageMirror(key){
+  try {
+    const raw=globalThis.localStorage?.getItem(STORAGE_MIRROR_PREFIX+key);
+    if(!raw)return {found:false};
+    const parsed=JSON.parse(raw);
+    if(!parsed||parsed.__meeshoStorageMirror!==1)return {found:false};
+    return {found:true,deleted:parsed.deleted===true,value:parsed.value};
+  } catch (_) { return {found:false}; }
+}
+function openStorageMirrorDb(){
+  if(mirrorDbPromise)return mirrorDbPromise;
+  mirrorDbPromise=new Promise((resolve,reject)=>{
+    try{
+      if(!globalThis.indexedDB)throw new Error('IndexedDB unavailable');
+      const request=globalThis.indexedDB.open(STORAGE_MIRROR_DB,1);
+      request.onupgradeneeded=()=>{
+        const db=request.result;
+        if(!db.objectStoreNames.contains('kv'))db.createObjectStore('kv',{keyPath:'key'});
+      };
+      request.onsuccess=()=>resolve(request.result);
+      request.onerror=()=>reject(request.error||new Error('Could not open local settings database'));
+      request.onblocked=()=>reject(new Error('Local settings database is blocked'));
+    }catch(error){reject(error);}
+  });
+  mirrorDbPromise=mirrorDbPromise.catch(error=>{mirrorDbPromise=null;throw error;});
+  return mirrorDbPromise;
+}
+async function readIndexedMirror(key){
+  try{
+    const db=await openStorageMirrorDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readonly'),request=tx.objectStore('kv').get(String(key));
+      request.onsuccess=()=>{
+        const record=request.result?.record;
+        resolve(record&&record.__meeshoStorageMirror===1?{found:true,deleted:record.deleted===true,value:record.value}:{found:false});
+      };
+      request.onerror=()=>reject(request.error||new Error('Could not read local setting'));
+    });
+  }catch(_){return {found:false};}
+}
+async function readAnyMirror(key){
+  const local=readStorageMirror(key);
+  if(local.found)return local;
+  const indexed=await readIndexedMirror(key);
+  if(indexed.found){
+    try{globalThis.localStorage?.setItem(STORAGE_MIRROR_PREFIX+key,JSON.stringify({__meeshoStorageMirror:1,...(indexed.deleted?{deleted:true}:{value:indexed.value}),updatedAt:Date.now()}));}catch(_){}
+  }
+  return indexed;
+}
+async function writeIndexedRecords(records){
+  try{
+    if(!records.length)return false;
+    const db=await openStorageMirrorDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readwrite'),store=tx.objectStore('kv');
+      records.forEach(record=>store.put(record));
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error||new Error('Could not write local settings'));
+      tx.onabort=()=>reject(tx.error||new Error('Local settings write was aborted'));
+    });
+    return true;
+  }catch(_){return false;}
+}
+async function writeStorageMirror(values){
+  const records=[];let localSaved=false;
+  for(const [key,value] of Object.entries(values||{})){
+    const record={__meeshoStorageMirror:1,value,updatedAt:Date.now()};
+    records.push({key:String(key),record});
+    try{const ls=globalThis.localStorage;if(ls){ls.setItem(STORAGE_MIRROR_PREFIX+key,JSON.stringify(record));localSaved=true;}}catch(_){}
+  }
+  return (await writeIndexedRecords(records))||localSaved;
+}
+async function writeStorageTombstones(keys){
+  const records=[];let localSaved=false;
+  for(const key of keys){
+    const record={__meeshoStorageMirror:1,deleted:true,updatedAt:Date.now()};
+    records.push({key:String(key),record});
+    try{const ls=globalThis.localStorage;if(ls){ls.setItem(STORAGE_MIRROR_PREFIX+key,JSON.stringify(record));localSaved=true;}}catch(_){}
+  }
+  return (await writeIndexedRecords(records))||localSaved;
+}
+function extensionStorageCall(method,args,timeoutMs=1600){
+  return new Promise((resolve,reject)=>{
+    let settled=false;
+    const finish=(error,value)=>{
+      if(settled)return;
+      settled=true;clearTimeout(timer);
+      if(error)reject(error);else resolve(value);
+    };
+    const timer=setTimeout(()=>finish(new Error('Extension storage callback timed out')),timeoutMs);
+    try{
+      const browserApi=globalThis.browser,chromeApi=globalThis.chrome;
+      const runtime=browserApi?.runtime||chromeApi?.runtime;
+      if(runtime?.sendMessage){
+        const op=method==='get'?'get':method==='set'?'set':method==='remove'?'remove':null;
+        if(op){
+          const payload=args?.[0];
+          const bridgeDone=value=>{
+            let lastError=null;try{lastError=runtime.lastError||null;}catch(_){}
+            if(lastError)return finish(new Error(lastError.message||'Storage bridge error'));
+            if(value?.ok){finish(null,op==='get'?(value.data||{}):value);return;}
+          };
+          try{
+            const returned=runtime.sendMessage({type:'LOCAL_STORAGE_BRIDGE',op,payload},bridgeDone);
+            if(returned&&typeof returned.then==='function')returned.then(bridgeDone,()=>{});
+          }catch(_){}
+        }
+      }
+      const api=(browserApi?.storage?.local?browserApi:chromeApi);
+      const area=api?.storage?.local;
+      if(!area||typeof area[method]!=='function')throw new Error('Extension local storage API unavailable');
+      const callback=value=>{
+        let lastError=null;try{lastError=(api?.runtime||chromeApi?.runtime)?.lastError||null;}catch(_){}
+        finish(lastError?new Error(lastError.message||'Extension storage error'):null,value);
+      };
+      let returned;
+      if(api===browserApi&&typeof browserApi?.storage?.local?.get==='function'){
+        try{returned=area[method](...args);}catch(firstError){
+          try{returned=area[method](...args,callback);}catch(_){finish(firstError);return;}
+        }
+      }else{
+        try{returned=area[method](...args,callback);}catch(callbackError){
+          try{returned=area[method](...args);}catch(_){finish(callbackError);return;}
+        }
+      }
+      if(returned&&typeof returned.then==='function')returned.then(value=>finish(null,value),error=>finish(error));
+      else if(returned&&typeof returned==='object'&&method==='get')finish(null,returned);
+    }catch(error){finish(error);}
+  });
+}
+function requestedStorageKeys(keys){
+  if(typeof keys==='string')return [keys];
+  if(Array.isArray(keys))return keys.map(String);
+  if(keys&&typeof keys==='object')return Object.keys(keys);
+  return [];
+}
+async function listIndexedMirrors(){
+  try{
+    const db=await openStorageMirrorDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readonly'),request=tx.objectStore('kv').getAll();
+      request.onsuccess=()=>resolve((request.result||[]).filter(x=>x&&x.record&&x.record.__meeshoStorageMirror===1));
+      request.onerror=()=>reject(request.error||new Error('Could not list local settings'));
+    });
+  }catch(_){return [];}
+}
+const get=async keys=>{
+  const wanted=requestedStorageKeys(keys),mirrors={};
+  for(const key of wanted)mirrors[key]=await readAnyMirror(key);
+  if(wanted.length&&wanted.every(key=>mirrors[key].found)){
+    const cached={};
+    for(const key of wanted){
+      const mirror=mirrors[key];
+      if(mirror.deleted){if(keys&&typeof keys==='object'&&!Array.isArray(keys)&&Object.prototype.hasOwnProperty.call(keys,key))cached[key]=keys[key];}
+      else cached[key]=mirror.value;
+    }
+    return cached;
+  }
+  let result={};
+  try{result=await extensionStorageCall('get',[keys])||{};}catch(_){result={};}
+  for(const key of wanted){
+    const mirror=mirrors[key]||await readAnyMirror(key);
+    if(mirror.found){if(mirror.deleted)delete result[key];else result[key]=mirror.value;}
+    else if(Object.prototype.hasOwnProperty.call(result,key))await writeStorageMirror({[key]:result[key]});
+    else if(keys&&typeof keys==='object'&&!Array.isArray(keys)&&Object.prototype.hasOwnProperty.call(keys,key)){
+      result[key]=keys[key];await writeStorageMirror({[key]:keys[key]});
+    }
+  }
+  if(keys==null){
+    const all={};
+    try{
+      const ls=globalThis.localStorage;
+      if(ls)for(let i=0;i<ls.length;i++){
+        const storageKey=ls.key(i);
+        if(!storageKey?.startsWith(STORAGE_MIRROR_PREFIX))continue;
+        const key=storageKey.slice(STORAGE_MIRROR_PREFIX.length),mirror=readStorageMirror(key);
+        if(mirror.found)all[key]=mirror;
+      }
+    }catch(_){}
+    for(const entry of await listIndexedMirrors())if(!all[entry.key])all[entry.key]={found:true,deleted:entry.record.deleted===true,value:entry.record.value};
+    for(const [key,mirror] of Object.entries(all)){if(mirror.deleted)delete result[key];else result[key]=mirror.value;}
+  }
+  return result;
+};
+const set=async values=>{
+  const object=values&&typeof values==='object'?values:{};
+  const mirrorSaved=await writeStorageMirror(object);
+  let extensionSaved=false;
+  try{await extensionStorageCall('set',[object]);extensionSaved=true;}catch(_){}
+  if(!mirrorSaved&&!extensionSaved)throw new Error('Could not save settings in this browser. Enable extension storage/site data for this extension and try again.');
+};
+const removeStorage=async keys=>{
+  const list=(Array.isArray(keys)?keys:[keys]).filter(Boolean).map(String);
+  const mirrorSaved=await writeStorageTombstones(list);
+  let extensionRemoved=false;
+  try{await extensionStorageCall('remove',[list]);extensionRemoved=true;}catch(_){}
+  if(!mirrorSaved&&!extensionRemoved)throw new Error('Could not remove the saved setting in this browser.');
+};
 
 const SEARCH_ORIGINS=['https://www.google.com/*','https://html.duckduckgo.com/*','https://www.bing.com/*'];
 function requestGoogleSearchPermission(){return new Promise(resolve=>{try{chrome.permissions.request({origins:SEARCH_ORIGINS},granted=>resolve(Boolean(granted)));}catch(e){resolve(false);}});}
