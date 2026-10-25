@@ -1,47 +1,28 @@
-# MEESHO A+ LISTING AUTOMATION PRO — Extension v3.18.3
+# MEESHO A+ LISTING AUTOMATION PRO — Extension v3.20.6
 
-## Unified access
+## Membership verification (v3.20.6)
+- Google sign-in does not grant paid membership by itself.
+- Access is granted only when Firebase has an explicit `ACTIVE` entitlement for this user in `productMemberships/{uid}.products.meesho` or a compatible legacy `memberships/{uid}` document.
+- The entitlement must have a valid future expiry date, or explicitly identify a Lifetime plan with `durationDays: 0`.
+- Missing expiry/duration fields are not treated as lifetime.
+- Automatic 24-hour trials are no longer created or treated as paid membership by the membership gate.
+- If no active membership exists, the user remains signed in but sees membership plans and the activation-key entry.
+- If the Firebase membership read fails, access is denied and the UI shows a verification error rather than assuming the account is active.
 
-One active membership unlocks both:
-- Autofill
-- Shipping Optimizer
+## Admin and data
+- Admin Panel: `../admin/`
+- Firestore rules source: `../firebase/firestore.rules`
+- Firebase project config: `firebase-config.js`
+- The admin panel uses product-scoped entitlements in `productMemberships/{uid}` and a legacy Meesho record in `memberships/{uid}` for compatibility.
+- Saved seller profiles and AI provider keys remain on the user's device in extension storage; don't delete local storage when updating the extension.
 
-## Firebase flow
+## Installation
+1. Download the latest Extension ZIP from GitHub Releases.
+2. Extract the ZIP.
+3. In a compatible desktop/extension-supporting browser, load the extracted folder that contains `manifest.json`.
+4. Sign in with Google.
+5. If no active membership is found, choose a plan / contact support in WhatsApp and enter the one-time activation key after Admin issues it.
 
-1. User clicks Login with Google.
-2. Chrome Identity obtains the Google OAuth token.
-3. Firebase Identity Toolkit exchanges it for a Firebase session.
-4. `users/{UID}` is created/updated automatically.
-5. `memberships/{UID}` is checked.
-6. The plan controls duration and device limit.
-7. An active membership enables both Autofill and Shipping Optimizer.
-
-## Device limit
-
-The extension registers a device session under:
-
-`devices/{UID}/sessions/{deviceId}`
-
-The membership device limit is enforced before premium access is granted.
-
-## Required configuration
-
-Set the Chrome Extension OAuth Client ID in:
-- `manifest.json`
-- `firebase-config.js`
-
-Firebase project:
-`meesho-a-plus-listing-b5ea0`
-
-
-## Membership plan picker
-The pricing view starts on Meesho plans and lets the customer switch to Flipkart-only or Combo plans. This changes only the displayed plan category; the original Firestore plan IDs, prices, activation keys, and membership entitlements remain in use.
-
-
-## Local FreeLLMAPI router
-
-Each user runs their own FreeLLMAPI on the same computer as Chrome and enters their own local router key in AI settings. The extension supports `http://127.0.0.1:31415/v1/chat/completions` and automatically falls back to `http://127.0.0.1:3001/v1/chat/completions` when appropriate. Use **Test Connection** to check chat and image input. Configure a vision-capable model in the router's fallback chain and keep the router bound to localhost / loopback.
-
-## 24-hour trial
-
-Users without an active membership can start one 24-hour trial per Firebase account. The start time is saved in a create-once Firestore `trials/{uid}` record. Deploy the updated `firebase/firestore.rules` before enabling trial sign-up. Since this option has no trusted backend, client-side expiry is not tamper-proof; see `SETUP_GITHUB_FIREBASE.md` for details.
+## Release
+- Extension version: 3.20.6
+- Fixes: read Admin Panel's product membership record, prevent accidental “active lifetime” status when the expiry/duration is missing, remove implicit trial auto-start from paid membership verification, and label any free trial distinctly from paid membership.
