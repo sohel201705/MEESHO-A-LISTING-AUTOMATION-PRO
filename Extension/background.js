@@ -197,55 +197,79 @@ async function buildAccess() {
   };
   if (!user.uid) return { allowed: false, reason: 'unauthenticated', user: null, membership: null, plan: null };
 
-  let userDoc = null, membershipDoc = null, membershipReadFailed = false;
+  let userDoc = null, productDoc = null, legacyDoc = null;
+  let membershipReadFailed = false;
   try { userDoc = await firestoreGet(`users/${user.uid}`, token); } catch (_) {}
-  try { membershipDoc = await firestoreGet(`memberships/${user.uid}`, token); } catch (_) { membershipReadFailed = true; }
-  const membership = membershipDoc?.fields || null;
+  try { productDoc = await firestoreGet(`productMemberships/${user.uid}`, token); } catch (_) { membershipReadFailed = true; }
+  try { legacyDoc = await firestoreGet(`memberships/${user.uid}`, token); } catch (_) { membershipReadFailed = true; }
+
+  const productRecord = productDoc?.fields || null;
+  const productMembership = productRecord?.products?.meesho || (
+    String(productRecord?.product || '').toLowerCase() === 'meesho' ? productRecord : null
+  );
+  const legacyMembership = legacyDoc?.fields || null;
+  const candidates = [productMembership, legacyMembership].filter(Boolean);
+  const now = Date.now();
+  const activeEntitlement = entitlement => {
+    if (!entitlement || String(entitlement.status || '').toUpperCase() !== 'ACTIVE') return false;
+    const duration = Number(entitlement.durationDays);
+    // Lifetime must be explicit: durationDays=0 is valid only when the field is present.
+    if (entitlement.durationDays !== undefined && entitlement.durationDays !== null && duration === 0) return true;
+    const expiry = entitlement.expiryDate ? Date.parse(entitlement.expiryDate) : NaN;
+    return Number.isFinite(expiry) && expiry > now;
+  };
+  const activeCandidates = candidates.filter(activeEntitlement);
+  // Prefer the product-specific entitlement written by the current Admin Panel.
+  const membership = activeCandidates[0] || productMembership || legacyMembership || null;
+  const membershipActive = activeCandidates.length > 0;
   let plan = null;
   if (membership?.planId) {
     try { plan = (await firestoreGet(`plans/${membership.planId}`, token))?.fields || null; } catch (_) {}
   }
 
-  const status = String(membership?.status || '').toUpperCase();
-  const expiry = membership?.expiryDate ? new Date(membership.expiryDate) : null;
-  const lifetime = Number(membership?.durationDays || 0) === 0 || String(membership?.planId || '').toLowerCase() === 'lifetime';
-  const membershipActive = status === 'ACTIVE' && (lifetime || (expiry && !Number.isNaN(expiry.getTime()) && expiry.getTime() > Date.now()));
-
-  let trial = null, trialError = '';
-  if (!membershipActive && !membershipReadFailed) {
-    try { trial = await getOrCreateFreeTrial(user.uid, token); }
-    catch (error) { trialError = String(error?.message || error || 'Trial status could not be checked.'); }
-  } else if (membershipReadFailed) {
-    trialError = 'Membership status could not be verified because Firebase could not be reached. Please retry while online.';
-  }
-  const trialActive = Boolean(trial?.active), trialExpired = Boolean(trial && !trial.active);
-  const allowed = membershipActive || trialActive;
-  const accessMode = membershipActive ? 'membership' : trialActive ? 'trial' : 'blocked';
-  const effectiveStatus = allowed ? 'ACTIVE' : trialExpired ? 'EXPIRED' : status || 'NOT_ACTIVATED';
-  const effectivePlanId = membershipActive ? (membership?.planId || '') : trialActive ? 'free-trial' : '';
-  const effectivePlanLabel = membershipActive ? (membership?.planName || plan?.name || '') : trialActive ? '24-Hour Free Trial' : '';
-  const effectiveDuration = membershipActive ? Number(membership?.durationDays || plan?.durationDays || 0) : trialActive ? 1 : 0;
-  const effectiveExpiry = membershipActive ? (membership?.expiryDate || null) : trial?.expiresAt || null;
-  const entitlementStatus = allowed ? 'active' : trialExpired ? 'expired' : 'not_found';
+  const rawStatus = String(membership?.status || '').toUpperCase();
+  const expiryMs = membership?.expiryDate ? Date.parse(membership.expiryDate) : NaN;
+  const expired = rawStatus === 'ACTIVE' && Number.isFinite(expiryMs) && expiryMs <= now;
+  const suspended = rawStatus === 'SUSPENDED';
+  const revoked = rawStatus === 'REVOKED';
+  const effectiveStatus = membershipActive ? 'ACTIVE' : expired ? 'EXPIRED' : suspended ? 'SUSPENDED' : revoked ? 'REVOKED' : 'NOT_ACTIVATED';
+  const effectivePlanId = membershipActive ? String(membership?.planId || '') : '';
+  const effectivePlanLabel = membershipActive ? String(membership?.planName || plan?.name || '') : '';
+  const effectiveDuration = membershipActive ? Number(membership?.durationDays ?? plan?.durationDays ?? -1) : -1;
+  const effectiveExpiry = membershipActive ? (membership?.expiryDate || null) : (membership?.expiryDate || null);
+  const entitlementStatus = membershipActive ? 'active' : expired ? 'expired' : suspended ? 'suspended' : revoked ? 'revoked' : 'not_found';
   const full = {
     ...user, ...(userDoc?.fields || {}),
     uid: user.uid,
     email: user.email || userDoc?.fields?.email || '',
     full_name: user.full_name || userDoc?.fields?.name || user.email || 'Google User',
     membershipStatus: effectiveStatus,
-    subscription_status: allowed ? 'active' : trialExpired ? 'expired' : status ? status.toLowerCase() : 'not_activated',
-    subscription_reason: allowed ? '' : trialExpired ? 'trial_expired' : status === 'EXPIRED' ? 'expired' : status === 'SUSPENDED' ? 'suspended' : status === 'REVOKED' ? 'revoked' : trialError ? 'trial_setup_required' : 'not_activated',
-    planId: effectivePlanId, planLabel: effectivePlanLabel,
-    durationDays: effectiveDuration, expiryDate: effectiveExpiry,
-    accessMode, trialActive, trialStartedAt: trial?.startedAt || null, trialExpiresAt: trial?.expiresAt || null,
-    shippingEnabled: allowed,
+    subscription_status: membershipActive ? 'active' : effectiveStatus.toLowerCase(),
+    subscription_reason: membershipActive ? '' : membershipReadFailed ? 'verification_error' : expired ? 'expired' : suspended ? 'suspended' : revoked ? 'revoked' : 'not_activated',
+    planId: effectivePlanId,
+    planLabel: effectivePlanLabel,
+    durationDays: effectiveDuration,
+    expiryDate: effectiveExpiry,
+    accessMode: membershipActive ? 'membership' : 'blocked',
+    trialActive: false,
+    trialStartedAt: null,
+    trialExpiresAt: null,
+    shippingEnabled: membershipActive,
     products: {
-      fill: { active: allowed, status: entitlementStatus, planType: effectivePlanId, planLabel: effectivePlanLabel, expiresAt: effectiveExpiry },
-      ship: { active: allowed, status: entitlementStatus, planType: effectivePlanId, planLabel: effectivePlanLabel, expiresAt: effectiveExpiry }
+      fill: { active: membershipActive, status: entitlementStatus, planType: effectivePlanId, planLabel: effectivePlanLabel, expiresAt: effectiveExpiry },
+      ship: { active: membershipActive, status: entitlementStatus, planType: effectivePlanId, planLabel: effectivePlanLabel, expiresAt: effectiveExpiry }
     }
   };
-  const reason = membershipActive ? 'active' : trialActive ? 'trial_active' : trialExpired ? 'trial_expired' : trialError ? 'trial_setup_required' : status === 'EXPIRED' ? 'expired' : status || 'not_activated';
-  return { allowed, reason, user: full, membership, plan, trial, trialError: trialError || null };
+  const reason = membershipActive ? 'active' : membershipReadFailed ? 'verification_error' : expired ? 'expired' : suspended ? 'suspended' : revoked ? 'revoked' : 'not_activated';
+  return {
+    allowed: membershipActive,
+    reason,
+    user: full,
+    membership,
+    plan,
+    trial: null,
+    trialError: membershipReadFailed ? 'Firebase membership verification failed. Check network and Firestore Rules, then press Verify Membership Again.' : null
+  };
 }
 
 const OFFSCREEN_DOCUMENT_PATH = '/offscreen.html';
