@@ -562,9 +562,10 @@ function hasMembershipAccess(user, now = new Date()) {
   if (!user) return false;
   const status = String(user.membershipStatus || user.subscription_status || '').toLowerCase();
   if (status !== 'active') return false;
-  const duration = Number(user.durationDays || 0);
-  const expiry = user.expiryDate ? new Date(user.expiryDate).getTime() : 0;
-  return (user.durationDays !== undefined && user.durationDays !== null && duration === 0 && String(user.planId || '').toLowerCase().includes('lifetime')) || (Number.isFinite(expiry) && expiry > now.getTime());
+  const duration = Number(user.durationDays ?? -1);
+  const expiry = user.expiryDate ? new Date(user.expiryDate).getTime() : NaN;
+  const lifetime = user.durationDays !== undefined && user.durationDays !== null && duration === 0 && String(user.planId || '').toLowerCase().includes('lifetime');
+  return lifetime || (Number.isFinite(expiry) && expiry > now.getTime());
 }
 
 function hasProductAccess(user, scope, now = new Date()) {
