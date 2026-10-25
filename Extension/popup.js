@@ -515,7 +515,7 @@ function showAuthStatus(message, type = 'info') {
 function buildUserState(user, membership = null, plan = null, reason = '') {
   const status = String(membership?.status || '').toUpperCase();
   const durationDays = Number(membership?.durationDays || plan?.durationDays || 0);
-  const lifetime = durationDays === 0 || String(membership?.planId || '').toLowerCase() === 'lifetime';
+  const lifetime = membership?.durationDays !== undefined && membership?.durationDays !== null && durationDays === 0 && String(membership?.planId || '').toLowerCase().includes('lifetime');
   const expiry = membership?.expiryDate || null;
   const nowActive = status === 'ACTIVE' && (lifetime || (expiry && new Date(expiry).getTime() > Date.now()));
   const common = {
@@ -563,7 +563,7 @@ function hasMembershipAccess(user, now = new Date()) {
   if (status !== 'active') return false;
   const duration = Number(user.durationDays || 0);
   const expiry = user.expiryDate ? new Date(user.expiryDate).getTime() : 0;
-  return duration === 0 || !expiry || expiry > now.getTime();
+  return (user.durationDays !== undefined && user.durationDays !== null && duration === 0 && String(user.planId || '').toLowerCase().includes('lifetime')) || (Number.isFinite(expiry) && expiry > now.getTime());
 }
 
 function hasProductAccess(user, scope, now = new Date()) {
